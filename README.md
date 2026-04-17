@@ -2,10 +2,8 @@
 
 <img src="doc/logo-projeto/logo.png" width="200" height="200" />
 
->Inserir uma logo para o projeto
+# O que é? 👀
 
-# O que é?
-----
 Em resumo, nosso projeto consiste em um ambiente virtual interativo voltado para a navegação dentro do IFRN-CNAT, permitindo que estudantes, visitantes e funcionários localizem com facilidade blocos, salas, laboratórios e demais setores do campus.
 
 # Missão
@@ -28,11 +26,9 @@ Nossos valores são a preservação de privacidade, livre acesso para todos os u
 3. Gabriel Isaías
 4. Jenyffer Danily
 
-> Descrever as formas de contato da equipe - WhatsApp, Discord, etc.
-
 # Reuniões Semanais da Equipe
 
-1. Reunião com o orientaor OU reservada para apresentações - **"dia da semana", às "horário" no "local"**.
+1. Reunião com o orientador OU reservada para apresentações - **"todas as sextas", às "09:00" no "lab 05"**.
 
 > Descrever dias, horários e local das demais reuniões da equipe
 
