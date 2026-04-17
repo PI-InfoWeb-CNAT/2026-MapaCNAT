@@ -6,14 +6,18 @@
 
 Em resumo, nosso projeto consiste em um ambiente virtual interativo voltado para a navegação dentro do IFRN-CNAT, permitindo que estudantes, visitantes e funcionários localizem com facilidade blocos, salas, laboratórios e demais setores do campus.
 
+A proposta é oferecer uma experiência simples e intuitiva, reduzindo dificuldades de localização e otimizando o deslocamento dentro da instituição, especialmente para novos usuários ou visitantes.
+
+Além disso, o sistema busca centralizar informações importantes do campus em um único lugar, facilitando o acesso e contribuindo para uma melhor organização e aproveitamento dos espaços disponíveis.
+
 # Missão
 
-Ajudamos estudantes, visitantes e funcionários do IFRN-CNAT a navegar pela instituição de forma clara e objetiva para que minimizemos problemas de lozalização a respeito dos diversos blocos, setores, salas e laboratórios que formam o campus.
+Ajudarmos estudantes, visitantes e funcionários do IFRN-CNAT a navegar pela instituição de forma clara e objetiva para que minimizemos problemas de lozalização a respeito dos diversos blocos, setores, salas e laboratórios que formam o campus.
 
 # Visão
 
 Nossa visão é tornar nosso aplicativo a maior ferramenta de navegação intuitiva e detalhada de todos os campi.
-Planejamos expandir a ferramenta a fim de versatilizá-la para qualquer instituição ou instalação que necessite de um suporte de exploração
+Planejamos expandir a ferramenta a fim de versatilizá-la para qualquer instituição ou instalação que necessite de um suporte de exploração.
 
 # Valores
 
