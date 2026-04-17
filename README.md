@@ -4,7 +4,6 @@
 
 >Inserir uma logo para o projeto
 
->O que é? 👀
 >Em resumo, nosso projeto consiste em um ambiente virtual interativo voltado para a navegação dentro do IFRN-CNAT, permitindo que estudantes, visitantes e funcionários localizem com facilidade blocos, salas, laboratórios e demais setores do campus.
 
 # Missão
