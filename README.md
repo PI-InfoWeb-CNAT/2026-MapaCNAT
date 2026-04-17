@@ -1,6 +1,6 @@
 # CNAT MAPA
 
-<img src="doc/logo-projeto/logo.png" width="200" height="200" />
+<img src="doc/logo-projeto/logo-mapa.png" width="200" height="200" />
 
 # O que é? 👀
 
