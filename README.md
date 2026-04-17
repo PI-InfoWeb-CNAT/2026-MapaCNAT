@@ -4,7 +4,8 @@
 
 >Inserir uma logo para o projeto
 
->Inserir pequena descrição do projeto
+>O que é? 👀
+>Em resumo, nosso projeto consiste em um ambiente virtual interativo voltado para a navegação dentro do IFRN-CNAT, permitindo que estudantes, visitantes e funcionários localizem com facilidade blocos, salas, laboratórios e demais setores do campus.
 
 # Missão
 
@@ -21,8 +22,10 @@ Nossos valores são a preservação de privacidade, livre acesso para todos os u
 
 # Equipe e Formas de Contato
 
-1. Nome...
-2. Nome...
+1. Allaphy Ricardo
+2. Gabriel Albino
+3. Gabriel Isaías
+4. Jenyffer Danily
 
 > Descrever as formas de contato da equipe - WhatsApp, Discord, etc.
 
