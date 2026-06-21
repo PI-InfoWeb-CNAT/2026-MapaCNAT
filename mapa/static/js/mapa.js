@@ -10,11 +10,13 @@ fetch(config)
         Interacao.setContext(data);
         Interacao.addListeners(Graficos.map);
 
-        for (const label of data.labels) {
-            Graficos.nodeText(label.text, { x: label.x, y: label.y });
+        if (explorePage) {
+            for (const label of data.labels) {
+                Graficos.nodeText(label.text, { x: label.x, y: label.y });
+            }
+            
+            Localizacao.UserLocation();
         }
-
-        Localizacao.UserLocation();
     });
     Graficos.loadMapScales();
 })

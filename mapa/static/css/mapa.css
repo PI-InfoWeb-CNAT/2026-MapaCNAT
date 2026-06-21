@@ -211,7 +211,6 @@ header {
     margin: var(--body-margin);
     border-radius: 5px;
     border: 2px solid black;
-    cursor: pointer !important;
 }
 .hidden {
     display: none;

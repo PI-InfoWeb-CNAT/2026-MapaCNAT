@@ -19,13 +19,12 @@
         <button class="padding icon" id="build" onclick="addBuild();"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-building"></i></button>
         <!-- <button class="padding icon" id="reference" onclick="setMode('reference');"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-location-dot"></i></button>
         <button class="padding icon" id="route" onclick="setMode('route');"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-route"></i></button> -->
+        <button class="padding icon hidden" style="cursor: pointer;" id="submit" onclick="confirmObject();"><i class="fa-solid fa-check"></i></button>
     </div>
 </header>
 
 <main>
     <div id="map"></div>
-
-    <button class="padding icon hidden" id="submit" onclick="confirmObject();"><i class="fa-solid fa-check"></i></button>
 
     <div class="modal-overlay" id="buildModalOverlay">
         <div class="modal-box">
@@ -49,6 +48,7 @@
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
     <script type="module" src="{% static 'js/mapa.js' %}"></script>
+    <script src="{% static 'js/uniao-poligonos.js' %}"></script>
     <script src="{% static 'js/mapa-editor.js' %}"></script>
 </main>
 {% endblock %}

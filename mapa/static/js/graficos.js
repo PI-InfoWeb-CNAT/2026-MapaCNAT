@@ -3,6 +3,8 @@ import * as Transformacao from "./transformacao.js";
 export let map;
 export let mapContainer;
 let textContainer;
+let buildContainer;
+let areasContainer;
 let pinContainer;
 let app;
 
@@ -27,27 +29,6 @@ export let scaleFactor = 1;
 
 export let imageSize;
 
-let stepSquares = [];
-let confirmStep = document.getElementById("submit");
-
-function getNormalizedCoordinates(screenX, screenY) {
-    const localPoint = mapContainer.toLocal({ x: screenX, y: screenY });
-
-    return {
-        x: localPoint.x,
-        y: localPoint.y
-    };
-}
-
-function getScreenCoordinates(localX, localY) {
-    const screenPoint = mapContainer.toGlobal({ x: localX, y: localY });
-
-    return {
-        x: screenPoint.x,
-        y: screenPoint.y
-    };
-}
-
 class BuildArea {
     constructor(pos) {
         this.success = false;
@@ -64,7 +45,7 @@ class BuildArea {
         .stroke({ width: 4, color: 0x4000ff });
         
         this.square.position.set(0, 0);
-        mapContainer.addChild(this.square);
+        buildContainer.addChild(this.square);
     }
     setSize(size) {
         let mapSize = getNormalizedCoordinates(size.x, size.y);
@@ -97,17 +78,89 @@ class BuildArea {
     }
 }
 
+export function updateBuilding() {
+    for (const child of textContainer.children) {
+        buildContainer.removeChild(child);
+    }
+    for (const square of stepSquares) {
+        square.square.destroy({ 
+            children: true, 
+            texture: true, 
+            baseTexture: true 
+        });
+    }
+    stepSquares = [];
+
+    for (const building of buildings) {
+        if(!building.graphics) {
+            building.graphics = true;
+            for (const area of building.area) {
+                let points = area;
+    
+                let flattenedPoints = points.flat();
+    
+                let build = new PIXI.Graphics();
+    
+                build
+                    .poly(flattenedPoints, true)
+                    .fill({ color: 0x5c56f9, alpha: 0.78 })
+                    .stroke({ width: 4, color: 0x4000ff });
+    
+                build.position.set(0, 0);
+                areasContainer.addChild(build);
+            }
+        }
+    }
+}
+
+function getNormalizedCoordinates(screenX, screenY) {
+    const localPoint = mapContainer.toLocal({ x: screenX, y: screenY });
+
+    return {
+        x: localPoint.x,
+        y: localPoint.y
+    };
+}
+
+function getScreenCoordinates(localX, localY) {
+    const screenPoint = mapContainer.toGlobal({ x: localX, y: localY });
+
+    return {
+        x: screenPoint.x,
+        y: screenPoint.y
+    };
+}
+
 export async function addBuildPin(pos) {
-    const buildPino = await PIXI.Assets.load(pinImagePath);
+    const buildPinoSprite = await PIXI.Assets.load(pinImagePath);
 
     let mapPos = getNormalizedCoordinates(pos.x, pos.y);
-    pinoSprite = PIXI.Sprite.from(buildPino);
-    pinoSprite.anchor.set(0.5, 1);
-    pinoSprite.x = mapPos.x;
-    pinoSprite.y = mapPos.y;
-    pinoSprite.scale.set(1 / zoom / 7.5);
+    let buildPino = PIXI.Sprite.from(buildPinoSprite);
+    buildPino.anchor.set(0.5, 1);
+    buildPino.x = mapPos.x;
+    buildPino.y = mapPos.y;
+    buildPino.scale.set(1 / zoom / 7.5);
     
-    pinContainer.addChild(pinoSprite);
+    pinContainer.addChild(buildPino);
+
+    const nodeLabel = new PIXI.Text({
+        text: buildName,
+        style: {
+            fontFamily: 'Arial',
+            fontSize: 28,
+            fill: textColor,
+            align: 'center',
+            stroke: { color: "white", width: 3 }
+        }
+    });
+    nodeLabel.anchor.set(-0.2, 1);
+    nodeLabel.x = mapPos.x;
+    nodeLabel.y = mapPos.y;
+    buildCoordinates = mapPos;
+    nodeLabel.scale.set(1 / zoom / 2);
+
+    pinContainer.addChild(nodeLabel);
+    
 }
 
 export function createBuildArea(pos) {
@@ -175,6 +228,12 @@ export async function main() {
     
     textContainer = new PIXI.Container();
     mapContainer.addChild(textContainer);
+
+    buildContainer = new PIXI.Container();
+    mapContainer.addChild(buildContainer);
+
+    areasContainer = new PIXI.Container();
+    mapContainer.addChild(areasContainer);
 
     pinContainer = new PIXI.Container();
     mapContainer.addChild(pinContainer);
@@ -262,7 +321,11 @@ function Zoom(z) {
     mapContainer.scale.set(z);
     pinoSprite.scale.set(1 / z / 7.5);
     for (const child of pinContainer.children) {
-        child.scale.set(1 / z / 7.5);
+        if (child instanceof PIXI.Text) {
+            child.scale.set(1 / z / 2);
+        } else {
+            child.scale.set(1 / z / 7.5);
+        }
     }
     for (const child of textContainer.children) {
         child.scale.set(1 / z / 2);

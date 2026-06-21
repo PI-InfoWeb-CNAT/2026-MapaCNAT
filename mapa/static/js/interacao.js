@@ -206,5 +206,9 @@ export function addListeners(map) {
         backdrop.addEventListener('click', closeMenu);
     
         orientationBtn.addEventListener('click', alignMap);
+    } else {
+        confirmStep.addEventListener("click", (e) => {
+            Graficos.updateBuilding();
+        });
     }
 }
