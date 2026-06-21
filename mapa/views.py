@@ -12,3 +12,7 @@ def home(request):
 def login(request):
     template = loader.get_template('login.html')
     return HttpResponse(template.render())
+
+def mapa_editor(request):
+    template = loader.get_template('mapa-editor.html')
+    return HttpResponse(template.render())

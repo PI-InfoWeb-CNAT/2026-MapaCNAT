@@ -1,4 +1,4 @@
-import { MatrixTransform, getNormalizedCoordinates } from "./transformacao.js";
+import { MatrixTransform } from "./transformacao.js";
 import * as Graficos from "./graficos.js";
 
 let coordinateTransform;

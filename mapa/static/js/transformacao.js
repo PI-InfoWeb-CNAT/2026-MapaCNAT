@@ -59,15 +59,6 @@ function multiplyMatVec(m, v) {
     ];
 }
 
-export function getNormalizedCoordinates(screenX, screenY) {
-    const localPoint = mapContainer.toLocal({ x: screenX, y: screenY });
-
-    return {
-        x: localPoint.x,
-        y: localPoint.y
-    };
-}
-
 export function rotatePoint(x, y, angle) {
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);

@@ -7,11 +7,13 @@ let touching = false;
 let minZoom;
 let maxZoom;
 let zoomStep;
+let currSquare;
 
 let zoom = Graficos.zoom;
 
 let mapStartX, mapStartY;
 let clickX, clickY;
+let pointerButton;
 let mouseX, mouseY;
 let touchX, touchY;
 let startMidX, startMidY;
@@ -97,17 +99,47 @@ class Pointer {
     static down(e) {
         clickX = e.clientX;
         clickY = e.clientY;
+        pointerButton = e.button;
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
         clicking = true;
+        if (!explorePage) {
+            if (mode == "build") {
+                if (modeStep == 0) {
+                    Graficos.addBuildPin({x: clickX, y: clickY});
+                    nextStep();
+                } else if (modeStep == 1) {
+                    currSquare = Graficos.createBuildArea({x: clickX, y: clickY});
+                }
+            }
+        }
     }
 
-    static move(e) {
-        if (!clicking) return;
+    static defaultMove(e) {
         Graficos.setPosition(
             mapStartX + (e.clientX - clickX),
             mapStartY + (e.clientY - clickY)
         );
+    }
+
+    static move(e) {
+        if (!clicking) return;
+        if (explorePage) {
+            Pointer.defaultMove(e);
+        } else {
+            if (mode == "build") {
+                if (pointerButton == 2) {
+                    Pointer.defaultMove(e);
+                } else {
+                    if (modeStep == 1) {
+                        currSquare.setSize({x: e.clientX, y: e.clientY});
+                    }
+                    
+                }
+            } else {
+                Pointer.defaultMove(e);
+            }
+        }
     }
 
     static up(e) {
@@ -144,29 +176,35 @@ export function addListeners(map) {
     map.addEventListener("touchmove", Touch.step, { passive: false });
     map.addEventListener("touchend", Touch.end);
 
-    const optionsBtn = document.getElementById('options');
-    const closeBtn = document.getElementById('close-sidebar');
-    const sidebar = document.getElementById('sidebar');
-    const backdrop = document.getElementById('sidebar-backdrop');
-
-    const orientationBtn = document.getElementById('orientation');
-
-    optionsBtn.addEventListener('click', () => {
-        sidebar.classList.add('active');
-        backdrop.classList.add('active');
+    document.addEventListener('contextmenu', function(event) {
+        event.preventDefault();
     });
 
-    const closeMenu = () => {
-        sidebar.classList.remove('active');
-        backdrop.classList.remove('active');
-    };
-
-    const alignMap = () => {
-        Graficos.smoothRotation(0);
+    if (explorePage) {
+        const optionsBtn = document.getElementById('options');
+        const closeBtn = document.getElementById('close-sidebar');
+        const sidebar = document.getElementById('sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+    
+        const orientationBtn = document.getElementById('orientation');
+    
+        optionsBtn.addEventListener('click', () => {
+            sidebar.classList.add('active');
+            backdrop.classList.add('active');
+        });
+    
+        const closeMenu = () => {
+            sidebar.classList.remove('active');
+            backdrop.classList.remove('active');
+        };
+    
+        const alignMap = () => {
+            Graficos.smoothRotation(0);
+        }
+    
+        closeBtn.addEventListener('click', closeMenu);
+        backdrop.addEventListener('click', closeMenu);
+    
+        orientationBtn.addEventListener('click', alignMap);
     }
-
-    closeBtn.addEventListener('click', closeMenu);
-    backdrop.addEventListener('click', closeMenu);
-
-    orientationBtn.addEventListener('click', alignMap);
 }

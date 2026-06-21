@@ -1,10 +1,8 @@
 {
-    "blank_color": "#333",
+    "blank_color": "#EEE8DC",
     "text_color": "#202020",
     "scroll_ratio": 1.1,
     "zoom_range": [0.0125, 4],
-    "map_image": "../static/svg/mapa.svg",
-    "pin_image": "../static/img/pino.png",
     "labels": [
         { "text": "Rosquinhas", "x": -474, "y": 14 },
         { "text": "Campo", "x": 533.390219080226, "y": -579.5920817634556 },

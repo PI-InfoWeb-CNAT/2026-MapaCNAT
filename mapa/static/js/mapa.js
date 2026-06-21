@@ -2,7 +2,7 @@ import * as Graficos from "./graficos.js";
 import * as Interacao from "./interacao.js";
 import * as Localizacao from "./localizacao.js";
 
-fetch('../static/json/config.json')
+fetch(config)
 .then(response => response.json())
 .then(data => {
     Graficos.setContext(data);

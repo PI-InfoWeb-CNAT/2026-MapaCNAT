@@ -14,7 +14,7 @@ canvas {
     height: 100vh;
     background-color: gray;
     z-index: 1;
-    background-color: #333;
+    background-color: #EEE8DC;
 }
 
 #search {
@@ -168,6 +168,9 @@ header {
     bottom: var(--body-margin);
     right: var(--body-margin);
 
+    border-radius: 25px;
+}
+.icon {
     width: 50px;
     height: 50px;
     box-sizing: border-box;
@@ -182,6 +185,131 @@ header {
     border: none;
     cursor: pointer;
     background-color: white;
+}
 
-    border-radius: 25px;
+#editor-modes {
+    position: fixed;
+    justify-content: center;
+    left:0;
+    top:0;
+    height: 100%;
+}
+
+#build, #reference, #route {
+    margin: var(--body-margin);
+    
+    border-radius: 5px;
+    border: 2px solid black;
+}
+.mode-active {
+    background-color: #aaa !important;
+}
+#submit {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    margin: var(--body-margin);
+    border-radius: 5px;
+    border: 2px solid black;
+    cursor: pointer !important;
+}
+.hidden {
+    display: none;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease-in-out;
+    z-index: 99999;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-box {
+    background-color: white;
+    padding: 25px;
+    border-radius: 8px;
+    width: 350px;
+    max-width: 85%;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    position: relative;
+    transform: translateY(-20px);
+    transition: transform 0.3s ease-in-out;
+    font-family: var(--font-family);
+}
+
+.modal-overlay.active .modal-box {
+    transform: translateY(0);
+}
+
+.modal-close {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: #888;
+}
+
+.modal-close:hover {
+    color: #000;
+}
+
+.modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.modal-form h3 {
+    margin: 0 0 5px 0;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-group label {
+    font-size: 0.9em;
+    color: #444;
+}
+
+.form-group input {
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em;
+}
+
+.modal-submit-btn {
+    background-color: #000;
+    color: #fff;
+    border: none;
+    padding: 10px;
+    font-size: 1em;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.2s;
+}
+
+.modal-submit-btn:hover {
+    background-color: #333;
 }
