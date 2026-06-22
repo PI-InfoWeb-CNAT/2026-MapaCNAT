@@ -31,15 +31,15 @@
     </div>
 
     <div id="map"></div>
+
+    <button class="padding icon" id="orientation"><i class="fa-solid fa-compass"></i></button>
+    
     <script>
         const config = "{% static 'json/config.json' %}";
         const mapImage =  "{% static 'svg/mapa.svg' %}";
         const pinImage = "{% static 'img/pino.png' %}";
-        const explorePage = true;
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
     <script type="module" src="{% static 'js/mapa.js' %}"></script>
-
-    <button class="padding icon" id="orientation"><i class="fa-solid fa-compass"></i></button>
 </main>
 {% endblock %}

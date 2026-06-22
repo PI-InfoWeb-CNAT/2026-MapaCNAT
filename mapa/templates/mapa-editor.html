@@ -16,10 +16,8 @@
 {% block content %}
 <header>
     <div id="editor-modes">
-        <button class="padding icon" id="build" onclick="addBuild();"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-building"></i></button>
-        <!-- <button class="padding icon" id="reference" onclick="setMode('reference');"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-location-dot"></i></button>
-        <button class="padding icon" id="route" onclick="setMode('route');"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-route"></i></button> -->
-        <button class="padding icon hidden" style="cursor: pointer;" id="submit" onclick="confirmObject();"><i class="fa-solid fa-check"></i></button>
+        <button class="padding icon" id="build"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-building"></i></button>
+        <button class="padding icon hidden" style="cursor: pointer;" id="submit"><i class="fa-solid fa-check"></i></button>
     </div>
 </header>
 
@@ -29,13 +27,13 @@
     <div class="modal-overlay" id="buildModalOverlay">
         <div class="modal-box">
             <button type="button" class="modal-close" id="closeBuildModal">&times;</button>
-            <form class="modal-form" id="buildForm" onsubmit="handleBuildSubmit(event)">
+            <form class="modal-form" id="buildForm">
                 <h3>Nova Construção</h3>
                 <div class="form-group">
                     <label for="build-name">Nome da Construção</label>
                     <input type="text" id="build-name" placeholder="Use siglas se possível..." required>
                 </div>
-                <button type="submit" class="modal-submit-btn">Continuar</button>
+                <button type="submit" class="modal-submit-btn" id="buildFormSubmit">Continuar</button>
             </form>
         </div>
     </div>
@@ -44,11 +42,8 @@
         const config = "{% static 'json/config.json' %}";
         const mapImage =  "{% static 'svg/mapa.svg' %}";
         const pinImage = "{% static 'img/pino.png' %}";
-        const explorePage = false;
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
-    <script type="module" src="{% static 'js/mapa.js' %}"></script>
-    <script src="{% static 'js/uniao-poligonos.js' %}"></script>
-    <script src="{% static 'js/mapa-editor.js' %}"></script>
+    <script type="module" src="{% static 'js/mapa-editor.js' %}"></script>
 </main>
 {% endblock %}

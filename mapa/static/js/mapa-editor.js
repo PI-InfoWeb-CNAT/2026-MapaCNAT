@@ -1,36 +1,31 @@
-const buildIcon = document.getElementById("build");
+import * as Graficos from "./graficos.js";
+import * as Interacao from "./interacao.js";
+import * as Localizacao from "./localizacao.js";
+
+fetch(config)
+.then(response => response.json())
+.then(data => {
+    data.page = "editor";
+    
+    Graficos.setContext(data);
+    Graficos.main().then(() => {
+        Interacao.setContext(data);
+        Interacao.addListeners(Graficos.map);
+    });
+    Graficos.loadMapScales();
+})
+.catch(error => console.error('Falha ao carregar JSON:', error));
+
+
 const referenceIcon = document.getElementById("reference");
 const routeIcon = document.getElementById("route");
 
-let confirmStep = document.getElementById("submit");
-
-let mode;
-let modeStep;
 let buildName;
 let buildCoordinates;
 let stepSquares = [];
-
 let buildings = [];
 
-function addBuild() {
-    if (!mode == "") {
-        return;
-    }
 
-    mode = "build";
-    modeStep = 0;
-    const overlay = document.getElementById('buildModalOverlay');
-    overlay.classList.add('active');
-}
-
-function nextStep() {
-    if (mode == "build") {
-        if (modeStep == 0) {
-            map.classList.remove("custom-cursor");
-        }
-    }
-    modeStep += 1;
-}
 
 class Polygon {
     constructor(points) {
@@ -91,14 +86,3 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
-
-function handleBuildSubmit(event) {
-    event.preventDefault();
-    
-    buildName = document.getElementById('build-name').value;
-
-    document.getElementById('buildModalOverlay').classList.remove('active');
-    document.getElementById('buildForm').reset();
-
-    map.classList.add("custom-cursor");
-}

@@ -4,10 +4,11 @@ import * as Transformacao from "./transformacao.js";
 let clicking = false;
 let touching = false;
 
-let minZoom;
-let maxZoom;
+let minZoom, maxZoom;
 let zoomStep;
 let currSquare;
+
+let page;
 
 let zoom = Graficos.zoom;
 
@@ -21,10 +22,23 @@ let startDistance, startAngle;
 let startZoom, startRotation;
 let startOffsetX, startOffsetY;
 
+let editMode;
+let modeStep;
+
 export function setContext(context) {
-    minZoom = context.zoom_range[0];
-    maxZoom = context.zoom_range[1];
+    page = context.page;
+    minZoom = Graficos.minZoom;
+    maxZoom = Graficos.maxZoom;
     zoomStep = context.scroll_ratio;
+}
+
+function nextStep() {
+    if (editMode == "build") {
+        if (modeStep == 0) {
+            map.classList.remove("custom-cursor");
+        }
+    }
+    modeStep += 1;
 }
 
 class Touch {
@@ -103,8 +117,8 @@ class Pointer {
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
         clicking = true;
-        if (!explorePage) {
-            if (mode == "build") {
+        if (page == "editor") {
+            if (editMode == "build") {
                 if (modeStep == 0) {
                     Graficos.addBuildPin({x: clickX, y: clickY});
                     nextStep();
@@ -124,10 +138,10 @@ class Pointer {
 
     static move(e) {
         if (!clicking) return;
-        if (explorePage) {
+        if (page == "main") {
             Pointer.defaultMove(e);
         } else {
-            if (mode == "build") {
+            if (editMode == "build") {
                 if (pointerButton == 2) {
                     Pointer.defaultMove(e);
                 } else {
@@ -166,6 +180,39 @@ class Pointer {
     }
 }
 
+function activateList(list) {
+    for (const tag of list) {
+        tag.classList.add('active');
+    };
+}
+function deactivateList(list) {
+    for (const tag of list) {
+        tag.classList.remove('active');
+    };
+}
+
+class Actions {
+    static goToMode(mode) {
+        // if (mode == "build") {
+        //     return;
+        // }
+        editMode = mode;
+        const overlay = document.getElementById('buildModalOverlay');
+        overlay.classList.add('active');
+    }
+}
+
+function handleBuildSubmit(event) {
+    let buildName = document.getElementById('build-name').value;
+    
+    event.preventDefault();
+
+    document.getElementById('buildModalOverlay').classList.remove('active');
+    document.getElementById('buildForm').reset();
+
+    map.classList.add("custom-cursor");
+}
+
 export function addListeners(map) {
     map.addEventListener("pointerdown", Pointer.down);
     map.addEventListener("pointermove", Pointer.move);
@@ -180,35 +227,29 @@ export function addListeners(map) {
         event.preventDefault();
     });
 
-    if (explorePage) {
+    if (page == "main") {
+        const orientationBtn = document.getElementById('orientation');
         const optionsBtn = document.getElementById('options');
         const closeBtn = document.getElementById('close-sidebar');
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebar-backdrop');
-    
-        const orientationBtn = document.getElementById('orientation');
-    
-        optionsBtn.addEventListener('click', () => {
-            sidebar.classList.add('active');
-            backdrop.classList.add('active');
-        });
-    
-        const closeMenu = () => {
-            sidebar.classList.remove('active');
-            backdrop.classList.remove('active');
-        };
-    
-        const alignMap = () => {
-            Graficos.smoothRotation(0);
-        }
-    
+
+        const closeMenu = () => deactivateList([sidebar, backdrop]);
+
+        orientationBtn.addEventListener('click', () => Graficos.smoothRotation(0));
+        optionsBtn.addEventListener('click', () => activateList([sidebar, backdrop]));
         closeBtn.addEventListener('click', closeMenu);
         backdrop.addEventListener('click', closeMenu);
     
-        orientationBtn.addEventListener('click', alignMap);
     } else {
-        confirmStep.addEventListener("click", (e) => {
-            Graficos.updateBuilding();
-        });
+        const confirmBtn = document.getElementById("submit");
+        const buildBtn = document.getElementById("build");
+        const buildModalBtn = document.getElementById("buildFormSubmit");
+
+        confirmBtn.addEventListener("click", (e) => Graficos.updateBuilding());
+
+        buildBtn.addEventListener("click", e => Actions.goToMode("build"));
+
+        buildModalBtn.addEventListener("click", handleBuildSubmit);
     }
 }

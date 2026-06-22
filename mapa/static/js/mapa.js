@@ -5,18 +5,18 @@ import * as Localizacao from "./localizacao.js";
 fetch(config)
 .then(response => response.json())
 .then(data => {
+    data.page = "main";
+
     Graficos.setContext(data);
     Graficos.main().then(() => {
         Interacao.setContext(data);
         Interacao.addListeners(Graficos.map);
 
-        if (explorePage) {
-            for (const label of data.labels) {
-                Graficos.nodeText(label.text, { x: label.x, y: label.y });
-            }
-            
-            Localizacao.UserLocation();
+        for (const label of data.labels) {
+            Graficos.nodeText(label.text, { x: label.x, y: label.y });
         }
+        
+        Localizacao.UserLocation();
     });
     Graficos.loadMapScales();
 })

@@ -8,6 +8,8 @@ let areasContainer;
 let pinContainer;
 let app;
 
+let page;
+
 let color;
 let textColor;
 let mapImagePath;
@@ -18,8 +20,7 @@ let gl;
 let mapSprite;
 let mapTextures;
 
-let minZoom;
-let maxZoom;
+export let minZoom, maxZoom;
 let zoomStep;
 
 let smoothTransform = false;
@@ -170,11 +171,10 @@ export function createBuildArea(pos) {
 }
 
 export function setContext(context) {
+    page = context.page;
     color = context.blank_color;
     textColor = context.text_color;
 
-    minZoom = context.zoom_range[0];
-    maxZoom = context.zoom_range[1];
     zoomStep = context.scroll_ratio;
 
     mapImagePath = mapImage;
@@ -198,6 +198,7 @@ export async function main() {
         resolution: window.devicePixelRatio || 1,
     });
     
+    
     gl = app.renderer.gl;
     map = document.getElementById("map");
     map.appendChild(app.canvas);
@@ -214,8 +215,11 @@ export async function main() {
     mapSprite.x = 0;
     mapSprite.y = 0;
     mapContainer.addChild(mapSprite);
-
+    
     imageSize = { width: mapSprite.width, height: mapSprite.height };
+
+    minZoom = Math.max(app.screen.width, app.screen.height) / Math.max(imageSize.width, imageSize.height);
+    maxZoom = 3;
     
     const pinoTexture = await PIXI.Assets.load(pinImagePath);
     pinoSprite = PIXI.Sprite.from(pinoTexture);
@@ -253,6 +257,7 @@ export function nodeText(text, configuration) {
     nodeLabel.anchor.set(0.5, 1);
     nodeLabel.x = configuration.x;
     nodeLabel.y = configuration.y;
+    nodeLabel.scale.set(1 / zoom / 2);
     textContainer.addChild(nodeLabel);
 }
 
@@ -305,9 +310,15 @@ export async function updateMap() {
     updating = false;
 }
 
+function clampPos() {
+    mapContainer.x = Math.max(-imageSize.width / 2 * zoom + 3 * app.screen.width / 4, Math.min(imageSize.width / 2 * zoom + app.screen.width / 4, mapContainer.x));
+    mapContainer.y = Math.max(-imageSize.height / 2 * zoom + 3 * app.screen.height / 4, Math.min(imageSize.height / 2 * zoom + app.screen.height / 4, mapContainer.y));
+}
+
 function Position(x, y) {
     mapContainer.x = x;
     mapContainer.y = y;
+    clampPos();
 }
 
 export function setPosition(x, y) {
@@ -318,18 +329,20 @@ export function setPosition(x, y) {
 
 function Zoom(z) {
     zoom = z;
-    mapContainer.scale.set(z);
-    pinoSprite.scale.set(1 / z / 7.5);
+    mapContainer.scale.set(zoom);
+    pinoSprite.scale.set(1 / zoom / 7.5);
     for (const child of pinContainer.children) {
         if (child instanceof PIXI.Text) {
-            child.scale.set(1 / z / 2);
+            child.scale.set(1 / zoom / 2);
         } else {
-            child.scale.set(1 / z / 7.5);
+            child.scale.set(1 / zoom / 7.5);
         }
     }
     for (const child of textContainer.children) {
-        child.scale.set(1 / z / 2);
+        child.scale.set(1 / zoom / 2);
     }
+
+    clampPos();
 }
 
 export function setZoom(z) {
