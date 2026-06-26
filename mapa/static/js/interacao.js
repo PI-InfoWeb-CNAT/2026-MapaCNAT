@@ -21,6 +21,7 @@ let startMidX, startMidY;
 let startDistance, startAngle;
 let startZoom, startRotation;
 let startOffsetX, startOffsetY;
+let currBuild;
 
 let editMode;
 let modeStep;
@@ -144,11 +145,11 @@ class Pointer {
             if (editMode == "build") {
                 if (pointerButton == 2) {
                     Pointer.defaultMove(e);
-                } else {
+                }
+                if (pointerButton == 0) {
                     if (modeStep == 1) {
                         currSquare.setSize({x: e.clientX, y: e.clientY});
                     }
-                    
                 }
             } else {
                 Pointer.defaultMove(e);
@@ -193,17 +194,18 @@ function deactivateList(list) {
 
 class Actions {
     static goToMode(mode) {
-        // if (mode == "build") {
-        //     return;
-        // }
+        if (mode == "build" && editMode == "build") {
+            return;
+        }
         editMode = mode;
+        modeStep = 0;
         const overlay = document.getElementById('buildModalOverlay');
         overlay.classList.add('active');
     }
 }
 
 function handleBuildSubmit(event) {
-    let buildName = document.getElementById('build-name').value;
+    buildName = document.getElementById('build-name').value;
     
     event.preventDefault();
 

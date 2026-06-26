@@ -25,8 +25,6 @@ let buildCoordinates;
 let stepSquares = [];
 let buildings = [];
 
-
-
 class Polygon {
     constructor(points) {
         this.points = points;
@@ -64,11 +62,8 @@ function confirmObject() {
 }
 
 class Building {
-    constructor(name, coordinates, area) {
+    constructor(name) {
         this.name = name;
-        this.coordinates = coordinates;
-        this.area = area;
-        this.graphics = false;
     }
 }
 

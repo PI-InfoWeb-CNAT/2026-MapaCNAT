@@ -132,7 +132,7 @@ function getScreenCoordinates(localX, localY) {
     };
 }
 
-export async function addBuildPin(pos) {
+export async function addBuildPin(pos, buildName) {
     const buildPinoSprite = await PIXI.Assets.load(pinImagePath);
 
     let mapPos = getNormalizedCoordinates(pos.x, pos.y);
@@ -157,7 +157,7 @@ export async function addBuildPin(pos) {
     nodeLabel.anchor.set(-0.2, 1);
     nodeLabel.x = mapPos.x;
     nodeLabel.y = mapPos.y;
-    buildCoordinates = mapPos;
+    // buildCoordinates = mapPos;
     nodeLabel.scale.set(1 / zoom / 2);
 
     pinContainer.addChild(nodeLabel);
@@ -251,7 +251,12 @@ export function nodeText(text, configuration) {
             fontSize: 28,
             fill: textColor,
             align: 'center',
-            stroke: { color: "white", width: 3 }
+            dropShadow: true,
+            dropShadowColor: '#fff',
+            dropShadowAngle: Math.PI / 4,
+            dropShadowDistance: 2,
+            dropShadowBlur: 2
+            // stroke: { color: "white", width: 5 }
         }
     });
     nodeLabel.anchor.set(0.5, 1);
