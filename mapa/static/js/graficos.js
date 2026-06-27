@@ -4,6 +4,8 @@ export let map;
 export let mapContainer;
 let textContainer;
 let buildContainer;
+let referenceContainer;
+let routeContainer;
 let areasContainer;
 let pinContainer;
 let app;
@@ -16,9 +18,9 @@ let mapImagePath;
 let pinImagePath;
 
 let pinoSprite;
-let gl;
 let mapSprite;
 let mapTextures;
+let gl;
 
 export let minZoom, maxZoom;
 let zoomStep;
@@ -30,91 +32,61 @@ export let scaleFactor = 1;
 
 export let imageSize;
 
-class BuildArea {
-    constructor(pos) {
-        this.success = false;
-
-        let mapPos = getNormalizedCoordinates(pos.x, pos.y);
-        this.x = mapPos.x;
-        this.y = mapPos.y;
-
-        this.square = new PIXI.Graphics();
-
-        this.square
-        .rect(0, 0, 0, 0)
-        .fill({ color: 0x5c56f9, alpha: 0.78 })
-        .stroke({ width: 4, color: 0x4000ff });
-        
-        this.square.position.set(0, 0);
-        buildContainer.addChild(this.square);
-    }
-    setSize(size) {
-        let mapSize = getNormalizedCoordinates(size.x, size.y);
-        this.width = this.x - mapSize.x;
-        this.height = this.y - mapSize.y;
-
-        if (!(Math.abs(this.width) > 10 && Math.abs(this.height) > 10)) {
-            this.success = false;
-            
-            this.square.clear();
-        } else {
-            this.success = true;
-
-            this.square
-            .clear()
-            .rect(0, 0, Math.abs(this.width), Math.abs(this.height))
-            .fill({ color: 0x5c56f9, alpha: 0.78 })
-            .stroke({ width: 4, color: 0x4000ff });
+export function clearRoutePart(part) {
+    routeContainer.removeChild(part.obj);
     
-            this.square.position.set(Math.min(this.x, this.x - this.width), Math.min(this.y, this.y - this.height));
-        }
-
-        confirmStep.classList.add("hidden");
-        for (let i=0; i < stepSquares.length; i++) {
-            if (stepSquares[i].success) {
-                confirmStep.classList.remove("hidden");
-                break;
-            }
-        }
-    }
+    part.obj.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
 }
 
-export function updateBuilding() {
-    for (const child of textContainer.children) {
-        buildContainer.removeChild(child);
-    }
-    for (const square of stepSquares) {
-        square.square.destroy({ 
+export function clearSquares(build) {
+    let failedSquares = [];
+    for (const square of build.areas) {
+        buildContainer.removeChild(square.areaObj);
+
+        square.areaObj.destroy({ 
             children: true, 
             texture: true, 
             baseTexture: true 
         });
-    }
-    stepSquares = [];
 
-    for (const building of buildings) {
-        if(!building.graphics) {
-            building.graphics = true;
-            for (const area of building.area) {
-                let points = area;
-    
-                let flattenedPoints = points.flat();
-    
-                let build = new PIXI.Graphics();
-    
-                build
-                    .poly(flattenedPoints, true)
-                    .fill({ color: 0x5c56f9, alpha: 0.78 })
-                    .stroke({ width: 4, color: 0x4000ff });
-    
-                build.position.set(0, 0);
-                areasContainer.addChild(build);
-            }
+        if (!square.success) {
+            failedSquares.push(square);
         }
+    }
+
+    for (const square of failedSquares) {
+        const index = build.areas.indexOf(square);
+        build.areas.splice(index, 1);
     }
 }
 
-function getNormalizedCoordinates(screenX, screenY) {
+export async function addBuildPolygon(build) {
+    let points = build.polygon;
+
+    let polygons = [];
+    for (const region of points) {
+        let flattenedPoints = region.flat();
+    
+        let polygonObj = new PIXI.Graphics();
+        polygonObj
+            .poly(flattenedPoints, true)
+            .fill({ color: 0x5c56f9, alpha: 0.78 })
+            .stroke({ width: 4, color: 0x4000ff });
+    
+        polygonObj.position.set(0, 0);
+        areasContainer.addChild(polygonObj);
+    
+        polygons.push(polygonObj);
+    }
+
+    build.setPolygonObj(polygons);
+}
+
+export function getNormalizedCoordinates(screenX, screenY) {
     const localPoint = mapContainer.toLocal({ x: screenX, y: screenY });
 
     return {
@@ -132,20 +104,18 @@ function getScreenCoordinates(localX, localY) {
     };
 }
 
-export async function addBuildPin(pos, buildName) {
-    const buildPinoSprite = await PIXI.Assets.load(pinImagePath);
-
-    let mapPos = getNormalizedCoordinates(pos.x, pos.y);
-    let buildPino = PIXI.Sprite.from(buildPinoSprite);
+export async function addBuildPin(build) {
+    let mapPos = getNormalizedCoordinates(build.pos.x, build.pos.y);
+    let buildPino = PIXI.Sprite.from(pinImagePath);
     buildPino.anchor.set(0.5, 1);
     buildPino.x = mapPos.x;
     buildPino.y = mapPos.y;
     buildPino.scale.set(1 / zoom / 7.5);
-    
+
     pinContainer.addChild(buildPino);
 
     const nodeLabel = new PIXI.Text({
-        text: buildName,
+        text: build.name,
         style: {
             fontFamily: 'Arial',
             fontSize: 28,
@@ -157,17 +127,87 @@ export async function addBuildPin(pos, buildName) {
     nodeLabel.anchor.set(-0.2, 1);
     nodeLabel.x = mapPos.x;
     nodeLabel.y = mapPos.y;
-    // buildCoordinates = mapPos;
     nodeLabel.scale.set(1 / zoom / 2);
 
     pinContainer.addChild(nodeLabel);
-    
+
+    build.setPinObj({"pin": buildPino, "label": nodeLabel});
 }
 
-export function createBuildArea(pos) {
-    let square = new BuildArea(pos);
-    stepSquares.push(square);
-    return square;
+export async function addBuildArea(area) {
+    let square = new PIXI.Graphics();
+
+    square
+    .rect(0, 0, 0, 0)
+    .fill({ color: 0x5c56f9, alpha: 0.78 })
+    .stroke({ width: 4, color: 0x4000ff });
+    
+    square.position.set(0, 0);
+    buildContainer.addChild(square);
+
+    area.setAreaObj(square);
+}
+
+export async function addReference(ref) {
+    let mapPos = ref.pos;
+
+    let point = new PIXI.Graphics();
+
+    point
+    .circle(mapPos.x, mapPos.y, 10)
+    .fill({ color: 0xd9d9d9})
+    .stroke({ width: 4, color: 0x4000ff });
+    
+    point.position.set(0, 0);
+    referenceContainer.addChild(point);
+
+    ref.setObj(point);
+}
+
+export async function addRoute(route, temp) {
+    let mapPosA = route.start.pos;
+    let mapPosB;
+    if ("end" in route) {
+        mapPosB = route.end.pos;
+    } else {
+        mapPosB = getNormalizedCoordinates(temp.x, temp.y);
+    }
+    
+    let routeGraphics = new PIXI.Graphics();
+
+    routeGraphics
+    .moveTo(mapPosA.x, mapPosA.y)
+    .lineTo(mapPosB.x, mapPosB.y)
+    .stroke({ width: 4, color: 0x4000ff });
+    
+    routeGraphics.position.set(0, 0);
+    routeContainer.addChild(routeGraphics);
+
+    route.setObj(routeGraphics);
+}
+
+export async function setRouteLine(route, end) {
+    let mapPosA = route.start.pos;
+    let mapPosB = end;
+    route.obj
+    .clear()
+    .moveTo(mapPosA.x, mapPosA.y)
+    .lineTo(mapPosB.x, mapPosB.y)
+    .stroke({ width: 4, color: 0x4000ff });
+}
+
+export async function setBuildAreaSize(square) {
+    if (!(Math.abs(square.width) > 10 && Math.abs(square.height) > 10)) {
+        square.areaObj.clear();
+    } else {
+        square.areaObj
+        .clear()
+        .rect(0, 0, Math.abs(square.width), Math.abs(square.height))
+        .fill({ color: 0x5c56f9, alpha: 0.78 })
+        .stroke({ width: 4, color: 0x4000ff });
+
+        square.areaObj.position.set(Math.min(square.x, square.x - square.width), Math.min(square.y, square.y - square.height));
+    }
 }
 
 export function setContext(context) {
@@ -235,6 +275,12 @@ export async function main() {
 
     buildContainer = new PIXI.Container();
     mapContainer.addChild(buildContainer);
+
+    routeContainer = new PIXI.Container();
+    mapContainer.addChild(routeContainer);
+
+    referenceContainer = new PIXI.Container();
+    mapContainer.addChild(referenceContainer);
 
     areasContainer = new PIXI.Container();
     mapContainer.addChild(areasContainer);

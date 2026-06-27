@@ -1,7 +1,6 @@
-function getUnionPolygonVertices(boxes) {
+export function getUnionPolygonVertices(boxes) {
     if (!boxes || boxes.length === 0) return [];
 
-    // 1. Extrai todas as coordenadas únicas para criar a grade cartesiana de células
     const allX = [];
     const allY = [];
     for (let i = 0; i < boxes.length; i++) {
@@ -12,7 +11,6 @@ function getUnionPolygonVertices(boxes) {
     const xCoords = Array.from(new Set(allX)).sort((a, b) => a - b);
     const yCoords = Array.from(new Set(allY)).sort((a, b) => a - b);
 
-    // Função interna para testar se o centro de uma célula está dentro de alguma caixa original
     const isInside = (x, y) => {
         for (let i = 0; i < boxes.length; i++) {
             const b = boxes[i];
@@ -23,7 +21,6 @@ function getUnionPolygonVertices(boxes) {
 
     const segments = [];
 
-    // 2. Analisa as fronteiras de cada célula da grade
     for (let i = 0; i < xCoords.length - 1; i++) {
         for (let j = 0; j < yCoords.length - 1; j++) {
             const x1 = xCoords[i], x2 = xCoords[i+1];
@@ -32,16 +29,15 @@ function getUnionPolygonVertices(boxes) {
             const cy = (y1 + y2) / 2;
 
             if (isInside(cx, cy)) {
-                // Se a célula está dentro e a vizinha está fora, gera um segmento orientado (sentido horário)
-                if (!isInside(cx, y1 - 0.001)) segments.push([[x2, y1], [x1, y1]]); // Baixo (Direita -> Esquerda)
-                if (!isInside(cx, y2 + 0.001)) segments.push([[x1, y2], [x2, y2]]); // Cima (Esquerda -> Direita)
-                if (!isInside(x1 - 0.001, cy)) segments.push([[x1, y1], [x1, y2]]); // Esquerda (Baixo -> Cima)
-                if (!isInside(x2 + 0.001, cy)) segments.push([[x2, y2], [x2, y1]]); // Direita (Cima -> Baixo)
+                
+                if (!isInside(cx, y1 - 0.001)) segments.push([[x2, y1], [x1, y1]]);
+                if (!isInside(cx, y2 + 0.001)) segments.push([[x1, y2], [x2, y2]]);
+                if (!isInside(x1 - 0.001, cy)) segments.push([[x1, y1], [x1, y2]]);
+                if (!isInside(x2 + 0.001, cy)) segments.push([[x2, y2], [x2, y1]]);
             }
         }
     }
 
-    // 3. Constrói o mapa de adjacência usando strings explícitas ("x,y") para evitar falhas de tipos
     const adjMap = new Map();
     for (let i = 0; i < segments.length; i++) {
         const startPt = segments[i][0];
@@ -56,7 +52,6 @@ function getUnionPolygonVertices(boxes) {
 
     const polygons = [];
 
-    // 4. Reconstrói os loops de polígonos seguindo os caminhos ordenados
     while (adjMap.size > 0) {
         const startKey = adjMap.keys().next().value;
         let currentKey = startKey;
@@ -81,12 +76,11 @@ function getUnionPolygonVertices(boxes) {
 
             const nextKey = nextPt[0] + "," + nextPt[1];
             if (nextKey === startKey) {
-                break; // Loop completado com sucesso
+                break;
             }
             currentKey = nextKey;
         }
 
-        // 5. Simplifica o caminho removendo vértices colineares (pontos extras no meio de retas)
         if (rawPath.length > 2) {
             const cleanedPath = [];
             for (let i = 0; i < rawPath.length; i++) {
@@ -94,7 +88,6 @@ function getUnionPolygonVertices(boxes) {
                 const curr = rawPath[i];
                 const next = rawPath[(i + 1) % rawPath.length];
 
-                // Remove pontos se estiverem na mesma linha horizontal ou vertical contínua
                 const isHorizontalLine = (prev[1] === curr[1] && curr[1] === next[1]);
                 const isVerticalLine = (prev[0] === curr[0] && curr[0] === next[0]);
 
@@ -105,7 +98,6 @@ function getUnionPolygonVertices(boxes) {
             }
 
             if (cleanedPath.length > 2) {
-                // Fecha a geometria repetindo o primeiro ponto no fim (Padrão OGC / Leaflet / GIS)
                 cleanedPath.push([cleanedPath[0][0], cleanedPath[0][1]]);
                 polygons.push(cleanedPath);
             }

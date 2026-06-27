@@ -1,12 +1,16 @@
 import * as Graficos from "./graficos.js";
 import * as Transformacao from "./transformacao.js";
+import * as Editor from "./mapa-editor.js";
+
+const buildBtn = document.getElementById("build");
+const referenceBtn = document.getElementById("reference");
+const routeBtn = document.getElementById("route");
 
 let clicking = false;
 let touching = false;
 
 let minZoom, maxZoom;
 let zoomStep;
-let currSquare;
 
 let page;
 
@@ -21,10 +25,14 @@ let startMidX, startMidY;
 let startDistance, startAngle;
 let startZoom, startRotation;
 let startOffsetX, startOffsetY;
-let currBuild;
 
-let editMode;
-let modeStep;
+let currBuild;
+let currSquare;
+let currRoute;
+let confirmBtn;
+
+let editMode = "";
+let modeStep = 0;
 
 export function setContext(context) {
     page = context.page;
@@ -36,6 +44,10 @@ export function setContext(context) {
 function nextStep() {
     if (editMode == "build") {
         if (modeStep == 0) {
+            map.classList.add("custom-cursor");
+        }
+
+        if (modeStep == 1) {
             map.classList.remove("custom-cursor");
         }
     }
@@ -111,6 +123,7 @@ class Pointer {
     constructor() {
         throw new Error("Classe estática. Não instancie.");
     }
+
     static down(e) {
         clickX = e.clientX;
         clickY = e.clientY;
@@ -120,11 +133,25 @@ class Pointer {
         clicking = true;
         if (page == "editor") {
             if (editMode == "build") {
-                if (modeStep == 0) {
-                    Graficos.addBuildPin({x: clickX, y: clickY});
-                    nextStep();
-                } else if (modeStep == 1) {
-                    currSquare = Graficos.createBuildArea({x: clickX, y: clickY});
+                if (modeStep == 1) {
+                    currBuild.setPin({x: clickX, y: clickY});
+                    Graficos.addBuildPin(currBuild);
+                } else if (modeStep == 2) {
+                    currSquare = new Editor.BuildArea({x: clickX, y: clickY});
+                    currBuild.addArea(currSquare);
+                    Graficos.addBuildArea(currSquare);
+                }
+            } else if (editMode == "reference") {
+                let ref = new Editor.Reference({x: clickX, y: clickY});
+                Editor.Referencer.addReference(ref);
+                Graficos.addReference(ref);
+            } else if (editMode == "route") {
+                let point = Editor.Referencer.getCollision({x: clickX, y: clickY});
+                if (point != false) {
+                    currRoute = new Editor.Route(point);
+                    Graficos.addRoute(currRoute.currPart, {x: e.clientX, y: e.clientY});
+                } else {
+                    currRoute = false;
                 }
             }
         }
@@ -147,8 +174,32 @@ class Pointer {
                     Pointer.defaultMove(e);
                 }
                 if (pointerButton == 0) {
-                    if (modeStep == 1) {
+                    if (modeStep == 2) {
                         currSquare.setSize({x: e.clientX, y: e.clientY});
+                        Graficos.setBuildAreaSize(currSquare);
+
+                        let squareList = currBuild.areas;
+                        confirmBtn.classList.add("hidden");
+                        for (let i=0; i < squareList.length; i++) {
+                            if (squareList[i].success) {
+                                confirmBtn.classList.remove("hidden");
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else if (editMode == "reference") {
+                return;
+            } else if (editMode == "route") {
+                if (currRoute != false) {
+                    let point = Editor.Referencer.getCollision({x: e.clientX, y: e.clientY}, currRoute);
+                    if (point != false) {
+                        Graficos.setRouteLine(currRoute.currPart, point.pos);
+                        currRoute.finishPart(point);
+                        Graficos.addRoute(currRoute.currPart, {x: e.clientX, y: e.clientY});
+                    } else {
+                        let normalizedPos = Graficos.getNormalizedCoordinates(e.clientX, e.clientY);
+                        Graficos.setRouteLine(currRoute.currPart, normalizedPos);
                     }
                 }
             } else {
@@ -159,6 +210,17 @@ class Pointer {
 
     static up(e) {
         clicking = false;
+        if (page == "editor") {
+            if (editMode == "build") {
+                if (modeStep == 1) {
+                    nextStep();
+                }
+            } else if (editMode == "route") {
+                if (currRoute != false) {
+                    currRoute.end();
+                }
+            }
+        }
     }
 
     static wheel(e) {
@@ -194,32 +256,63 @@ function deactivateList(list) {
 
 class Actions {
     static goToMode(mode) {
-        if (mode == "build" && editMode == "build") {
+        if (mode == editMode) {
+            if (mode == "build") {
+                return;
+            }
+            if (mode == "reference" || mode == "route") {
+                mode = "";
+            }
+        }
+        if (editMode == "build" && mode != "") {
             return;
         }
+
         editMode = mode;
         modeStep = 0;
-        const overlay = document.getElementById('buildModalOverlay');
-        overlay.classList.add('active');
+        
+        routeBtn.classList.remove('mode-active');
+        referenceBtn.classList.remove('mode-active');
+        
+        if (mode == "build") {
+            const overlay = document.getElementById('buildModalOverlay');
+            overlay.classList.add('active');
+        } else if (mode == "reference") {
+            referenceBtn.classList.add('mode-active'); 
+        } else if (mode == "route") {
+            routeBtn.classList.add('mode-active');
+        }
+        
     }
 }
 
 function handleBuildSubmit(event) {
-    buildName = document.getElementById('build-name').value;
-    
     event.preventDefault();
+
+    let buildName = document.getElementById('build-name').value;
+
+    currBuild = new Editor.Building(buildName);
+    nextStep();
 
     document.getElementById('buildModalOverlay').classList.remove('active');
     document.getElementById('buildForm').reset();
+}
 
-    map.classList.add("custom-cursor");
+function handleConfirm(event) {
+    Graficos.clearSquares(currBuild);
+    currBuild.generatePolygon();
+    Graficos.addBuildPolygon(currBuild);
+
+    editMode = "";
+    modeStep = 0;
+
+    confirmBtn.classList.add("hidden");
 }
 
 export function addListeners(map) {
     map.addEventListener("pointerdown", Pointer.down);
     map.addEventListener("pointermove", Pointer.move);
     map.addEventListener("pointerup", Pointer.up);
-    map.addEventListener("pointerleave", Pointer.up);
     map.addEventListener("wheel", Pointer.wheel, { passive: false });
     map.addEventListener("touchstart", Touch.begin, { passive: false });
     map.addEventListener("touchmove", Touch.step, { passive: false });
@@ -236,22 +329,40 @@ export function addListeners(map) {
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebar-backdrop');
 
-        const closeMenu = () => deactivateList([sidebar, backdrop]);
 
+        activateList([sidebar, backdrop]);
+        const closeMenu = () => deactivateList([sidebar, backdrop]);
+-
         orientationBtn.addEventListener('click', () => Graficos.smoothRotation(0));
-        optionsBtn.addEventListener('click', () => activateList([sidebar, backdrop]));
         closeBtn.addEventListener('click', closeMenu);
         backdrop.addEventListener('click', closeMenu);
     
     } else {
-        const confirmBtn = document.getElementById("submit");
-        const buildBtn = document.getElementById("build");
+        confirmBtn = document.getElementById("submit");
+        
         const buildModalBtn = document.getElementById("buildFormSubmit");
+        const buildOverlay = document.getElementById('buildModalOverlay');
+        const buildCloseBtn = document.getElementById('closeBuildModal');
 
-        confirmBtn.addEventListener("click", (e) => Graficos.updateBuilding());
+        const closeBuildModal = () => {
+            document.getElementById('buildModalOverlay').classList.remove('active');
+            document.getElementById('buildForm').reset();
+            editMode = "";
+            modeStep = 0;
+        }
 
-        buildBtn.addEventListener("click", e => Actions.goToMode("build"));
+        buildCloseBtn.addEventListener('click', () => closeBuildModal);
 
+        buildOverlay.addEventListener('click', (e) => {
+            if (e.target === buildOverlay) {
+                closeBuildModal();
+            }
+        });
+        
+        buildBtn.addEventListener("click", e => Actions.goToMode("build"));        
+        referenceBtn.addEventListener("click", e => Actions.goToMode("reference"));        
+        routeBtn.addEventListener("click", e => Actions.goToMode("route"));        
         buildModalBtn.addEventListener("click", handleBuildSubmit);
+        confirmBtn.addEventListener("click", handleConfirm);
     }
 }

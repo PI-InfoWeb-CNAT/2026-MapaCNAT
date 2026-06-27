@@ -202,7 +202,7 @@ header {
     border: 2px solid black;
 }
 .mode-active {
-    background-color: #aaa !important;
+    background-color: #aaa;
 }
 #submit {
     position: fixed;
