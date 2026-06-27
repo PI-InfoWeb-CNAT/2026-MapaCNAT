@@ -9,7 +9,8 @@
 {% block content %}
 <header>
     <form id="search" class="padding" action="" method="get" role="search">
-        <label for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
+        <img src="{% static 'img/logo-pequeno.png' %}">
+        <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
         <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." required>
     </form>
     <button class="padding" id="options"><i class="fa-solid fa-bars"></i></button>

@@ -1,6 +1,6 @@
 import * as Graficos from "./graficos.js";
 import * as Transformacao from "./transformacao.js";
-import * as Editor from "./mapa-editor.js";
+import * as Editor from "./editor.js";
 
 const buildBtn = document.getElementById("build");
 const referenceBtn = document.getElementById("reference");
@@ -321,7 +321,6 @@ export function addListeners(map) {
     document.addEventListener('contextmenu', function(event) {
         event.preventDefault();
     });
-
     if (page == "main") {
         const orientationBtn = document.getElementById('orientation');
         const optionsBtn = document.getElementById('options');
@@ -329,11 +328,10 @@ export function addListeners(map) {
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebar-backdrop');
 
-
-        activateList([sidebar, backdrop]);
         const closeMenu = () => deactivateList([sidebar, backdrop]);
 -
         orientationBtn.addEventListener('click', () => Graficos.smoothRotation(0));
+        optionsBtn.addEventListener('click', () => activateList([sidebar, backdrop]));
         closeBtn.addEventListener('click', closeMenu);
         backdrop.addEventListener('click', closeMenu);
     
@@ -351,7 +349,7 @@ export function addListeners(map) {
             modeStep = 0;
         }
 
-        buildCloseBtn.addEventListener('click', () => closeBuildModal);
+        buildCloseBtn.addEventListener('click', closeBuildModal);
 
         buildOverlay.addEventListener('click', (e) => {
             if (e.target === buildOverlay) {

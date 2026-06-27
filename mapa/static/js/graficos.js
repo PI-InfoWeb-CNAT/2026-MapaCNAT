@@ -155,8 +155,8 @@ export async function addReference(ref) {
 
     point
     .circle(mapPos.x, mapPos.y, 10)
-    .fill({ color: 0xd9d9d9})
-    .stroke({ width: 4, color: 0x4000ff });
+    .fill({ color: 0xffffff})
+    .stroke({ width: 8, color: 0x4000ff });
     
     point.position.set(0, 0);
     referenceContainer.addChild(point);
@@ -178,7 +178,7 @@ export async function addRoute(route, temp) {
     routeGraphics
     .moveTo(mapPosA.x, mapPosA.y)
     .lineTo(mapPosB.x, mapPosB.y)
-    .stroke({ width: 4, color: 0x4000ff });
+    .stroke({ width: 8, color: 0x4000ff });
     
     routeGraphics.position.set(0, 0);
     routeContainer.addChild(routeGraphics);
@@ -193,7 +193,7 @@ export async function setRouteLine(route, end) {
     .clear()
     .moveTo(mapPosA.x, mapPosA.y)
     .lineTo(mapPosB.x, mapPosB.y)
-    .stroke({ width: 4, color: 0x4000ff });
+    .stroke({ width: 8, color: 0x4000ff });
 }
 
 export async function setBuildAreaSize(square) {
@@ -302,7 +302,6 @@ export function nodeText(text, configuration) {
             dropShadowAngle: Math.PI / 4,
             dropShadowDistance: 2,
             dropShadowBlur: 2
-            // stroke: { color: "white", width: 5 }
         }
     });
     nodeLabel.anchor.set(0.5, 1);

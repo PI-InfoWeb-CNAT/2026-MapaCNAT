@@ -17,6 +17,11 @@ canvas {
     background-color: #EEE8DC;
 }
 
+#search img {
+    width: 30px;
+    margin-right: .5em;
+}
+
 #search {
     background-color: white;
     font-size: 1.2em;
@@ -187,19 +192,26 @@ header {
     background-color: white;
 }
 
+#editor-logo {
+    width: 56px;
+    margin: var(--body-margin);
+    margin-bottom: 0;
+}
+
 #editor-modes {
     position: fixed;
     justify-content: center;
     left:0;
     top:0;
+    background-color: white;
     height: 100%;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 #build, #reference, #route {
     margin: var(--body-margin);
     
     border-radius: 5px;
-    border: 2px solid black;
 }
 .mode-active {
     background-color: #aaa;
@@ -210,7 +222,6 @@ header {
     bottom: 0;
     margin: var(--body-margin);
     border-radius: 5px;
-    border: 2px solid black;
 }
 .hidden {
     display: none;

@@ -16,6 +16,7 @@
 {% block content %}
 <header>
     <div id="editor-modes">
+        <a href="{% url 'home' %}"><img id="editor-logo" src="{% static 'img/logo-pequeno.png' %}"></a>
         <button class="padding icon" id="build"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-building"></i></button>
         <button class="padding icon" id="reference"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-map-pin"></i></button>
         <button class="padding icon" id="route"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-route"></i></button>
@@ -32,7 +33,7 @@
             <form class="modal-form" id="buildForm">
                 <h3>Nova Construção</h3>
                 <div class="form-group">
-                    <label for="build-name">Nome da Construção</label>
+                    <label for="build-name">Nome:</label>
                     <input type="text" id="build-name" placeholder="Use siglas se possível..." required>
                 </div>
                 <button type="submit" class="modal-submit-btn" id="buildFormSubmit">Continuar</button>
