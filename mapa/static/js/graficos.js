@@ -155,9 +155,9 @@ export async function addReference(ref) {
     let point = new PIXI.Graphics();
 
     point
-    .circle(mapPos.x, mapPos.y, 10)
+    .circle(mapPos.x, mapPos.y, 10 / zoom)
     .fill({ color: 0xffffff})
-    .stroke({ width: 4, color: 0x4000ff });
+    .stroke({ width: 4 / zoom, color: 0x4000ff });
     
     point.position.set(0, 0);
     referenceContainer.addChild(point);
@@ -423,6 +423,13 @@ function Rotation(r) {
 export function setRotation(r) {
     if (!smoothTransform) {
         Rotation(r);
+    }
+}
+
+export function editorFocus(value) {
+    mapSprite.alpha = 1;
+    if (value) {
+        mapSprite.alpha = 0.5;
     }
 }
 

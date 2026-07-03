@@ -207,10 +207,15 @@ header {
     height: 100%;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
-
-#build, #reference, #route {
+#editor-modes hr {
+    border: none;
+    height: 2px;
     margin: var(--body-margin);
-    
+    background-color: lightgray;
+}
+
+.editor-button {
+    margin: var(--body-margin);
     border-radius: 5px;
 }
 .mode-active {
@@ -220,8 +225,6 @@ header {
     position: fixed;
     left: 0;
     bottom: 0;
-    margin: var(--body-margin);
-    border-radius: 5px;
 }
 .hidden {
     display: none;

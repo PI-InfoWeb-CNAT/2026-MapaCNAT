@@ -30,9 +30,13 @@ let currBuild;
 let currSquare;
 let currRoute;
 let confirmBtn;
+let addBtn;
+let editBtn;
+let deleteBtn;
 
 let editMode = "";
 let modeStep = 0;
+let stateEditMode = "";
 
 export function setContext(context) {
     page = context.page;
@@ -255,6 +259,25 @@ function deactivateList(list) {
 }
 
 class Actions {
+    static goToEditionMode(mode) {
+        if (mode == stateEditMode) {
+            mode = "";
+        }
+        stateEditMode = mode;
+        addBtn.classList.remove('mode-active'); 
+        editBtn.classList.remove('mode-active'); 
+        deleteBtn.classList.remove('mode-active'); 
+
+        if (stateEditMode == "add") {
+            addBtn.classList.add('mode-active');
+        }
+        if (stateEditMode == "edit") {
+            editBtn.classList.add('mode-active');
+        }
+        if (stateEditMode == "delete") {
+            deleteBtn.classList.add('mode-active');
+        }
+    }
     static goToMode(mode) {
         if (mode == editMode) {
             if (mode == "build") {
@@ -262,15 +285,30 @@ class Actions {
             }
             if (mode == "reference" || mode == "route") {
                 mode = "";
+                modeStep = 0;
+                Graficos.editorFocus(false);
             }
         }
         if (editMode == "build" && mode != "") {
             return;
         }
 
+        if (mode == "") {
+            editMode = "";
+            modeStep = 0;
+            
+            Graficos.editorFocus(false);
+        }
+
         editMode = mode;
         modeStep = 0;
         
+        if (mode) {
+            Graficos.editorFocus(true);
+        } else {
+            Graficos.editorFocus(false);
+        }
+
         routeBtn.classList.remove('mode-active');
         referenceBtn.classList.remove('mode-active');
         
@@ -303,8 +341,7 @@ function handleConfirm(event) {
     currBuild.generatePolygon();
     Graficos.addBuildPolygon(currBuild);
 
-    editMode = "";
-    modeStep = 0;
+    Actions.goToMode("");
 
     confirmBtn.classList.add("hidden");
 }
@@ -337,6 +374,9 @@ export function addListeners(map) {
     
     } else {
         confirmBtn = document.getElementById("submit");
+        addBtn = document.getElementById("add");
+        editBtn = document.getElementById("edit");
+        deleteBtn = document.getElementById("delete");
         
         const buildModalBtn = document.getElementById("buildFormSubmit");
         const buildOverlay = document.getElementById('buildModalOverlay');
@@ -345,8 +385,7 @@ export function addListeners(map) {
         const closeBuildModal = () => {
             document.getElementById('buildModalOverlay').classList.remove('active');
             document.getElementById('buildForm').reset();
-            editMode = "";
-            modeStep = 0;
+            Actions.goToMode("");
         }
 
         buildCloseBtn.addEventListener('click', closeBuildModal);
@@ -356,11 +395,13 @@ export function addListeners(map) {
                 closeBuildModal();
             }
         });
-        
-        buildBtn.addEventListener("click", e => Actions.goToMode("build"));        
-        referenceBtn.addEventListener("click", e => Actions.goToMode("reference"));        
-        routeBtn.addEventListener("click", e => Actions.goToMode("route"));        
+        buildBtn.addEventListener("click", e => Actions.goToMode("build"));
+        referenceBtn.addEventListener("click", e => Actions.goToMode("reference"));
+        routeBtn.addEventListener("click", e => Actions.goToMode("route"));
         buildModalBtn.addEventListener("click", handleBuildSubmit);
+        addBtn.addEventListener("click", e => Actions.goToEditionMode("add"));
+        editBtn.addEventListener("click", e => Actions.goToEditionMode("edit"));
+        deleteBtn.addEventListener("click", e => Actions.goToEditionMode("delete"));
         confirmBtn.addEventListener("click", handleConfirm);
     }
 }
