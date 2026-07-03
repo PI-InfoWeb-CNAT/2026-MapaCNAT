@@ -1,4 +1,5 @@
 import * as Transformacao from "./transformacao.js";
+import * as Editor from "./editor.js";
 
 export let map;
 export let mapContainer;
@@ -156,7 +157,7 @@ export async function addReference(ref) {
     point
     .circle(mapPos.x, mapPos.y, 10)
     .fill({ color: 0xffffff})
-    .stroke({ width: 8, color: 0x4000ff });
+    .stroke({ width: 4, color: 0x4000ff });
     
     point.position.set(0, 0);
     referenceContainer.addChild(point);
@@ -391,6 +392,16 @@ function Zoom(z) {
     for (const child of textContainer.children) {
         child.scale.set(1 / zoom / 2);
     }
+    let references = Editor.Referencer.references;
+    for (const ref of references) {
+        let point = ref.obj;
+        point
+        .clear()
+        .circle(ref.pos.x, ref.pos.y, 10 / zoom)
+        .fill({ color: 0xffffff})
+        .stroke({ width: 4 / zoom, color: 0x4000ff });
+    };
+    Editor.Referencer.radius = 15 / zoom;
 
     clampPos();
 }

@@ -1,5 +1,4 @@
 import * as Graficos from "./graficos.js";
-import * as Interacao from "./interacao.js";
 import * as Geometria from "./geometria.js";
 
 const referenceIcon = document.getElementById("reference");
@@ -86,6 +85,7 @@ export class Referencer {
     static hashMap = {};
     static hashSize = 100;
     static id = 0;
+    static radius;
 
     static convertPos(pos) {
         const newPos = {
@@ -93,6 +93,10 @@ export class Referencer {
             y: Math.floor(pos.x / this.hashSize)
         };
         return newPos;
+    }
+
+    static setRadius(radius) {
+        this.radius = radius;
     }
 
     static posKey(pos) {
@@ -129,7 +133,7 @@ export class Referencer {
                         }
                     }
                     const distance = Math.sqrt(Math.pow(point.pos.x - mapPos.x, 2) + Math.pow(point.pos.y - mapPos.y, 2));
-                    if (distance < 20.0) {
+                    if (distance < Referencer.radius) {
                         return point;
                     }
                 }
