@@ -156,6 +156,13 @@ class Pointer {
                         if (build != false) {
                             build.revertPolygon();
                             selectBuild = build;
+                            if (build.areas.length == 1) {
+                                let area = {
+                                    r: build.areas[0],
+                                    b: build.areas[0].aabb(),
+                                }
+                                selectArea = area;
+                            }
                         }
                     } else {
                         let area = selectBuild.getCollision({x: clickX, y: clickY});
@@ -168,6 +175,10 @@ class Pointer {
                                 Actions.commitBuild();
                                 build.revertPolygon();
                                 selectBuild = build;
+                            } else {
+                                currSquare = new Editor.BuildArea({x: clickX, y: clickY});
+                                selectBuild.addArea(currSquare);
+                                Graficos.addBuildArea(currSquare);
                             }
                         }
                     }
@@ -177,6 +188,13 @@ class Pointer {
                         if (build != false) {
                             build.revertPolygon();
                             selectBuild = build;
+                            if (selectBuild.areas.length == 1) {
+                                selectBuild.removeArea(selectBuild.areas[0]);
+                                if (selectBuild.areas.length == 0) {
+                                    Editor.Builder.removeBuild(selectBuild);
+                                    selectBuild = false;
+                                }
+                            }
                         }
                     } else {
                         let area = selectBuild.getCollision({x: clickX, y: clickY});
@@ -184,7 +202,7 @@ class Pointer {
                         if (area != false) {
                             selectBuild.removeArea(area.r);
                             if (selectBuild.areas.length == 0) {
-                                Editor.Builder.buildings = removeObj(Editor.Builder.buildings, this);
+                                Editor.Builder.removeBuild(selectBuild);
                                 selectBuild = false;
                             }
                         } else {
@@ -267,7 +285,6 @@ class Pointer {
                     }
                 } else if (stateEditMode == "edit") {
                     if (selectArea != false) {
-                        // selectArea.r
                         let pos = {
                             x: e.clientX,
                             y: e.clientY,
@@ -276,6 +293,9 @@ class Pointer {
                         }
                         selectArea.r.setPos(pos, selectArea.b);
                         Graficos.setBuildAreaSize(selectArea.r);
+                    } else if (currSquare) {
+                        currSquare.setSize({x: e.clientX, y: e.clientY});
+                        Graficos.setBuildAreaSize(currSquare);
                     }
                 }
             } else if (editMode == "reference") {
@@ -356,6 +376,7 @@ class Actions {
         if (selectBuild != false) {
             selectBuild.generatePolygon();
             selectBuild = false;
+            currSquare = false;
         }
     }
     static goToEditionMode(mode) {

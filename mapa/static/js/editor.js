@@ -268,6 +268,11 @@ export class Builder {
 
     static buildings = [];
 
+    static removeBuild(build) {
+        this.buildings = removeObj(this.buildings, build);
+        Graficos.clearBuild(build);
+    }
+
     static getCollision(point) {
         let mapPos = Graficos.getNormalizedCoordinates(point.x, point.y);
 

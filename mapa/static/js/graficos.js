@@ -53,6 +53,18 @@ export function clearArea(area) {
     });
 }
 
+export function clearBuild(build) {
+    for(const kind of ["pin", "label"]) {
+        pinContainer.removeChild(build.pinObj[kind]);
+        
+        build.pinObj[kind].destroy({
+            children: true,
+            texture: true,
+            baseTexture: true
+        });
+    }
+}
+
 export function clearPoint(point) {
     referenceContainer.removeChild(point.obj);
     
@@ -228,7 +240,6 @@ export async function setBuildAreaSize(square) {
         .rect(0, 0, Math.abs(square.width), Math.abs(square.height))
         .fill({ color: 0x5c56f9, alpha: 0.78 })
         .stroke({ width: 4, color: 0x4000ff });
-        console.log(Math.abs(square.width), Math.abs(square.height), Math.min(square.x, square.x - square.width), Math.min(square.y, square.y - square.height));
         square.areaObj.position.set(Math.min(square.x, square.x - square.width), Math.min(square.y, square.y - square.height));
     }
 }
