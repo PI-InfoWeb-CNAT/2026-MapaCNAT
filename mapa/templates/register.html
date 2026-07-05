@@ -1,0 +1,75 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadastro</title>
+
+    <link rel="stylesheet" href="{% static 'css/register.css' %}">
+
+    <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+</head>
+<body>
+
+<div class="card">
+
+    <h1>CADASTRO</h1>
+
+    <div class="campo">
+        <label>NOME COMPLETO</label>
+        <input type="text" placeholder="Seu Nome Completo">
+    </div>
+
+    <div class="campo">
+        <label>EMAIL</label>
+        <input type="email" placeholder="seu.nome@email.com">
+    </div>
+
+    <div class="campo">
+        <label>SENHA</label>
+        <input type="password" placeholder="Sua senha ultra-secreta">
+    </div>
+
+    <div class="campo">
+        <label>CONFIRMAR SENHA</label>
+
+        <div class="senha">
+            <input type="password" id="confirmarSenha" placeholder="Sua senha ultra-secreta">
+
+            <button type="button" id="mostrarSenha">
+                <i class="fa-regular fa-eye"></i>
+            </button>
+        </div>
+    </div>
+
+    <button class="btn">CRIAR CONTA</button>
+
+    <div class="logo">
+        <img src="{% static 'img/logo-pequeno.png' %}" alt="Logo">
+    </div>
+
+</div>
+
+<script>
+const senha = document.getElementById("confirmarSenha");
+const btn = document.getElementById("mostrarSenha");
+const icon = btn.querySelector("i");
+
+btn.addEventListener("click", () => {
+
+    if(senha.type === "password"){
+        senha.type = "text";
+        icon.classList.replace("fa-eye","fa-eye-slash");
+    }else{
+        senha.type = "password";
+        icon.classList.replace("fa-eye-slash","fa-eye");
+    }
+
+});
+</script>
+
+</body>
+</html>
