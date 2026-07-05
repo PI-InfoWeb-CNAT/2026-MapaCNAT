@@ -27,8 +27,11 @@ let startZoom, startRotation;
 let startOffsetX, startOffsetY;
 
 let currBuild;
+let selectBuild = false;
+let selectRef = false;
+let selectArea = false;
 let currSquare;
-let currRoute;
+let currRoute = false;
 let confirmBtn;
 let addBtn;
 let editBtn;
@@ -135,27 +138,96 @@ class Pointer {
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
         clicking = true;
+
         if (page == "editor") {
             if (editMode == "build") {
-                if (modeStep == 1) {
-                    currBuild.setPin({x: clickX, y: clickY});
-                    Graficos.addBuildPin(currBuild);
-                } else if (modeStep == 2) {
-                    currSquare = new Editor.BuildArea({x: clickX, y: clickY});
-                    currBuild.addArea(currSquare);
-                    Graficos.addBuildArea(currSquare);
+                if (stateEditMode == "add") {
+                    if (modeStep == 1) {
+                        currBuild.setPin({x: clickX, y: clickY});
+                        Graficos.addBuildPin(currBuild);
+                    } else if (modeStep == 2) {
+                        currSquare = new Editor.BuildArea({x: clickX, y: clickY});
+                        currBuild.addArea(currSquare);
+                        Graficos.addBuildArea(currSquare);
+                    }
+                } else if (stateEditMode == "edit") {
+                    if (selectBuild == false) {
+                        let build = Editor.Builder.getCollision({x: clickX, y: clickY});
+                        if (build != false) {
+                            build.revertPolygon();
+                            selectBuild = build;
+                        }
+                    } else {
+                        let area = selectBuild.getCollision({x: clickX, y: clickY});
+
+                        if (area != false) {
+                            selectArea = area;
+                        } else {
+                            let build = Editor.Builder.getCollision({x: clickX, y: clickY});
+                            if (build != false) {
+                                Actions.commitBuild();
+                                build.revertPolygon();
+                                selectBuild = build;
+                            }
+                        }
+                    }
+                } else if (stateEditMode == "delete") {
+                    if (selectBuild == false) {
+                        let build = Editor.Builder.getCollision({x: clickX, y: clickY});
+                        if (build != false) {
+                            build.revertPolygon();
+                            selectBuild = build;
+                        }
+                    } else {
+                        let area = selectBuild.getCollision({x: clickX, y: clickY});
+
+                        if (area != false) {
+                            selectBuild.removeArea(area.r);
+                            if (selectBuild.areas.length == 0) {
+                                Editor.Builder.buildings = removeObj(Editor.Builder.buildings, this);
+                                selectBuild = false;
+                            }
+                        } else {
+                            let build = Editor.Builder.getCollision({x: clickX, y: clickY});
+                            if (build != false) {
+                                Actions.commitBuild();
+                                build.revertPolygon();
+                                selectBuild = build;
+                            }
+                        }
+                    }
                 }
             } else if (editMode == "reference") {
-                let ref = new Editor.Reference({x: clickX, y: clickY});
-                Editor.Referencer.addReference(ref);
-                Graficos.addReference(ref);
+                if (stateEditMode == "add") {
+                    let ref = new Editor.Reference({x: clickX, y: clickY});
+                    Editor.Referencer.addReference(ref);
+                    Graficos.addReference(ref);
+                } else if (stateEditMode == "edit") {
+                    let point = Editor.Referencer.getCollision({x: clickX, y: clickY});
+                    if (point != false) {
+                        selectRef = point;
+                    }
+
+                } else if (stateEditMode == "delete") {
+                    let point = Editor.Referencer.getCollision({x: clickX, y: clickY});
+                    if (point != false) {
+                        Editor.Referencer.removeReference(point);
+                    }
+                }
             } else if (editMode == "route") {
-                let point = Editor.Referencer.getCollision({x: clickX, y: clickY});
-                if (point != false) {
-                    currRoute = new Editor.Route(point);
+                if (stateEditMode == "add") {
+                    let point = Editor.Referencer.getCollision({x: clickX, y: clickY});
+                    if (point != false) {
+                        currRoute = new Editor.Route(point);
                     Graficos.addRoute(currRoute.currPart, {x: e.clientX, y: e.clientY});
-                } else {
-                    currRoute = false;
+                    } else {
+                        currRoute = false;
+                    }
+                } else if (stateEditMode == "delete") {
+                    let route = Editor.Router.getCollision({x: clickX, y: clickY});
+                    if (route != false) {
+                        Editor.Router.removeRoute(route, true);
+                    } 
                 }
             }
         }
@@ -174,26 +246,44 @@ class Pointer {
             Pointer.defaultMove(e);
         } else {
             if (editMode == "build") {
-                if (pointerButton == 2) {
-                    Pointer.defaultMove(e);
-                }
-                if (pointerButton == 0) {
-                    if (modeStep == 2) {
-                        currSquare.setSize({x: e.clientX, y: e.clientY});
-                        Graficos.setBuildAreaSize(currSquare);
+                if (stateEditMode == "add") {
+                    if (pointerButton == 2) {
+                        Pointer.defaultMove(e);
+                    }
+                    if (pointerButton == 0) {
+                        if (modeStep == 2) {
+                            currSquare.setSize({x: e.clientX, y: e.clientY});
+                            Graficos.setBuildAreaSize(currSquare);
 
-                        let squareList = currBuild.areas;
-                        confirmBtn.classList.add("hidden");
-                        for (let i=0; i < squareList.length; i++) {
-                            if (squareList[i].success) {
-                                confirmBtn.classList.remove("hidden");
-                                break;
+                            let squareList = currBuild.areas;
+                            confirmBtn.classList.add("hidden");
+                            for (let i=0; i < squareList.length; i++) {
+                                if (squareList[i].success) {
+                                    confirmBtn.classList.remove("hidden");
+                                    break;
+                                }
                             }
                         }
                     }
+                } else if (stateEditMode == "edit") {
+                    if (selectArea != false) {
+                        // selectArea.r
+                        let pos = {
+                            x: e.clientX,
+                            y: e.clientY,
+                            cx: clickX,
+                            cy: clickY,
+                        }
+                        selectArea.r.setPos(pos, selectArea.b);
+                        Graficos.setBuildAreaSize(selectArea.r);
+                    }
                 }
             } else if (editMode == "reference") {
-                return;
+                if (stateEditMode == "edit") {
+                    if (selectRef != false) {
+                        Editor.Referencer.updateRef(selectRef, {x: e.clientX, y: e.clientY});
+                    }
+                }
             } else if (editMode == "route") {
                 if (currRoute != false) {
                     let point = Editor.Referencer.getCollision({x: e.clientX, y: e.clientY}, currRoute);
@@ -215,6 +305,8 @@ class Pointer {
     static up(e) {
         clicking = false;
         if (page == "editor") {
+            selectRef = false;
+            selectArea = false;
             if (editMode == "build") {
                 if (modeStep == 1) {
                     nextStep();
@@ -222,6 +314,7 @@ class Pointer {
             } else if (editMode == "route") {
                 if (currRoute != false) {
                     currRoute.end();
+                    currRoute = false;
                 }
             }
         }
@@ -259,7 +352,39 @@ function deactivateList(list) {
 }
 
 class Actions {
+    static commitBuild() {
+        if (selectBuild != false) {
+            selectBuild.generatePolygon();
+            selectBuild = false;
+        }
+    }
     static goToEditionMode(mode) {
+        if (editMode == "build") {
+            if (stateEditMode != "add") {
+                this.commitBuild();
+                stateEditMode = mode;
+
+                if (mode == "add") {
+                    const overlay = document.getElementById('buildModalOverlay');
+                    overlay.classList.add('active');
+                }
+
+                addBtn.classList.remove('mode-active'); 
+                editBtn.classList.remove('mode-active'); 
+                deleteBtn.classList.remove('mode-active'); 
+
+                if (stateEditMode == "add") {
+                    addBtn.classList.add('mode-active');
+                }
+                if (stateEditMode == "edit") {
+                    editBtn.classList.add('mode-active');
+                }
+                if (stateEditMode == "delete") {
+                    deleteBtn.classList.add('mode-active');
+                }
+            }
+            return;
+        }
         if (mode == stateEditMode) {
             mode = "";
         }
@@ -279,48 +404,102 @@ class Actions {
         }
     }
     static goToMode(mode) {
-        if (mode == editMode) {
-            if (mode == "build") {
+        if (stateEditMode == "add") {
+            if (mode == editMode) {
+                if (mode == "build") {
+                    return;
+                }
+                if (mode == "reference" || mode == "route") {
+                    mode = "";
+                    modeStep = 0;
+                    Graficos.editorFocus(false);
+                }
+            }
+            if (editMode == "build" && mode != "") {
                 return;
             }
-            if (mode == "reference" || mode == "route") {
-                mode = "";
-                modeStep = 0;
-                Graficos.editorFocus(false);
-            }
-        }
-        if (editMode == "build" && mode != "") {
-            return;
-        }
 
-        if (mode == "") {
-            editMode = "";
+            if (mode == "") {
+                editMode = "";
+                modeStep = 0;
+                
+                Graficos.editorFocus(false);
+                buildBtn.classList.remove('mode-active');
+                routeBtn.classList.remove('mode-active');
+                referenceBtn.classList.remove('mode-active');
+                return;
+            }
+
+            editMode = mode;
             modeStep = 0;
             
-            Graficos.editorFocus(false);
-        }
+            if (mode) {
+                Graficos.editorFocus(true);
+            } else {
+                Graficos.editorFocus(false);
+            }
 
-        editMode = mode;
-        modeStep = 0;
-        
-        if (mode) {
-            Graficos.editorFocus(true);
-        } else {
-            Graficos.editorFocus(false);
-        }
+            routeBtn.classList.remove('mode-active');
+            referenceBtn.classList.remove('mode-active');
+            
+            if (mode == "build") {
+                const overlay = document.getElementById('buildModalOverlay');
+                overlay.classList.add('active');
+            } else if (mode == "reference") {
+                referenceBtn.classList.add('mode-active'); 
+            } else if (mode == "route") {
+                routeBtn.classList.add('mode-active');
+            }
+        } else if (stateEditMode == "edit") {
+            this.commitBuild();
+            if (mode == editMode) {
+                editMode = "";
+            } else {
+                editMode = mode;
+                modeStep = 0;
+            }
+            if (editMode != "") {
+                Graficos.editorFocus(true);
+            } else {
+                Graficos.editorFocus(false);
+            }
 
-        routeBtn.classList.remove('mode-active');
-        referenceBtn.classList.remove('mode-active');
-        
-        if (mode == "build") {
-            const overlay = document.getElementById('buildModalOverlay');
-            overlay.classList.add('active');
-        } else if (mode == "reference") {
-            referenceBtn.classList.add('mode-active'); 
-        } else if (mode == "route") {
-            routeBtn.classList.add('mode-active');
+            buildBtn.classList.remove('mode-active');
+            referenceBtn.classList.remove('mode-active');
+            routeBtn.classList.remove('mode-active');
+            if (editMode == "build") {
+                buildBtn.classList.add('mode-active'); 
+            } else if (editMode == "reference") {
+                referenceBtn.classList.add('mode-active'); 
+            } else if (editMode == "route") {
+                routeBtn.classList.add('mode-active');
+            }
+
+        } else if (stateEditMode == "delete") {
+            this.commitBuild();
+            if (mode == editMode) {
+                editMode = "";
+            } else {
+                editMode = mode;
+                modeStep = 0;
+            }
+            if (editMode != "") {
+                Graficos.editorFocus(true);
+            } else {
+                Graficos.editorFocus(false);
+            }
+
+            buildBtn.classList.remove('mode-active');
+            referenceBtn.classList.remove('mode-active');
+            routeBtn.classList.remove('mode-active');
+            if (editMode == "build") {
+                buildBtn.classList.add('mode-active'); 
+            } else if (editMode == "reference") {
+                referenceBtn.classList.add('mode-active'); 
+            } else if (editMode == "route") {
+                routeBtn.classList.add('mode-active');
+            }
         }
-        
     }
 }
 
@@ -337,9 +516,9 @@ function handleBuildSubmit(event) {
 }
 
 function handleConfirm(event) {
-    Graficos.clearSquares(currBuild);
+    Editor.Builder.buildings.push(currBuild);
+    
     currBuild.generatePolygon();
-    Graficos.addBuildPolygon(currBuild);
 
     Actions.goToMode("");
 
@@ -385,6 +564,7 @@ export function addListeners(map) {
         const closeBuildModal = () => {
             document.getElementById('buildModalOverlay').classList.remove('active');
             document.getElementById('buildForm').reset();
+
             Actions.goToMode("");
         }
 

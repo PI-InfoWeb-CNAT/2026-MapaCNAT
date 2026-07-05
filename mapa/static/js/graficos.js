@@ -43,9 +43,37 @@ export function clearRoutePart(part) {
     });
 }
 
+export function clearArea(area) {
+    areasContainer.removeChild(area.areaObj);
+    
+    area.areaObj.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+}
+
+export function clearPoint(point) {
+    referenceContainer.removeChild(point.obj);
+    
+    point.obj.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+}
+
 export function clearSquares(build) {
     let failedSquares = [];
     for (const square of build.areas) {
+        square.areaObj.clear();
+
+        if (!square.success) {
+            failedSquares.push(square);
+        }
+    }
+
+    for (const square of failedSquares) {
         buildContainer.removeChild(square.areaObj);
 
         square.areaObj.destroy({ 
@@ -54,12 +82,6 @@ export function clearSquares(build) {
             baseTexture: true 
         });
 
-        if (!square.success) {
-            failedSquares.push(square);
-        }
-    }
-
-    for (const square of failedSquares) {
         const index = build.areas.indexOf(square);
         build.areas.splice(index, 1);
     }
@@ -206,7 +228,7 @@ export async function setBuildAreaSize(square) {
         .rect(0, 0, Math.abs(square.width), Math.abs(square.height))
         .fill({ color: 0x5c56f9, alpha: 0.78 })
         .stroke({ width: 4, color: 0x4000ff });
-
+        console.log(Math.abs(square.width), Math.abs(square.height), Math.min(square.x, square.x - square.width), Math.min(square.y, square.y - square.height));
         square.areaObj.position.set(Math.min(square.x, square.x - square.width), Math.min(square.y, square.y - square.height));
     }
 }
@@ -393,7 +415,7 @@ function Zoom(z) {
         child.scale.set(1 / zoom / 2);
     }
     let references = Editor.Referencer.references;
-    for (const ref of references) {
+    for (const ref of Object.values(references)) {
         let point = ref.obj;
         point
         .clear()

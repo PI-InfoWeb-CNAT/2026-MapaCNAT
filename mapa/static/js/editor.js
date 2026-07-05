@@ -7,6 +7,15 @@ const routeIcon = document.getElementById("route");
 let buildName;
 let buildCoordinates;
 
+function removeObj(list, obj) {
+    const index = list.indexOf(obj);
+
+    if (index !== -1) {
+        list.splice(index, 1);
+    }
+    return list;
+}
+
 function squareToCoordinates(square) {
     let topLeft = [Math.min(square.x, square.x - square.width), Math.min(square.y, square.y - square.height)];
     let size = [Math.abs(square.width), Math.abs(square.height)];
@@ -27,10 +36,12 @@ function polygonUnion(squares) {
 class routeLine {
     constructor(start) {
         this.start = start;
+        start.lines.push(this);
     }
-
+    
     setEnd(end) {
         this.end = end;
+        end.lines.push(this);
     }
 
     setObj(obj) {
@@ -45,8 +56,58 @@ export class Router {
 
     static pairs = {};
 
-    static addPair(a, b) {
-        this.pairs[`${a.id},${b.id}`] = 1;
+    static addPair(route, a, b) {
+        this.pairs[`${a.id},${b.id}`] = route;
+    }
+
+    static getCollision(point) {
+        let mapPos = Graficos.getNormalizedCoordinates(point.x, point.y);
+
+        for (const [key, value] of Object.entries(this.pairs)) {
+            let ids = key.split(",");
+            let a = Referencer.references[ids[0]];
+            let b = Referencer.references[ids[1]];
+            let aTob = {
+                x: b.pos.x - a.pos.x,
+                y: b.pos.y - a.pos.y,
+            }
+            let aToPoint = {
+                x: mapPos.x - a.pos.x,
+                y: mapPos.y - a.pos.y,
+            }
+            let dot = aTob.x * aToPoint.x + aTob.y * aToPoint.y;
+            let mag = Math.sqrt(aTob.x * aTob.x + aTob.y * aTob.y);
+            let normal = {
+                x: aTob.x / mag / mag,
+                y: aTob.y / mag / mag
+            }
+            let projection = {
+                x: a.pos.x + normal.x * dot,
+                y: a.pos.y + normal.y * dot
+            }
+            let mapToPoint = {
+                x: mapPos.x - projection.x,
+                y: mapPos.y - projection.y,
+            }
+
+            let finalDist = Math.sqrt(mapToPoint.x * mapToPoint.x + mapToPoint.y * mapToPoint.y);
+            if (finalDist < 7.5 && dot / mag / mag > 0 && dot / mag / mag < 1) {
+                return value;
+            }
+        }
+        return false;
+    }
+
+    static removeRoute(route, reverb=false) {
+        Graficos.clearRoutePart(route);
+        
+        delete this.pairs[`${route.start.id},${route.end.id}`]; 
+        delete this.pairs[`${route.end.id},${route.start.id}`];
+
+        if (reverb) {
+            route.start.lines = removeObj(route.start.lines, route);
+            route.end.lines = removeObj(route.end.lines, route);
+        }
     }
 }
 
@@ -66,12 +127,13 @@ export class Route {
         this.parts.push(this.currPart);
         this.points[end.id] = 1;
 
-        Router.addPair(this.currPart.start, end);
+        Router.addPair(this.currPart, this.currPart.start, end);
 
         this.currPart = new routeLine(end);
     }
 
     end() {
+        this.currPart.start.lines = removeObj(this.currPart.start.lines, this.currPart);
         Graficos.clearRoutePart(this.currPart);
     }
 }
@@ -81,11 +143,12 @@ export class Referencer {
         throw new Error("Classe estática. Não instancie.");
     }
 
-    static references = [];
+    static references = {};
+    static idMap = [];
     static hashMap = {};
     static hashSize = 100;
     static id = 0;
-    static radius;
+    static radius = 15;
 
     static convertPos(pos) {
         const newPos = {
@@ -142,10 +205,51 @@ export class Referencer {
         return false;
     }
 
-    static addReference(ref) {
-        this.references.push(ref);
+    static removeReference(ref) {
+        Graficos.clearPoint(ref);
+        
+        for (const element of ref.lines) {
+            Router.removeRoute(element);
+        }
         const location = this.convertPos(ref.pos);
         const key = this.posKey(location);
+        
+        delete this.references[String(ref.id)];
+
+        this.hashMap[key] = removeObj(this.hashMap[key], ref);
+
+    }
+
+    static addReference(ref) {
+        this.references[String(ref.id)] = ref;
+        const location = this.convertPos(ref.pos);
+        const key = this.posKey(location);
+        if (!(key in this.hashMap)) {
+            this.hashMap[key] = [];
+        }
+        this.hashMap[key].push(ref);
+    }
+
+    static updateRef(ref, pos) {
+        let mapPos = Graficos.getNormalizedCoordinates(pos.x, pos.y);
+
+        let location = this.convertPos(ref.pos);
+        let key = this.posKey(location);
+        this.hashMap[key] = removeObj(this.hashMap[key], ref);
+        
+        ref.pos = mapPos;
+        ref.obj
+        .clear()
+        .circle(mapPos.x, mapPos.y, 10 / Graficos.zoom)
+        .fill({ color: 0xffffff})
+        .stroke({ width: 4 / Graficos.zoom, color: 0x4000ff });
+
+        for(const line of ref.lines) {
+            Graficos.setRouteLine(line, line.end.pos);
+        }
+
+        location = this.convertPos(ref.pos);
+        key = this.posKey(location);
         if (!(key in this.hashMap)) {
             this.hashMap[key] = [];
         }
@@ -157,10 +261,35 @@ export class Referencer {
     }
 }
 
+export class Builder {
+    constructor() {
+        throw new Error("Classe estática. Não instancie.");
+    }
+
+    static buildings = [];
+
+    static getCollision(point) {
+        let mapPos = Graficos.getNormalizedCoordinates(point.x, point.y);
+
+        for(const build of this.buildings) {
+            for(const area of build.areas) {
+                let box = area.aabb();
+                let horizontal = mapPos.x > box.x && mapPos.x < box.x + box.w;
+                let vertical = mapPos.y > box.y && mapPos.y < box.y + box.h;
+                if (horizontal && vertical) {
+                    return build;
+                }
+            }
+        }
+        return false;
+    }
+}
+
 export class Building {
     constructor(name) {
         this.name = name;
         this.areas = [];
+        this.polygon = false;
     }
     setPin(pos) {
         this.pos = pos;
@@ -172,10 +301,46 @@ export class Building {
         this.areas.push(area);
     }
     generatePolygon() {
+        Graficos.clearSquares(this);
         this.polygon = polygonUnion(this.areas);
+        Graficos.addBuildPolygon(this);
+    }
+    revertPolygon() {
+        for (const poly of this.polygonObj) {   
+            poly.clear();
+        }
+        for (const area of this.areas) {
+            area.areaObj
+            .clear()
+            .rect(0, 0, Math.abs(area.width), Math.abs(area.height))
+            .fill({ color: 0x5c56f9, alpha: 0.78 })
+            .stroke({ width: 4, color: 0x4000ff });
+
+            area.areaObj.position.set(Math.min(area.x, area.x - area.width), Math.min(area.y, area.y - area.height));
+        }
     }
     setPolygonObj(obj) {
         this.polygonObj = obj;
+    }
+    getCollision(point) {
+        let mapPos = Graficos.getNormalizedCoordinates(point.x, point.y);
+
+        for(const area of this.areas.reverse()) {
+            let box = area.aabb();
+            let horizontal = mapPos.x > box.x && mapPos.x < box.x + box.w;
+            let vertical = mapPos.y > box.y && mapPos.y < box.y + box.h;
+            if (horizontal && vertical) {
+                return {
+                    r: area,
+                    b: box,
+                }
+            }
+        }
+        return false;
+    }
+    removeArea(area) {
+        Graficos.clearArea(area);
+        this.areas = removeObj(this.areas, area);
     }
 }
 
@@ -184,6 +349,7 @@ export class Reference {
         let mapPos = Graficos.getNormalizedCoordinates(pos.x, pos.y);
         this.pos = mapPos;
         this.id = Referencer.getId();
+        this.lines = [];
     }
 
     setObj(obj) {
@@ -203,6 +369,10 @@ export class BuildArea {
         this.areaObj = obj;
     }
 
+    aabb() {
+        return {x: Math.min(this.x, this.x - this.width), y: Math.min(this.y, this.y - this.height), w: Math.abs(this.width), h: Math.abs(this.height)};
+    }
+
     setSize(size) {
         let mapSize = Graficos.getNormalizedCoordinates(size.x, size.y);
         this.width = this.x - mapSize.x;
@@ -213,5 +383,11 @@ export class BuildArea {
         } else {
             this.success = true;
         }
+    }
+    setPos(pos, box) {
+        let mapSize = Graficos.getNormalizedCoordinates(pos.x, pos.y);
+        let mapClick = Graficos.getNormalizedCoordinates(pos.cx, pos.cy);
+        this.x = mapSize.x + box.x - mapClick.x;
+        this.y = mapSize.y + box.y - mapClick.y;
     }
 }
