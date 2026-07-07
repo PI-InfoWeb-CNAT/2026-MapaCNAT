@@ -221,14 +221,14 @@ export async function addRoute(route, temp) {
     route.setObj(routeGraphics);
 }
 
-export async function setRouteLine(route, end) {
+export async function setRouteLine(route, end, col) {
     let mapPosA = route.start.pos;
     let mapPosB = end;
     route.obj
     .clear()
     .moveTo(mapPosA.x, mapPosA.y)
     .lineTo(mapPosB.x, mapPosB.y)
-    .stroke({ width: 8, color: 0x4000ff });
+    .stroke({ width: 8, color: route.col });
 }
 
 export async function setBuildAreaSize(square) {
@@ -428,10 +428,15 @@ function Zoom(z) {
     let references = Editor.Referencer.references;
     for (const ref of Object.values(references)) {
         let point = ref.obj;
+
+        let col = 0xffffff;
+        if (ref.select) {
+            col = 0xff0000;
+        }
         point
         .clear()
         .circle(ref.pos.x, ref.pos.y, 10 / zoom)
-        .fill({ color: 0xffffff})
+        .fill({ color: col})
         .stroke({ width: 4 / zoom, color: 0x4000ff });
     };
     Editor.Referencer.radius = 15 / zoom;

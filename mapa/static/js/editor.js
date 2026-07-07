@@ -37,6 +37,7 @@ class routeLine {
     constructor(start) {
         this.start = start;
         start.lines.push(this);
+        this.col = 0x4000ff;
     }
     
     setEnd(end) {
@@ -355,6 +356,20 @@ export class Reference {
         this.pos = mapPos;
         this.id = Referencer.getId();
         this.lines = [];
+        this.select = false;
+    }
+
+    selected(value) {
+        this.select = value;
+        let col = 0xffffff;
+        if (value) {
+            col = 0xff0000;
+        }
+        this.obj
+        .clear()
+        .circle(this.pos.x, this.pos.y, 10 / Graficos.zoom)
+        .fill({ color: col})
+        .stroke({ width: 4 / Graficos.zoom, color: 0x4000ff });
     }
 
     setObj(obj) {

@@ -17,14 +17,17 @@
 <header>
     <div id="editor-modes">
         <a href="{% url 'home' %}"><img id="editor-logo" src="{% static 'img/logo-pequeno.png' %}"></a>
-        <hr>
-        <button class="padding icon editor-button" id="build"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-building"></i></button>
-        <button class="padding icon editor-button" id="reference"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-map-pin"></i></button>
-        <button class="padding icon editor-button" id="route"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-route"></i></button>
-        <hr>
-        <button class="padding icon editor-button" id="add"><i class="fa-solid fa-plus"></i></button>
-        <button class="padding icon editor-button" id="edit"><i class="fa-solid fa-edit"></i></button>
-        <button class="padding icon editor-button" id="delete"><i class="fa-solid fa-trash"></i></button>
+        <div class="button-list">
+            <button class="padding icon editor-button" id="build"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-building"></i></button>
+            <button class="padding icon editor-button" id="reference"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-map-pin"></i></button>
+            <button class="padding icon editor-button" id="route"><i class="fa-solid fa-plus"></i><i class="fa-solid fa-circle-nodes"></i></button>
+            <hr>
+            <button class="padding icon editor-button" id="add"><i class="fa-solid fa-plus"></i></button>
+            <button class="padding icon editor-button" id="edit"><i class="fa-solid fa-edit"></i></button>
+            <button class="padding icon editor-button" id="delete"><i class="fa-solid fa-trash"></i></button>
+            <hr>
+            <button class="padding icon editor-button" id="path"><i class="fa-solid fa-route"></i></button>
+        </div>
         <button class="padding icon editor-button hidden" style="cursor: pointer;" id="submit"><i class="fa-solid fa-check"></i></button>
     </div>
 </header>

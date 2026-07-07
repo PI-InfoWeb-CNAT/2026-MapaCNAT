@@ -211,7 +211,7 @@ header {
     border: none;
     height: 2px;
     margin: var(--body-margin);
-    background-color: lightgray;
+    background-color: rgb(182, 182, 182);
 }
 
 .editor-button {
@@ -325,4 +325,10 @@ header {
 
 .modal-submit-btn:hover {
     background-color: #333;
+}
+.button-list {
+    background-color: #ddd;
+    overflow-y: scroll;
+    margin: var(--body-margin) 0;
+    height: calc(100vh - 2 * 56px - 4 * var(--body-margin));
 }

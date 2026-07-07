@@ -1,6 +1,7 @@
 import * as Graficos from "./graficos.js";
 import * as Transformacao from "./transformacao.js";
 import * as Editor from "./editor.js";
+import * as Rota from "./rota.js";
 
 const buildBtn = document.getElementById("build");
 const referenceBtn = document.getElementById("reference");
@@ -36,10 +37,22 @@ let confirmBtn;
 let addBtn;
 let editBtn;
 let deleteBtn;
+let pathBtn;
+let pathStart = false;
+let pathEnd = false;
+let pathList = [];
 
 let editMode = "";
 let modeStep = 0;
 let stateEditMode = "";
+
+function resetPath() {
+    for (const line of pathList) {
+        line.col = 0x4000ff;
+        Graficos.setRouteLine(line, line.end.pos);
+    }
+    pathList = [];
+}
 
 export function setContext(context) {
     page = context.page;
@@ -140,7 +153,56 @@ class Pointer {
         clicking = true;
 
         if (page == "editor") {
-            if (editMode == "build") {
+            if (stateEditMode == "path") {
+                let point = Editor.Referencer.getCollision({x: e.clientX, y: e.clientY});
+                if (point) {
+                    if (!pathStart) {
+                        pathStart = point;
+                        point.selected(true);
+                    } else {
+                        if (pathStart == point) {
+                            pathStart.selected(false);
+                            pathStart = pathEnd;
+                            pathEnd = false;
+                            resetPath();
+                        } else if (pathEnd == point) {
+                            pathEnd.selected(false);
+                            pathEnd = false;
+                            resetPath();
+                        } else {
+                            if (pathEnd) {
+                                pathEnd.selected(false);
+                                resetPath();
+                            } 
+                            pathEnd = point;
+                            point.selected(true);
+
+                            const {graph, heuristics} = Rota.parseGraphData(Editor.Referencer.references, Editor.Router.pairs, pathEnd.id);
+
+                            let rota = Rota.AStar.findPath(graph, String(pathStart.id), String(pathEnd.id), heuristics);
+
+                            let pairs = [];
+                            for (let i = 0; i < rota.length - 1; i++) {
+                                let start = rota[i];
+                                let end = rota[i + 1];
+                                let a = start + "," + end;
+                                let b = end + "," + start;
+                                if (typeof Editor.Router.pairs[b] === "undefined") {
+                                    pairs.push(Editor.Router.pairs[a]);
+                                } else {
+                                    pairs.push(Editor.Router.pairs[b]);
+                                }
+                            }
+
+                            for(const value of pairs) {
+                                value.col = 0xff0000;
+                                Graficos.setRouteLine(value, value.end.pos);
+                                pathList.push(value);
+                            }
+                        }
+                    }
+                }
+            } else if (editMode == "build") {
                 if (stateEditMode == "add") {
                     if (modeStep == 1) {
                         currBuild.setPin({x: clickX, y: clickY});
@@ -380,6 +442,31 @@ class Actions {
         }
     }
     static goToEditionMode(mode) {
+        if (mode == "path" && (editMode != "build" && parseInt(modeStep) == 0)) {
+            this.commitBuild();
+            stateEditMode = mode;
+            editMode = "";
+            addBtn.classList.remove('mode-active'); 
+            editBtn.classList.remove('mode-active'); 
+            deleteBtn.classList.remove('mode-active');
+            buildBtn.classList.remove('mode-active'); 
+            routeBtn.classList.remove('mode-active'); 
+            referenceBtn.classList.remove('mode-active');
+            pathBtn.classList.add('mode-active');
+            Graficos.editorFocus(false);
+            return;
+        } else {
+            pathBtn.classList.remove('mode-active');
+            resetPath();
+            if (pathEnd) {
+                pathEnd.selected(false);
+                pathEnd = false;
+            }
+            if (pathStart) {
+                pathStart.selected(false);
+                pathStart = false;
+            }
+        }
         if (editMode == "build") {
             if (stateEditMode != "add") {
                 this.commitBuild();
@@ -392,7 +479,8 @@ class Actions {
 
                 addBtn.classList.remove('mode-active'); 
                 editBtn.classList.remove('mode-active'); 
-                deleteBtn.classList.remove('mode-active'); 
+                deleteBtn.classList.remove('mode-active');
+                pathBtn.classList.remove('mode-active');
 
                 if (stateEditMode == "add") {
                     addBtn.classList.add('mode-active');
@@ -462,7 +550,8 @@ class Actions {
 
             routeBtn.classList.remove('mode-active');
             referenceBtn.classList.remove('mode-active');
-            
+            pathBtn.classList.remove('mode-active');
+
             if (mode == "build") {
                 const overlay = document.getElementById('buildModalOverlay');
                 overlay.classList.add('active');
@@ -577,6 +666,7 @@ export function addListeners(map) {
         addBtn = document.getElementById("add");
         editBtn = document.getElementById("edit");
         deleteBtn = document.getElementById("delete");
+        pathBtn = document.getElementById("path");
         
         const buildModalBtn = document.getElementById("buildFormSubmit");
         const buildOverlay = document.getElementById('buildModalOverlay');
@@ -603,6 +693,7 @@ export function addListeners(map) {
         addBtn.addEventListener("click", e => Actions.goToEditionMode("add"));
         editBtn.addEventListener("click", e => Actions.goToEditionMode("edit"));
         deleteBtn.addEventListener("click", e => Actions.goToEditionMode("delete"));
+        pathBtn.addEventListener("click", e => Actions.goToEditionMode("path"));
         confirmBtn.addEventListener("click", handleConfirm);
     }
 }
