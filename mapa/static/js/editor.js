@@ -407,7 +407,8 @@ export class BuildArea {
     setPos(pos, box) {
         let mapSize = Graficos.getNormalizedCoordinates(pos.x, pos.y);
         let mapClick = Graficos.getNormalizedCoordinates(pos.cx, pos.cy);
-        this.x = mapSize.x + box.x - mapClick.x;
-        this.y = mapSize.y + box.y - mapClick.y;
+        console.log(box);
+        this.x = mapSize.x + Math.max(box.x, box.x + box.w) - mapClick.x;
+        this.y = mapSize.y + Math.max(box.y, box.y + box.h) - mapClick.y;
     }
 }

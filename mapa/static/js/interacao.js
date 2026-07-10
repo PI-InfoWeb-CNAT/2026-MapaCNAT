@@ -351,8 +351,8 @@ class Pointer {
                             x: e.clientX,
                             y: e.clientY,
                             cx: clickX,
-                            cy: clickY,
-                        }
+                            cy: clickY
+                        };
                         selectArea.r.setPos(pos, selectArea.b);
                         Graficos.setBuildAreaSize(selectArea.r);
                     } else if (currSquare) {
@@ -631,6 +631,10 @@ function handleConfirm(event) {
     currBuild.generatePolygon();
 
     Actions.goToMode("");
+    currBuild = false;
+    currSquare = false;
+    modeStep = 0;
+    Actions.commitBuild();
 
     confirmBtn.classList.add("hidden");
 }
