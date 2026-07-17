@@ -699,5 +699,7 @@ export function addListeners(map) {
         deleteBtn.addEventListener("click", e => Actions.goToEditionMode("delete"));
         pathBtn.addEventListener("click", e => Actions.goToEditionMode("path"));
         confirmBtn.addEventListener("click", handleConfirm);
+
+        Actions.goToEditionMode("add");
     }
 }
