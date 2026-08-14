@@ -4,9 +4,6 @@ import * as Geometria from "./geometria.js";
 const referenceIcon = document.getElementById("reference");
 const routeIcon = document.getElementById("route");
 
-let buildName;
-let buildCoordinates;
-
 function removeObj(list, obj) {
     const index = list.indexOf(obj);
 
@@ -407,8 +404,8 @@ export class BuildArea {
     setPos(pos, box) {
         let mapSize = Graficos.getNormalizedCoordinates(pos.x, pos.y);
         let mapClick = Graficos.getNormalizedCoordinates(pos.cx, pos.cy);
-        console.log(box);
-        this.x = mapSize.x + Math.max(box.x, box.x + box.w) - mapClick.x;
-        this.y = mapSize.y + Math.max(box.y, box.y + box.h) - mapClick.y;
+        this.x = mapSize.x + Math.max(box.x, box.x + box.w) - mapClick.x - box.w;
+        this.y = mapSize.y + Math.max(box.y, box.y + box.h) - mapClick.y - box.h;
+        console.log(pos, box, this.x, this.y);
     }
 }
