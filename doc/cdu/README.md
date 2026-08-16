@@ -17,7 +17,7 @@
 1. [CDU 01 - Uso do Mapa :white_check_mark:](cdu_01/README.md)
 2. [CDU 02 - Uso de Sugestões do Banner :white_check_mark:](cdu_02/README.md)
 3. [CDU 03 - Exploração do Mapa :white_check_mark:](cdu_03/README.md)
-4. [CDU 04 - Uso do Mapa :white_check_mark:](cdu_04/README.md)
+4. [CDU 04 - Pinar Ligar :white_check_mark:](cdu_04/README.md)
 5. [CDU 05 - Uso de Sugestões do Banner :white_check_mark:](cdu_05/README.md)
 6. [CDU 06 - Receber localização :white_check_mark:](cdu_06/README.md)
 7. [CDU 07 - Login :white_check_mark:](cdu_07/README.md)
