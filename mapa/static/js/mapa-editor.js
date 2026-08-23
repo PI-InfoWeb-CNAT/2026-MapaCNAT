@@ -1,6 +1,5 @@
 import * as Graficos from "./graficos.js";
 import * as Interacao from "./interacao.js";
-import * as Geometria from "./geometria.js";
 
 fetch(config)
 .then(response => response.json())

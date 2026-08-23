@@ -4,12 +4,14 @@ import * as Editor from "./editor.js";
 export let map;
 export let mapContainer;
 let textContainer;
-let buildContainer;
 let referenceContainer;
 let routeContainer;
 let areasContainer;
 let pinContainer;
 let app;
+
+export let tempConnection;
+export let tempReference;
 
 let page;
 
@@ -33,80 +35,68 @@ export let scaleFactor = 1;
 
 export let imageSize;
 
-export function clearRoutePart(part) {
-    routeContainer.removeChild(part.obj);
+export function getNormalizedCoordinates(screenX, screenY) {
+    const localPoint = mapContainer.toLocal({ x: screenX, y: screenY });
+
+    return {
+        x: localPoint.x,
+        y: localPoint.y
+    };
+}
+
+export function getScreenCoordinates(localX, localY) {
+    const screenPoint = mapContainer.toGlobal({ x: localX, y: localY });
+
+    return {
+        x: screenPoint.x,
+        y: screenPoint.y
+    };
+}
+
+
+
+
+export function newRegion(x=0, y=0, w=0, h=0) {
+    let square = new PIXI.Graphics();
+
+    if (!(w == 0 && h == 0)) {
+        square
+        .rect(0, 0, w, h)
+        .fill({ color: 0x5c56f9, alpha: 0.78 })
+        .stroke({ width: 4, color: 0x4000ff });
+    }
     
-    part.obj.destroy({
+    square.position.set(x, y);
+    areasContainer.addChild(square);
+
+    return square;
+}
+export function updateRegion(region, x, y, w, h) {
+    region
+    .clear()
+    .rect(0, 0, w, h)
+    .fill({ color: 0x5c56f9, alpha: 0.78 })
+    .stroke({ width: 4, color: 0x4000ff });
+
+    region.position.set(x, y);
+}
+export function removeRegion(region) {
+    areasContainer.removeChild(region);
+    
+    region.destroy({
         children: true,
         texture: true,
         baseTexture: true
     });
 }
 
-export function clearArea(area) {
-    areasContainer.removeChild(area.areaObj);
-    
-    area.areaObj.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-}
-
-export function clearBuild(build) {
-    for(const kind of ["pin", "label"]) {
-        pinContainer.removeChild(build.pinObj[kind]);
-        
-        build.pinObj[kind].destroy({
-            children: true,
-            texture: true,
-            baseTexture: true
-        });
-    }
-}
-
-export function clearPoint(point) {
-    referenceContainer.removeChild(point.obj);
-    
-    point.obj.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-}
-
-export function clearSquares(build) {
-    let failedSquares = [];
-    for (const square of build.areas) {
-        square.areaObj.clear();
-
-        if (!square.success) {
-            failedSquares.push(square);
-        }
-    }
-
-    for (const square of failedSquares) {
-        buildContainer.removeChild(square.areaObj);
-
-        square.areaObj.destroy({ 
-            children: true, 
-            texture: true, 
-            baseTexture: true 
-        });
-
-        const index = build.areas.indexOf(square);
-        build.areas.splice(index, 1);
-    }
-}
-
-export async function addBuildPolygon(build) {
-    let points = build.polygon;
-
+export function newPolygon(points) {
     let polygons = [];
     for (const region of points) {
         let flattenedPoints = region.flat();
     
         let polygonObj = new PIXI.Graphics();
+
         polygonObj
             .poly(flattenedPoints, true)
             .fill({ color: 0x5c56f9, alpha: 0.78 })
@@ -118,39 +108,33 @@ export async function addBuildPolygon(build) {
         polygons.push(polygonObj);
     }
 
-    build.setPolygonObj(polygons);
+    return polygons;
 }
 
-export function getNormalizedCoordinates(screenX, screenY) {
-    const localPoint = mapContainer.toLocal({ x: screenX, y: screenY });
+export function removePolygon(polygons) {
+    for(const polygon of polygons) {
 
-    return {
-        x: localPoint.x,
-        y: localPoint.y
-    };
+        areasContainer.removeChild(polygon);
+        
+        polygon.destroy({
+            children: true,
+            texture: true,
+            baseTexture: true
+        });
+    }
 }
 
-function getScreenCoordinates(localX, localY) {
-    const screenPoint = mapContainer.toGlobal({ x: localX, y: localY });
-
-    return {
-        x: screenPoint.x,
-        y: screenPoint.y
-    };
-}
-
-export async function addBuildPin(build) {
-    let mapPos = getNormalizedCoordinates(build.pos.x, build.pos.y);
+export function newPin(x, y, text) {
     let buildPino = PIXI.Sprite.from(pinImagePath);
     buildPino.anchor.set(0.5, 1);
-    buildPino.x = mapPos.x;
-    buildPino.y = mapPos.y;
+    buildPino.x = x;
+    buildPino.y = y;
     buildPino.scale.set(1 / zoom / 7.5);
 
     pinContainer.addChild(buildPino);
 
     const nodeLabel = new PIXI.Text({
-        text: build.name,
+        text: text,
         style: {
             fontFamily: 'Arial',
             fontSize: 28,
@@ -160,76 +144,151 @@ export async function addBuildPin(build) {
         }
     });
     nodeLabel.anchor.set(-0.2, 1);
-    nodeLabel.x = mapPos.x;
-    nodeLabel.y = mapPos.y;
+    nodeLabel.x = x;
+    nodeLabel.y = y;
     nodeLabel.scale.set(1 / zoom / 2);
 
     pinContainer.addChild(nodeLabel);
 
-    build.setPinObj({"pin": buildPino, "label": nodeLabel});
+    return {pin: buildPino, label: nodeLabel};
 }
+export function updatePin(pin, x, y, text) {
+    pin.pin.x = x;
+    pin.pin.y = y;
+    pin.pin.scale.set(1 / zoom / 7.5);
 
-export async function addBuildArea(area) {
-    let square = new PIXI.Graphics();
+    const nodeLabel = new PIXI.Text({
+        text: text,
+        style: {
+            fontFamily: 'Arial',
+            fontSize: 28,
+            fill: textColor,
+            align: 'center',
+            stroke: { color: "white", width: 3 }
+        }
+    });
+    nodeLabel.anchor.set(-0.2, 1);
+    nodeLabel.x = x;
+    nodeLabel.y = y;
+    nodeLabel.scale.set(1 / zoom / 2);
 
-    square
-    .rect(0, 0, 0, 0)
-    .fill({ color: 0x5c56f9, alpha: 0.78 })
-    .stroke({ width: 4, color: 0x4000ff });
+    pinContainer.addChild(nodeLabel);
+
+    pinContainer.removeChild(pin.label);
+    pin.label.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+
+    pin.label = nodeLabel;
+}
+export function removePin(pin) {    
+    pinContainer.removeChild(pin.pin);
+    pinContainer.removeChild(pin.label);
     
-    square.position.set(0, 0);
-    buildContainer.addChild(square);
-
-    area.setAreaObj(square);
+    pin.pin.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+    pin.label.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
 }
 
-export async function addReference(ref) {
-    let mapPos = ref.pos;
 
+
+export function newReference(x, y, temp=false) {
     let point = new PIXI.Graphics();
 
+    let alpha = 1;
+    if (temp) {
+        alpha = .5;
+    }
+
     point
-    .circle(mapPos.x, mapPos.y, 10 / zoom)
-    .fill({ color: 0xffffff})
+    .circle(x, y, 10 / zoom)
+    .fill({ color: 0xffffff, alpha: alpha})
     .stroke({ width: 4 / zoom, color: 0x4000ff });
     
     point.position.set(0, 0);
     referenceContainer.addChild(point);
 
-    ref.setObj(point);
+    return point;
+}
+export function updateReference(graphics, x, y, temp=false) {
+    let alpha = 1;
+    if (temp) {
+        alpha = .5;
+    }
+
+    graphics
+    .clear()
+    .circle(x, y, 10 / zoom)
+    .fill({ color: 0xffffff, alpha: alpha})
+    .stroke({ width: 4 / zoom, color: 0x4000ff });
 }
 
-export async function addRoute(route, temp) {
-    let mapPosA = route.start.pos;
-    let mapPosB;
-    if ("end" in route) {
-        mapPosB = route.end.pos;
-    } else {
-        mapPosB = getNormalizedCoordinates(temp.x, temp.y);
-    }
+export function removeReference(graphics) {    
+    referenceContainer.removeChild(graphics);
     
+    graphics.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+}
+
+
+export function newConnection(x1, y1, x2=null, y2=null, temp=false) {
     let routeGraphics = new PIXI.Graphics();
+    
+    if (x2 === null || y2 === null) {
+        x2 = x1;
+        y2 = y1;
+    }
+
+    let alpha = 1;
+    if (temp) {
+        alpha = .5;
+    }
 
     routeGraphics
-    .moveTo(mapPosA.x, mapPosA.y)
-    .lineTo(mapPosB.x, mapPosB.y)
-    .stroke({ width: 8, color: 0x4000ff });
+    .moveTo(x1, y1)
+    .lineTo(x2, y2)
+    .stroke({ width: 8, color: 0x4000ff, alpha: alpha});
     
     routeGraphics.position.set(0, 0);
     routeContainer.addChild(routeGraphics);
 
-    route.setObj(routeGraphics);
+    return routeGraphics;
 }
 
-export async function setRouteLine(route, end, col) {
-    let mapPosA = route.start.pos;
-    let mapPosB = end;
-    route.obj
+export function updateConnection(graphics, x1, y1, x2, y2, temp=false) {    
+    let alpha = 1;
+    if (temp) {
+        alpha = .5;
+    }
+    
+    graphics
     .clear()
-    .moveTo(mapPosA.x, mapPosA.y)
-    .lineTo(mapPosB.x, mapPosB.y)
-    .stroke({ width: 8, color: route.col });
+    .moveTo(x1, y1)
+    .lineTo(x2, y2)
+    .stroke({ width: 8, color: 0x4000ff, alpha: alpha });
 }
+export function removeConnection(graphics) {    
+    routeContainer.removeChild(graphics);
+    
+    graphics.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+}
+
 
 export async function setBuildAreaSize(square) {
     if (!(Math.abs(square.width) > 10 && Math.abs(square.height) > 10)) {
@@ -307,17 +366,14 @@ export async function main() {
     textContainer = new PIXI.Container();
     mapContainer.addChild(textContainer);
 
-    buildContainer = new PIXI.Container();
-    mapContainer.addChild(buildContainer);
+    areasContainer = new PIXI.Container();
+    mapContainer.addChild(areasContainer);
 
     routeContainer = new PIXI.Container();
     mapContainer.addChild(routeContainer);
 
     referenceContainer = new PIXI.Container();
     mapContainer.addChild(referenceContainer);
-
-    areasContainer = new PIXI.Container();
-    mapContainer.addChild(areasContainer);
 
     pinContainer = new PIXI.Container();
     mapContainer.addChild(pinContainer);
@@ -427,19 +483,13 @@ function Zoom(z) {
     }
     let references = Editor.Referencer.references;
     for (const ref of Object.values(references)) {
-        let point = ref.obj;
-
-        let col = 0xffffff;
-        if (ref.select) {
-            col = 0xff0000;
-        }
-        point
-        .clear()
-        .circle(ref.pos.x, ref.pos.y, 10 / zoom)
-        .fill({ color: col})
-        .stroke({ width: 4 / zoom, color: 0x4000ff });
+        updateReference(ref.graphics, ref.pos.x, ref.pos.y);
     };
     Editor.Referencer.radius = 15 / zoom;
+
+    // if (tempReference) {
+    //     tempReference.drawRef
+    // }
 
     clampPos();
 }
