@@ -1,0 +1,10 @@
+@startuml
+actor Usuario
+participant Interacao
+participant Graficos
+Usuario -> Interacao: mover(): void
+Interacao -> Graficos: mover_visao(x: float, y: float): void
+Graficos -> Graficos: translacao(x: float, y: float): void
+Graficos -> Interacao
+Interacao -> Usuario
+@enduml

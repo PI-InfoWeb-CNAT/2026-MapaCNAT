@@ -16,8 +16,7 @@
 
 ## 2. Modelo Relacional
 
-![Substitua pela imagem do Modelo Relacional...](imgs/placeholder.png)
-> Substitua pela imagem do Modelo Relacional...
+![Modelo](modelo-relacional.png)
 
 [LINK para o arquivo com o modelo](#)
 

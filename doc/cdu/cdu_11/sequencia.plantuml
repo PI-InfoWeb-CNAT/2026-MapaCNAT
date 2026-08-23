@@ -1,0 +1,15 @@
+@startuml
+actor Usuario
+participant Interacao
+participant GenConexao
+participant Conexao
+participant Graficos
+Usuario -> Interacao: mover()
+Interacao -> GenConexao: criar_conexao(inicio, fim)
+GenConexao -> Conexao: new(inicio, fim)
+Conexao -> Graficos: desenhar_conexao(conexao)
+Graficos -> Conexao
+Conexao -> GenConexao
+GenConexao -> Interacao
+Interacao -> Usuario
+@enduml
