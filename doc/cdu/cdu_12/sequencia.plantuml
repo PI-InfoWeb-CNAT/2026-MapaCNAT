@@ -1,0 +1,16 @@
+@startuml
+actor Usuario
+participant Interacao
+participant GenConstrucao
+participant Construcao
+participant Graficos
+Usuario -> Interacao: toque()
+Interacao -> GenConstrucao: criar_construcao(nome, pino_local)
+GenConstrucao -> Construcao: new(nome, pino_local)
+Construcao -> Graficos: desenhar_construcao(areas, pino_local)
+Graficos -> Graficos: desenhar_area(area)
+Graficos -> Construcao
+Construcao -> GenConstrucao
+GenConstrucao -> Interacao
+Interacao -> Usuario
+@enduml

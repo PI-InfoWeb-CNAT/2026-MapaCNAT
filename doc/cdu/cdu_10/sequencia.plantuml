@@ -1,0 +1,15 @@
+@startuml
+actor Usuario
+participant Interacao
+participant GenReferencia
+participant Referencia
+participant Graficos
+Usuario -> Interacao: toque()
+Interacao -> GenReferencia: criar_referencia(x, y)
+GenReferencia -> Referencia: new(x, y)
+Referencia -> Graficos: desenhar_referencia(referencia)
+Graficos -> Referencia
+Referencia -> GenReferencia
+GenReferencia -> Interacao
+Interacao -> Usuario
+@enduml

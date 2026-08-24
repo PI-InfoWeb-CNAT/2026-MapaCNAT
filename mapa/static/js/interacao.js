@@ -1,11 +1,14 @@
-import * as Graficos from "./graficos.js";
 import * as Transformacao from "./transformacao.js";
+import * as Graficos from "./graficos.js";
 import * as Editor from "./editor.js";
-import * as Rota from "./rota.js";
 
-const buildBtn = document.getElementById("build");
-const referenceBtn = document.getElementById("reference");
-const routeBtn = document.getElementById("route");
+let buildBtn;
+let referenceBtn;
+let connectionBtn;
+
+let selectionBtn;
+let deleteBtn;
+let confirmBtn;
 
 let clicking = false;
 let touching = false;
@@ -19,59 +22,36 @@ let zoom = Graficos.zoom;
 
 let mapStartX, mapStartY;
 let clickX, clickY;
-let pointerButton;
-let mouseX, mouseY;
 let touchX, touchY;
 let startMidX, startMidY;
 let startDistance, startAngle;
 let startZoom, startRotation;
 let startOffsetX, startOffsetY;
 
-let currBuild;
-let selectBuild = false;
-let selectRef = false;
-let selectArea = false;
-let currSquare;
-let currRoute = false;
-let confirmBtn;
-let addBtn;
-let editBtn;
-let deleteBtn;
-let pathBtn;
-let pathStart = false;
-let pathEnd = false;
-let pathList = [];
 
-let editMode = "";
-let modeStep = 0;
-let stateEditMode = "";
+let tempConn;
+let tempReference;
+let tempConstruction;
+let tempRegion;
 
-function resetPath() {
-    for (const line of pathList) {
-        line.col = 0x4000ff;
-        Graficos.setRouteLine(line, line.end.pos);
-    }
-    pathList = [];
-}
+let holdingBuilding;
+
+const EditorModes = Object.freeze({
+  FREE: 'FREE',
+  SELECTION: 'SELECTION',
+  DELETION: 'DELETION',
+  CONSTRUCTION: 'CONSTRUCTION',
+  REFERENCE: 'REFERENCE',
+  CONNECTION: 'CONNECTION'
+});
+
+let editorMode = EditorModes.FREE;
 
 export function setContext(context) {
     page = context.page;
     minZoom = Graficos.minZoom;
     maxZoom = Graficos.maxZoom;
     zoomStep = context.scroll_ratio;
-}
-
-function nextStep() {
-    if (editMode == "build") {
-        if (modeStep == 0) {
-            map.classList.add("custom-cursor");
-        }
-
-        if (modeStep == 1) {
-            map.classList.remove("custom-cursor");
-        }
-    }
-    modeStep += 1;
 }
 
 class Touch {
@@ -147,167 +127,83 @@ class Pointer {
     static down(e) {
         clickX = e.clientX;
         clickY = e.clientY;
-        pointerButton = e.button;
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
         clicking = true;
 
         if (page == "editor") {
-            if (stateEditMode == "path") {
-                let point = Editor.Referencer.getCollision({x: e.clientX, y: e.clientY});
-                if (point) {
-                    if (!pathStart) {
-                        pathStart = point;
-                        point.selected(true);
-                    } else {
-                        if (pathStart == point) {
-                            pathStart.selected(false);
-                            pathStart = pathEnd;
-                            pathEnd = false;
-                            resetPath();
-                        } else if (pathEnd == point) {
-                            pathEnd.selected(false);
-                            pathEnd = false;
-                            resetPath();
-                        } else {
-                            if (pathEnd) {
-                                pathEnd.selected(false);
-                                resetPath();
-                            } 
-                            pathEnd = point;
-                            point.selected(true);
-
-                            const {graph, heuristics} = Rota.parseGraphData(Editor.Referencer.references, Editor.Router.pairs, pathEnd.id);
-
-                            let rota = Rota.AStar.findPath(graph, String(pathStart.id), String(pathEnd.id), heuristics);
-
-                            let pairs = [];
-                            for (let i = 0; i < rota.length - 1; i++) {
-                                let start = rota[i];
-                                let end = rota[i + 1];
-                                let a = start + "," + end;
-                                let b = end + "," + start;
-                                if (typeof Editor.Router.pairs[b] === "undefined") {
-                                    pairs.push(Editor.Router.pairs[a]);
-                                } else {
-                                    pairs.push(Editor.Router.pairs[b]);
-                                }
-                            }
-
-                            for(const value of pairs) {
-                                value.col = 0xff0000;
-                                Graficos.setRouteLine(value, value.end.pos);
-                                pathList.push(value);
-                            }
-                        }
-                    }
+            if (editorMode == EditorModes.REFERENCE) {
+                Actions.createReference(clickX, clickY);
+                
+            } else if (editorMode == EditorModes.CONNECTION) {
+                let col = Editor.Referencer.getCollision(clickX, clickY);
+                if (col) {
+                    Actions.beginConnection(col);
                 }
-            } else if (editMode == "build") {
-                if (stateEditMode == "add") {
-                    if (modeStep == 1) {
-                        currBuild.setPin({x: clickX, y: clickY});
-                        Graficos.addBuildPin(currBuild);
-                    } else if (modeStep == 2) {
-                        currSquare = new Editor.BuildArea({x: clickX, y: clickY});
-                        currBuild.addArea(currSquare);
-                        Graficos.addBuildArea(currSquare);
-                    }
-                } else if (stateEditMode == "edit") {
-                    if (selectBuild == false) {
-                        let build = Editor.Builder.getCollision({x: clickX, y: clickY});
-                        if (build != false) {
-                            build.revertPolygon();
-                            selectBuild = build;
-                            if (build.areas.length == 1) {
-                                let area = {
-                                    r: build.areas[0],
-                                    b: build.areas[0].aabb(),
-                                }
-                                selectArea = area;
-                            }
-                        }
-                    } else {
-                        let area = selectBuild.getCollision({x: clickX, y: clickY});
-
-                        if (area != false) {
-                            selectArea = area;
-                        } else {
-                            let build = Editor.Builder.getCollision({x: clickX, y: clickY});
-                            if (build != false) {
-                                Actions.commitBuild();
-                                build.revertPolygon();
-                                selectBuild = build;
-                            } else {
-                                currSquare = new Editor.BuildArea({x: clickX, y: clickY});
-                                selectBuild.addArea(currSquare);
-                                Graficos.addBuildArea(currSquare);
-                            }
-                        }
-                    }
-                } else if (stateEditMode == "delete") {
-                    if (selectBuild == false) {
-                        let build = Editor.Builder.getCollision({x: clickX, y: clickY});
-                        if (build != false) {
-                            build.revertPolygon();
-                            selectBuild = build;
-                            if (selectBuild.areas.length == 1) {
-                                selectBuild.removeArea(selectBuild.areas[0]);
-                                if (selectBuild.areas.length == 0) {
-                                    Editor.Builder.removeBuild(selectBuild);
-                                    selectBuild = false;
-                                }
-                            }
-                        }
-                    } else {
-                        let area = selectBuild.getCollision({x: clickX, y: clickY});
-
-                        if (area != false) {
-                            selectBuild.removeArea(area.r);
-                            if (selectBuild.areas.length == 0) {
-                                Editor.Builder.removeBuild(selectBuild);
-                                selectBuild = false;
-                            }
-                        } else {
-                            let build = Editor.Builder.getCollision({x: clickX, y: clickY});
-                            if (build != false) {
-                                Actions.commitBuild();
-                                build.revertPolygon();
-                                selectBuild = build;
-                            }
-                        }
-                    }
+            } else if (editorMode == EditorModes.CONSTRUCTION) {
+                if (tempConstruction.pin == null) {
+                    Actions.addPin(clickX, clickY);
+                } else {
+                    Actions.beginRegion(clickX, clickY);
                 }
-            } else if (editMode == "reference") {
-                if (stateEditMode == "add") {
-                    let ref = new Editor.Reference({x: clickX, y: clickY});
-                    Editor.Referencer.addReference(ref);
-                    Graficos.addReference(ref);
-                } else if (stateEditMode == "edit") {
-                    let point = Editor.Referencer.getCollision({x: clickX, y: clickY});
-                    if (point != false) {
-                        selectRef = point;
-                    }
+            } else if (editorMode == EditorModes.SELECTION) {
+                let colRef = Editor.Referencer.getCollision(clickX, clickY);
+                let colConstruction = Editor.Builder.getCollision(clickX, clickY);
 
-                } else if (stateEditMode == "delete") {
-                    let point = Editor.Referencer.getCollision({x: clickX, y: clickY});
-                    if (point != false) {
-                        Editor.Referencer.removeReference(point);
+                Actions.clearSelection();
+                if (colRef) {
+                    Actions.addSelection(colRef, clickX, clickY);
+
+                    if (holdingBuilding) {
+                        Editor.Builder.convertGraphical(holdingBuilding, "polygon");
+                        holdingBuilding = null;
                     }
-                }
-            } else if (editMode == "route") {
-                if (stateEditMode == "add") {
-                    let point = Editor.Referencer.getCollision({x: clickX, y: clickY});
-                    if (point != false) {
-                        currRoute = new Editor.Route(point);
-                    Graficos.addRoute(currRoute.currPart, {x: e.clientX, y: e.clientY});
+                } else {
+                    if (colConstruction) {
+                        if (holdingBuilding) {
+                            let colRegion = Editor.Builder.getCollisionArea(holdingBuilding, clickX, clickY);
+                            Actions.addSelection(colRegion, clickX, clickY);
+                            Editor.Builder.convertGraphical(holdingBuilding, "polygon");
+                        }
+                        Editor.Builder.convertGraphical(colConstruction, "areas");
+                        holdingBuilding = colConstruction;
+                        
                     } else {
-                        currRoute = false;
+                        if (holdingBuilding) {
+                            Editor.Builder.convertGraphical(holdingBuilding, "polygon");
+                            holdingBuilding = null;
+                        }
                     }
-                } else if (stateEditMode == "delete") {
-                    let route = Editor.Router.getCollision({x: clickX, y: clickY});
-                    if (route != false) {
-                        Editor.Router.removeRoute(route, true);
-                    } 
+                    
+                }
+            } else if (editorMode == EditorModes.DELETION) {
+                let colRef = Editor.Referencer.getCollision(clickX, clickY);
+                let colLine = Editor.Connections.getCollision(clickX, clickY);
+                let colConstruction = Editor.Builder.getCollision(clickX, clickY);
+
+                if (colRef) {
+                    Actions.removeReference(colRef);
+                } else if (colLine) {
+                    Actions.removeConnection(colLine);
+                } else if (colConstruction) {
+                    if (holdingBuilding) {
+                        let colRegion = Editor.Builder.getCollisionArea(holdingBuilding, clickX, clickY);
+                        Actions.removeRegion(colRegion);
+                        if (holdingBuilding.areas.length == 0) {
+                            Actions.removeConstruction(holdingBuilding);
+                            Editor.Builder.clearSelection();
+                        }
+                        Actions.addSelection(colRegion, clickX, clickY);
+                        Editor.Builder.convertGraphical(holdingBuilding, "polygon");
+                    }
+                    Editor.Builder.convertGraphical(colConstruction, "areas");
+                    holdingBuilding = colConstruction;
+                    
+                } else {
+                    if (holdingBuilding) {
+                        Editor.Builder.convertGraphical(holdingBuilding, "polygon");
+                        holdingBuilding = null;
+                    }
                 }
             }
         }
@@ -321,65 +217,52 @@ class Pointer {
     }
 
     static move(e) {
-        if (!clicking) return;
         if (page == "main") {
+            if (!clicking) return;
+            
             Pointer.defaultMove(e);
-        } else {
-            if (editMode == "build") {
-                if (stateEditMode == "add") {
-                    if (pointerButton == 2) {
-                        Pointer.defaultMove(e);
-                    }
-                    if (pointerButton == 0) {
-                        if (modeStep == 2) {
-                            currSquare.setSize({x: e.clientX, y: e.clientY});
-                            Graficos.setBuildAreaSize(currSquare);
-
-                            let squareList = currBuild.areas;
-                            confirmBtn.classList.add("hidden");
-                            for (let i=0; i < squareList.length; i++) {
-                                if (squareList[i].success) {
-                                    confirmBtn.classList.remove("hidden");
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } else if (stateEditMode == "edit") {
-                    if (selectArea != false) {
-                        let pos = {
-                            x: e.clientX,
-                            y: e.clientY,
-                            cx: clickX,
-                            cy: clickY
-                        };
-                        selectArea.r.setPos(pos, selectArea.b);
-                        Graficos.setBuildAreaSize(selectArea.r);
-                    } else if (currSquare) {
-                        currSquare.setSize({x: e.clientX, y: e.clientY});
-                        Graficos.setBuildAreaSize(currSquare);
-                    }
-                }
-            } else if (editMode == "reference") {
-                if (stateEditMode == "edit") {
-                    if (selectRef != false) {
-                        Editor.Referencer.updateRef(selectRef, {x: e.clientX, y: e.clientY});
-                    }
-                }
-            } else if (editMode == "route") {
-                if (currRoute != false) {
-                    let point = Editor.Referencer.getCollision({x: e.clientX, y: e.clientY}, currRoute);
-                    if (point != false) {
-                        Graficos.setRouteLine(currRoute.currPart, point.pos);
-                        currRoute.finishPart(point);
-                        Graficos.addRoute(currRoute.currPart, {x: e.clientX, y: e.clientY});
-                    } else {
-                        let normalizedPos = Graficos.getNormalizedCoordinates(e.clientX, e.clientY);
-                        Graficos.setRouteLine(currRoute.currPart, normalizedPos);
-                    }
-                }
-            } else {
+            
+        } else if (page == "editor") {
+            if (editorMode == EditorModes.FREE) {
+                if (!clicking) return;
+                
                 Pointer.defaultMove(e);
+
+            } else if (editorMode == EditorModes.REFERENCE) {
+                if (!tempReference) {
+                    Actions.createTempReference(e.clientX, e.clickY);
+                }
+                Editor.Referencer.updateTempReference(tempReference, e.clientX, e.clientY);
+                
+            } else if (editorMode == EditorModes.CONSTRUCTION) {
+                if (tempRegion) {
+                    Editor.Builder.updateRegion(tempRegion, e.clientX, e.clientY);
+                }
+                if (tempRegion || tempConstruction.regions.length > 0) {
+                    confirmBtn.classList.remove("hidden");
+                }
+            } else if (editorMode == EditorModes.CONNECTION) {
+                if (tempConn != null) {
+                    Editor.Connections.updateTempConnection(tempConn, e.clientX, e.clientY);
+
+                    let col = Editor.Referencer.getCollision(e.clientX, e.clientY, tempConn.reference);
+                    if (col) {
+                        Actions.createConnection(tempConn.reference, col);
+                    }
+                }
+            } else if (editorMode == EditorModes.SELECTION) {
+                for(const obj of Editor.Referencer.selection) {
+                    Editor.Referencer.moveRef(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
+                }
+                for(const obj of Editor.Builder.selection) {
+                    if (obj.obj instanceof Editor.Region) {
+                        Editor.Builder.moveRegion(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
+                        Editor.Builder.reOrder(obj.obj);
+                    }
+                    if (obj.obj instanceof Editor.Pin) {
+                        Editor.Builder.movePin(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
+                    }
+                }
             }
         }
     }
@@ -387,23 +270,23 @@ class Pointer {
     static up(e) {
         clicking = false;
         if (page == "editor") {
-            selectRef = false;
-            selectArea = false;
-            if (editMode == "build") {
-                if (modeStep == 1) {
-                    nextStep();
+            if (editorMode == EditorModes.CONNECTION) {
+                Actions.removeTempConnection();
+            } else if (editorMode == EditorModes.CONSTRUCTION) {
+                if (tempRegion) {
+                    tempRegion.end = Graficos.getNormalizedCoordinates(e.clientX, e.clientY);
                 }
-            } else if (editMode == "route") {
-                if (currRoute != false) {
-                    currRoute.end();
-                    currRoute = false;
-                }
+                Actions.sendRegion();
+                Actions.removeTempRegion();
+            } else if (editorMode == EditorModes.SELECTION) {
+                Actions.clearSelection();
             }
         }
     }
 
     static wheel(e) {
         e.preventDefault();
+
         const mX = e.offsetX;
         const mY = e.offsetY;
 
@@ -433,182 +316,174 @@ function deactivateList(list) {
     };
 }
 
+function lightButton(button, mode, buttonMode) {
+    button.classList.remove('mode-active');
+    if (mode == buttonMode) {
+        button.classList.add('mode-active');
+    }
+}
+
 class Actions {
-    static commitBuild() {
-        if (selectBuild != false) {
-            selectBuild.generatePolygon();
-            selectBuild = false;
-            currSquare = false;
+    static createReference(x, y) {
+        Editor.Referencer.createReference(x, y);
+    }
+    static removeReference(ref) {
+        Editor.Referencer.removeReference(ref);
+    }
+    static createConnection(a, b) {
+        Editor.Connections.createConnection(a, b);
+        Actions.removeTempConnection();
+        Actions.beginConnection(b);
+    }
+    static removeConnection(conn) {
+        Editor.Connections.removeConnection(conn, true);
+    }
+
+    static addSelection(obj, x, y) {
+        if (obj instanceof Editor.Reference) {
+            Editor.Referencer.addSelection(obj, x, y);
+        } else if (obj instanceof Editor.Region) {
+            Editor.Builder.addSelection(obj, x, y);
+        } else if (obj instanceof Editor.Pin) {
+            Editor.Builder.addPinSelection(obj, x, y);
         }
     }
-    static goToEditionMode(mode) {
-        if (mode == "path" && (editMode != "build" && parseInt(modeStep) == 0)) {
-            this.commitBuild();
-            stateEditMode = mode;
-            editMode = "";
-            addBtn.classList.remove('mode-active'); 
-            editBtn.classList.remove('mode-active'); 
-            deleteBtn.classList.remove('mode-active');
-            buildBtn.classList.remove('mode-active'); 
-            routeBtn.classList.remove('mode-active'); 
-            referenceBtn.classList.remove('mode-active');
-            pathBtn.classList.add('mode-active');
-            Graficos.editorFocus(false);
+    static removeSelection(obj) {
+        if (obj instanceof Editor.Reference) {
+            Editor.Referencer.removeSelection(obj);
+        } else if (obj instanceof Editor.Region) {
+            Editor.Builder.removeSelection(obj);
+        } else if (obj instanceof Editor.Pin) {
+            Editor.Builder.removeSelection(obj);
+        }
+    }
+    static clearSelection() {
+        Editor.Referencer.clearSelection();
+        Editor.Builder.clearSelection();
+    }
+
+    static removeTempConnection() {
+        if (tempConn) {
+            Editor.Connections.removeTempConnection(tempConn);
+            tempConn = null;
+        }
+    }
+    static beginConnection(ref) {
+        let tempGraphics = Editor.Connections.createTempConnection(ref);
+        tempConn = new Editor.TempConnection(ref, tempGraphics);
+    }
+
+    static removeTempReference() {
+        if (tempReference) {
+            Editor.Referencer.removeTempReference(tempReference);
+            tempReference = null;
+        }
+    }
+    static createTempReference(x, y) {
+        let tempGraphics = Editor.Referencer.createTempReference(x, y);
+        tempReference = new Editor.TempReference(tempGraphics);
+    }
+
+    static removeTempConstruction() {
+        if (tempConstruction) {
+            Editor.Builder.removeTempConstruction(tempConstruction);
+            tempConstruction = null;
+        }
+    }
+    static createTempConstruction(name) {
+        tempConstruction = new Editor.TempConstruction(name);
+    }
+    static addPin(x, y) {
+        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        tempConstruction.pin = mapPos;
+        tempConstruction.pin_graphics = Editor.Builder.createPin(x, y, tempConstruction.name);
+        this.pinMode(false);
+    }
+
+    static beginRegion(x, y) {
+        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        let regionGraphics = Editor.Builder.createRegion();
+        tempRegion = new Editor.TempRegion(regionGraphics, {x: mapPos.x, y: mapPos.y});
+    }
+    static removeTempRegion() {
+        if (tempRegion) {
+            Editor.Builder.removeTempRegion(tempRegion);
+            tempRegion = null;
+        }
+    }
+    static removeRegion(region) {
+        Editor.Builder.removeRegion(region);
+    }
+    static removeConstruction(construction) {
+        Editor.Builder.removeConstruction(construction);
+    }
+    static sendRegion() {
+        if (tempRegion) {
+            let region = Editor.Builder.createRegionObject(tempRegion);
+            if (region.size.x != 0 && region.size.y != 0) {
+                tempConstruction.regions.push(region);
+            }
+        }
+    }
+    static finishBuild() {
+        let construction = Editor.Builder.createConstruction(tempConstruction);
+        Editor.Builder.convertGraphical(construction, "polygon");
+        this.removeTempConstruction();
+    }
+
+    static clearProgress() {
+        Actions.removeTempReference();
+        Actions.removeTempConnection();
+        Actions.removeTempRegion();
+        Actions.removeTempConstruction();
+        if (holdingBuilding) {
+            Editor.Builder.convertGraphical(holdingBuilding, "polygon");
+        }
+
+        Actions.clearSelection();
+    }
+
+    static goToMode(mode=EditorModes.FREE) {
+        if (editorMode == EditorModes.CONSTRUCTION && tempConstruction) {
             return;
+        }
+        if (editorMode == mode) {
+            mode = EditorModes.FREE;
+        }
+        editorMode = mode;
+
+        Actions.clearProgress();
+
+        Graficos.editorFocus(false);
+        if ([
+            EditorModes.SELECTION,
+            EditorModes.DELETION,
+            EditorModes.CONSTRUCTION,
+            EditorModes.REFERENCE,
+            EditorModes.CONNECTION
+            ].includes(editorMode)) {
+            Graficos.editorFocus(true);
+        }
+
+        if (editorMode == EditorModes.CONSTRUCTION) {
+            Actions.OpenModal();
+        }
+
+        lightButton(selectionBtn, mode, EditorModes.SELECTION);
+        lightButton(deleteBtn, mode, EditorModes.DELETION);
+        lightButton(buildBtn, mode, EditorModes.CONSTRUCTION);
+        lightButton(referenceBtn, mode, EditorModes.REFERENCE);
+        lightButton(connectionBtn, mode, EditorModes.CONNECTION);
+    }
+    static OpenModal() {
+        const overlay = document.getElementById('buildModalOverlay');
+        overlay.classList.add('active');
+    }
+    static pinMode(bool) {
+        if (bool) {
+            map.classList.add("custom-cursor");
         } else {
-            pathBtn.classList.remove('mode-active');
-            resetPath();
-            if (pathEnd) {
-                pathEnd.selected(false);
-                pathEnd = false;
-            }
-            if (pathStart) {
-                pathStart.selected(false);
-                pathStart = false;
-            }
-        }
-        if (editMode == "build") {
-            if (stateEditMode != "add") {
-                this.commitBuild();
-                stateEditMode = mode;
-
-                if (mode == "add") {
-                    const overlay = document.getElementById('buildModalOverlay');
-                    overlay.classList.add('active');
-                }
-
-                addBtn.classList.remove('mode-active'); 
-                editBtn.classList.remove('mode-active'); 
-                deleteBtn.classList.remove('mode-active');
-                pathBtn.classList.remove('mode-active');
-
-                if (stateEditMode == "add") {
-                    addBtn.classList.add('mode-active');
-                }
-                if (stateEditMode == "edit") {
-                    editBtn.classList.add('mode-active');
-                }
-                if (stateEditMode == "delete") {
-                    deleteBtn.classList.add('mode-active');
-                }
-            }
-            return;
-        }
-        if (mode == stateEditMode) {
-            mode = "";
-        }
-        stateEditMode = mode;
-        addBtn.classList.remove('mode-active'); 
-        editBtn.classList.remove('mode-active'); 
-        deleteBtn.classList.remove('mode-active'); 
-
-        if (stateEditMode == "add") {
-            addBtn.classList.add('mode-active');
-        }
-        if (stateEditMode == "edit") {
-            editBtn.classList.add('mode-active');
-        }
-        if (stateEditMode == "delete") {
-            deleteBtn.classList.add('mode-active');
-        }
-    }
-    static goToMode(mode) {
-        if (stateEditMode == "add") {
-            if (mode == editMode) {
-                if (mode == "build") {
-                    return;
-                }
-                if (mode == "reference" || mode == "route") {
-                    mode = "";
-                    modeStep = 0;
-                    Graficos.editorFocus(false);
-                }
-            }
-            if (editMode == "build" && mode != "") {
-                return;
-            }
-
-            if (mode == "") {
-                editMode = "";
-                modeStep = 0;
-                
-                Graficos.editorFocus(false);
-                buildBtn.classList.remove('mode-active');
-                routeBtn.classList.remove('mode-active');
-                referenceBtn.classList.remove('mode-active');
-                return;
-            }
-
-            editMode = mode;
-            modeStep = 0;
-            
-            if (mode) {
-                Graficos.editorFocus(true);
-            } else {
-                Graficos.editorFocus(false);
-            }
-
-            routeBtn.classList.remove('mode-active');
-            referenceBtn.classList.remove('mode-active');
-            pathBtn.classList.remove('mode-active');
-
-            if (mode == "build") {
-                const overlay = document.getElementById('buildModalOverlay');
-                overlay.classList.add('active');
-            } else if (mode == "reference") {
-                referenceBtn.classList.add('mode-active'); 
-            } else if (mode == "route") {
-                routeBtn.classList.add('mode-active');
-            }
-        } else if (stateEditMode == "edit") {
-            this.commitBuild();
-            if (mode == editMode) {
-                editMode = "";
-            } else {
-                editMode = mode;
-                modeStep = 0;
-            }
-            if (editMode != "") {
-                Graficos.editorFocus(true);
-            } else {
-                Graficos.editorFocus(false);
-            }
-
-            buildBtn.classList.remove('mode-active');
-            referenceBtn.classList.remove('mode-active');
-            routeBtn.classList.remove('mode-active');
-            if (editMode == "build") {
-                buildBtn.classList.add('mode-active'); 
-            } else if (editMode == "reference") {
-                referenceBtn.classList.add('mode-active'); 
-            } else if (editMode == "route") {
-                routeBtn.classList.add('mode-active');
-            }
-
-        } else if (stateEditMode == "delete") {
-            this.commitBuild();
-            if (mode == editMode) {
-                editMode = "";
-            } else {
-                editMode = mode;
-                modeStep = 0;
-            }
-            if (editMode != "") {
-                Graficos.editorFocus(true);
-            } else {
-                Graficos.editorFocus(false);
-            }
-
-            buildBtn.classList.remove('mode-active');
-            referenceBtn.classList.remove('mode-active');
-            routeBtn.classList.remove('mode-active');
-            if (editMode == "build") {
-                buildBtn.classList.add('mode-active'); 
-            } else if (editMode == "reference") {
-                referenceBtn.classList.add('mode-active'); 
-            } else if (editMode == "route") {
-                routeBtn.classList.add('mode-active');
-            }
+            map.classList.remove("custom-cursor");
         }
     }
 }
@@ -618,23 +493,23 @@ function handleBuildSubmit(event) {
 
     let buildName = document.getElementById('build-name').value;
 
-    currBuild = new Editor.Building(buildName);
-    nextStep();
+    Actions.createTempConstruction(buildName);
 
     document.getElementById('buildModalOverlay').classList.remove('active');
     document.getElementById('buildForm').reset();
+
+    Actions.pinMode(true);
 }
 
 function handleConfirm(event) {
-    Editor.Builder.buildings.push(currBuild);
+    // Editor.Builder.buildings.push(currBuild);
     
-    currBuild.generatePolygon();
+    // currBuild.generatePolygon();
 
-    Actions.goToMode("");
-    currBuild = false;
-    currSquare = false;
-    modeStep = 0;
-    Actions.commitBuild();
+    Actions.finishBuild();
+
+    Actions.goToMode();
+    // Actions.commitBuild();
 
     confirmBtn.classList.add("hidden");
 }
@@ -642,7 +517,7 @@ function handleConfirm(event) {
 export function addListeners(map) {
     map.addEventListener("pointerdown", Pointer.down);
     map.addEventListener("pointermove", Pointer.move);
-    map.addEventListener("pointerup", Pointer.up);
+    document.addEventListener("pointerup", Pointer.up);
     map.addEventListener("wheel", Pointer.wheel, { passive: false });
     map.addEventListener("touchstart", Touch.begin, { passive: false });
     map.addEventListener("touchmove", Touch.step, { passive: false });
@@ -651,6 +526,7 @@ export function addListeners(map) {
     document.addEventListener('contextmenu', function(event) {
         event.preventDefault();
     });
+
     if (page == "main") {
         const orientationBtn = document.getElementById('orientation');
         const optionsBtn = document.getElementById('options');
@@ -666,11 +542,14 @@ export function addListeners(map) {
         backdrop.addEventListener('click', closeMenu);
     
     } else {
-        confirmBtn = document.getElementById("submit");
-        addBtn = document.getElementById("add");
-        editBtn = document.getElementById("edit");
+        buildBtn = document.getElementById("build");
+        referenceBtn = document.getElementById("reference");
+        connectionBtn = document.getElementById("conection");
+
+        selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
-        pathBtn = document.getElementById("path");
+
+        confirmBtn = document.getElementById("submit");
         
         const buildModalBtn = document.getElementById("buildFormSubmit");
         const buildOverlay = document.getElementById('buildModalOverlay');
@@ -680,7 +559,7 @@ export function addListeners(map) {
             document.getElementById('buildModalOverlay').classList.remove('active');
             document.getElementById('buildForm').reset();
 
-            Actions.goToMode("");
+            Actions.goToMode();
         }
 
         buildCloseBtn.addEventListener('click', closeBuildModal);
@@ -690,16 +569,16 @@ export function addListeners(map) {
                 closeBuildModal();
             }
         });
-        buildBtn.addEventListener("click", e => Actions.goToMode("build"));
-        referenceBtn.addEventListener("click", e => Actions.goToMode("reference"));
-        routeBtn.addEventListener("click", e => Actions.goToMode("route"));
-        buildModalBtn.addEventListener("click", handleBuildSubmit);
-        addBtn.addEventListener("click", e => Actions.goToEditionMode("add"));
-        editBtn.addEventListener("click", e => Actions.goToEditionMode("edit"));
-        deleteBtn.addEventListener("click", e => Actions.goToEditionMode("delete"));
-        pathBtn.addEventListener("click", e => Actions.goToEditionMode("path"));
-        confirmBtn.addEventListener("click", handleConfirm);
 
-        Actions.goToEditionMode("add");
+        buildBtn.addEventListener("click", () => Actions.goToMode(EditorModes.CONSTRUCTION));
+        referenceBtn.addEventListener("click", () => Actions.goToMode(EditorModes.REFERENCE));
+        connectionBtn.addEventListener("click", () => Actions.goToMode(EditorModes.CONNECTION));
+
+        selectionBtn.addEventListener("click", () => Actions.goToMode(EditorModes.SELECTION));
+        deleteBtn.addEventListener("click", () => Actions.goToMode(EditorModes.DELETION));
+        
+        buildModalBtn.addEventListener("click", handleBuildSubmit);
+
+        confirmBtn.addEventListener("click", handleConfirm);
     }
 }
