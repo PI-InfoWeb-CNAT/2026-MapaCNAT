@@ -73,9 +73,9 @@ O sistema é uma ferramenta para auxiliar usuários a navegar pelo mapa do IFRN 
 ## 8. Requisitos Funcionais
 
 | Código | Nome | Descrição | Prioridade |
+| :---: | :---: | :--- | :---: |
 | RF01 | Pesquisa de Local | O usuário deve poder digitar o nome ou número de uma sala e vê-la destacada no mapa. | Alta |
 | RF02 | Filtro por Categorias | O site deve permitir filtrar por "Setor Administrativo", "Salas de Aula", "Esportes", etc. | Média |
-| :----: | :--: | :-------: | :--------: |
 | RF01 | Pesquisa de Local | O usuário deve poder digitar o nome ou número de uma sala e vê-la destacada no mapa. | Alta |
 | RF02 | Filtro por Categorias | O site deve permitir filtrar por "Setor Administrativo", "Salas de Aula", "Esportes", etc. | Média |
 | RF03 | Galeria de Fotos | Ao clicar num ponto, o site deve exibir uma foto e breve descrição do local. | Alta |
