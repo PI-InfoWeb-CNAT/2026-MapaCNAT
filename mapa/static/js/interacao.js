@@ -5,6 +5,7 @@ import * as Editor from "./editor.js";
 let buildBtn;
 let referenceBtn;
 let connectionBtn;
+let saveBtn;
 
 let selectionBtn;
 let deleteBtn;
@@ -323,6 +324,50 @@ function lightButton(button, mode, buttonMode) {
     }
 }
 
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+async function saveMapState(data) {
+    const url = URLSaveMap;
+    
+    const token = sessionStorage.getItem('authToken'); 
+
+    try {
+        let req = {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(data)
+        }
+        const response = await fetch(url, req);
+
+        if (response.status === 401) {
+        console.error('Usuário não autorizado.');
+            return;
+        }
+
+        const result = await response.json();
+        console.log('Successo:', result);
+    } catch (error) {
+        console.error('Erro de rede:', error);
+    }
+}
+
 class Actions {
     static createReference(x, y) {
         Editor.Referencer.createReference(x, y);
@@ -475,6 +520,19 @@ class Actions {
         lightButton(referenceBtn, mode, EditorModes.REFERENCE);
         lightButton(connectionBtn, mode, EditorModes.CONNECTION);
     }
+
+    static save() {
+        let refs = Editor.Referencer.toJson();
+        let builds = Editor.Builder.toJson();
+        let conn = Editor.Connections.toJson();
+        let data = {
+            "references": refs,
+            "buildings": builds,
+            "connections": conn
+        }
+        saveMapState(data);
+    }
+
     static OpenModal() {
         const overlay = document.getElementById('buildModalOverlay');
         overlay.classList.add('active');
@@ -545,6 +603,7 @@ export function addListeners(map) {
         buildBtn = document.getElementById("build");
         referenceBtn = document.getElementById("reference");
         connectionBtn = document.getElementById("conection");
+        saveBtn = document.getElementById("save");
 
         selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
@@ -576,6 +635,8 @@ export function addListeners(map) {
 
         selectionBtn.addEventListener("click", () => Actions.goToMode(EditorModes.SELECTION));
         deleteBtn.addEventListener("click", () => Actions.goToMode(EditorModes.DELETION));
+
+        saveBtn.addEventListener("click", () => Actions.save());
         
         buildModalBtn.addEventListener("click", handleBuildSubmit);
 

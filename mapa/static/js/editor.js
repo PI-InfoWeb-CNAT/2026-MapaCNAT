@@ -72,7 +72,19 @@ export class Connections {
 
     static pairs = {};
 
+    static toJson() {
+        let pairs = [];
+        for(const rawKey of Object.keys(this.pairs)) {
+            const values = rawKey.split(",");
+            let start = parseInt(values[0]);
+            let end = parseInt(values[1]);
+            pairs.push([start, end]);
+        }
+        return pairs;
+    }
+
     static addPair(connection) {
+
         this.pairs[`${connection.start.id},${connection.end.id}`] = connection;
     }
 
@@ -91,6 +103,9 @@ export class Connections {
     }
 
     static createConnection(a, b) {
+        if (a == b) {
+            return;
+        }
         let conn = new Connection(a, b);
         this.addPair(conn);
     }
@@ -183,6 +198,28 @@ export class Builder {
 
     static buildings = [];
     static selection = [];
+
+    static toJson() {
+        let jsonBuildings = [];
+        for(const build of this.buildings) {
+            let areas = [];
+            for(const area of build.areas) {
+                let jsonArea = {
+                    "pos": area.pos,
+                    "size": area.size
+                }
+                areas.push(jsonArea);
+            }
+            let jsonBuild = {
+                "name": build.name,
+                "pin_pos": build.pinPos,
+                "areas": areas
+            }
+
+            jsonBuildings.push(jsonBuild);
+        }
+        return jsonBuildings;
+    }
 
     static calcBox(start, end) {
         let pos = {
@@ -403,6 +440,17 @@ export class Referencer {
     static id = 0;
     static radius = 15;
     static selection = [];
+
+    static toJson() {
+        let data = {};
+        for(const refKey of Object.keys(this.references)) {
+            let ref = this.references[refKey];
+            data[parseInt(refKey)] = {
+                "pos": ref.pos
+            }
+        }
+        return data;
+    }
 
     static addSelection(ref, x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);

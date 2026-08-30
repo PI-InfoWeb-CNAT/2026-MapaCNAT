@@ -30,8 +30,12 @@
 </header>
 
 <main>
-    <div id="map"></div>
+    <section id="screen-ui">
+        <button class="padding icon editor-button" id="save"><i class="fa-solid fa-save"></i></button>
+    </section>
 
+    <div id="map"></div>
+    
     <div class="modal-overlay" id="buildModalOverlay">
         <div class="modal-box">
             <button type="button" class="modal-close" id="closeBuildModal">&times;</button>
@@ -50,6 +54,7 @@
         const config = "{% static 'json/config.json' %}";
         const mapImage =  "{% static 'svg/mapa.svg' %}";
         const pinImage = "{% static 'img/pino.png' %}";
+        const URLSaveMap = window.location.origin + "{% url 'mapa_editor_save' %}";
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
     <script type="module" src="{% static 'js/mapa-editor.js' %}"></script>
