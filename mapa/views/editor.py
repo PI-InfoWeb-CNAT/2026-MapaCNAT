@@ -11,7 +11,8 @@ def mapa_editor(request: Any):
     return HttpResponse(template.render())
 
 @ensure_csrf_cookie
-def mapa_editor_save(request: Any):
+def mapa_editor_data(request: Any):
+    
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -66,4 +67,50 @@ def mapa_editor_save(request: Any):
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
 
+    elif request.method == "GET":
+        return JsonResponse(export_db_to_json(), status=200)
+
     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
+
+def export_db_to_json():
+    references = {}
+    db_to_frontend_id = {}
+    
+    for index, ref in enumerate(Referencia.objects.all()):
+        frontend_id = str(index + 1)
+        db_to_frontend_id[ref.id] = frontend_id
+        
+        references[frontend_id] = {
+            "pos": ref.localizacao
+        }
+
+    connections = []
+    for rota in Rota.objects.all():
+        start_id = db_to_frontend_id.get(rota.local_inicio_id)
+        end_id = db_to_frontend_id.get(rota.local_fim_id) if rota.local_fim_id else None
+        
+        if start_id:
+            connections.append([start_id, end_id])
+
+    buildings = []
+    for build in Construcao.objects.all():
+        areas_data = []
+        for area in build.regiao.all():
+            areas_data.append({
+                "pos": area.posicao,
+                "size": area.tamanho
+            })
+            
+        buildings.append({
+            "name": build.nome,
+            "pin_pos": build.localizacao_pino,
+            "areas": areas_data
+        })
+
+    payload = {
+        "references": references,
+        "connections": connections,
+        "buildings": buildings
+    }
+    
+    return payload

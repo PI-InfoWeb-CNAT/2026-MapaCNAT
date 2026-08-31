@@ -1,6 +1,45 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
 
+export async function load() {
+  try {
+        const response = await fetch(URLSaveMap);
+        if (!response.ok) throw new Error('Erro de rede');
+        const data = await response.json();
+        
+        let refMap = {}
+
+        for(const key of Object.keys(data.references)) {
+            let ref = data.references[key];
+            let objRef = Referencer.createReference(ref.pos.x, ref.pos.y, false);
+            refMap[key] = objRef;
+        }
+        for(const conn of data.connections) {
+            Connections.createConnection(refMap[conn[0]], refMap[conn[1]]);
+        }
+        for(const build of data.buildings) {
+            let regions = [];
+            for(const area of build.areas) {
+                let end = {
+                    x: area.pos.x + area.size.x,
+                    y: area.pos.y + area.size.y,
+                }
+                let reg = Builder.createRegionObject({start: area.pos, end: end});
+                regions.push(reg);
+            }
+            let building = Builder.createConstruction({
+                name: build.name,
+                pin: build.pin_pos,
+                regions: regions
+            })
+            Builder.convertGraphical(building, "polygon");
+        }
+
+    } catch (error) {
+        console.error('Fetch error:', error);
+    }
+}
+
 export class TempConnection {
     reference;
     drawRef;
@@ -246,9 +285,14 @@ export class Builder {
         return regionObject;
     }
 
-    static updateRegion(region, x, y) {
+    static updateRegion(region, x, y, convert=true) {
         let mapStart = region.start;
-        let mapEnd = Graficos.getNormalizedCoordinates(x, y);
+        let mapEnd;
+        if (convert) {
+            mapEnd = Graficos.getNormalizedCoordinates(x, y);
+        } else {
+            mapEnd = {x: x, y: y};
+        }
         let box = this.calcBox(mapStart, mapEnd);
         
         Graficos.updateRegion(region.drawRef, box.pos.x, box.pos.y, box.size.x, box.size.y);
@@ -473,8 +517,13 @@ export class Referencer {
         this.selection = [];
     }
 
-    static createReference(x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+    static createReference(x, y, convert=true) {
+        let mapPos;
+        if (convert) {
+            mapPos = Graficos.getNormalizedCoordinates(x, y);
+        } else {
+            mapPos = {x: x, y: y};
+        }
         let ref = new Reference({x: mapPos.x, y: mapPos.y});
         this.addRefKey(ref);
         this.addRefHash(ref);

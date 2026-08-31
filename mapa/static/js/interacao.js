@@ -360,9 +360,6 @@ async function saveMapState(data) {
         console.error('Usuário não autorizado.');
             return;
         }
-
-        const result = await response.json();
-        console.log('Successo:', result);
     } catch (error) {
         console.error('Erro de rede:', error);
     }
@@ -641,5 +638,7 @@ export function addListeners(map) {
         buildModalBtn.addEventListener("click", handleBuildSubmit);
 
         confirmBtn.addEventListener("click", handleConfirm);
+
+        Editor.load();
     }
 }
