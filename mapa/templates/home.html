@@ -12,10 +12,21 @@
         <img src="{% static 'img/logo.png' %}" width="300" alt="Logo do Mapa CNAT">
     </a>
     <div id="autenticar">
+        {% if is_authenticated %}
         <button class="botao">
-            <i class="fa-solid fa-user"></i>
-            <a href="{% url 'login' %}">Login</a>
+            <i class="fa-solid fa-user" onclick="window.location.href = '{% url 'logout' %}'"></i>
+            <a href="{% url 'logout' %}">Sair</a>
         </button>
+        {% else %}
+        <button class="botao" onclick="window.location.href = '{% url 'login' %}'">
+            <i class="fa-solid fa-user"></i>
+            <a href="{% url 'login' %}">Entrar</a>
+        </button>
+        <button class="botao alt-botao" onclick="window.location.href = '{% url 'register' %}'">
+            <i class="fa-solid fa-user"></i>
+            <a href="{% url 'register' %}">Cadastrar</a>
+        </button>
+        {% endif %}
     </div>
 </header>
 <main>

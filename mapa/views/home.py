@@ -4,4 +4,8 @@ from typing import Any
 
 def home(request: Any):
     template = loader.get_template('home.html')
-    return HttpResponse(template.render())
+    context = {
+            # "user": request.user,
+            "is_authenticated": request.user.is_authenticated
+        }
+    return HttpResponse(template.render(context))

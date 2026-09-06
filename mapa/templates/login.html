@@ -12,11 +12,27 @@
 </head>
 <body>
 
-    <div class="login-box">
+    <form class="login-box" method="POST" action="">
 
         <h2>LOGIN</h2>
 
-        <div class="input-group">
+        {% if message is not None %}
+            <div class="alert alert-{{ message.type }}">{{ message.text }}</div>
+        {% endif %}
+
+        {% csrf_token %}
+        {% for f in form %}
+            <div class="form-group input-group">
+        {{ f.label }}
+        {{ f }}
+        {% for error in f.errors %}
+            <div class="invalid-feedback" style="display: initial;">{{ error }}</div>
+
+        {% endfor %}
+            </div>
+        {% endfor %}
+
+        <!-- <div class="input-group">
             <label>EMAIL</label>
             <input type="email" placeholder="seu.nome@email.com">
         </div>
@@ -30,7 +46,7 @@
                     <i class="fa-regular fa-eye"></i>
                 </button>
             </div>
-        </div>
+        </div> -->
 
         <button class="btn-login">ENTRAR</button>
 
@@ -38,7 +54,7 @@
             <img src="{% static 'img/logo-pequeno.png' %}" alt="Logo">
         </div>
 
-    </div>
+    </form>
 
 </body>
 </html>

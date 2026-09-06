@@ -30,14 +30,11 @@ body{
 
 .campo{
     margin-bottom:18px;
-}
-
-.campo label{
     display:block;
-    color:#666;
+    color:#ffffff;
     font-size:16px;
     margin-bottom:6px;
-    text-transform:uppercase;
+    font-family:Arial, Helvetica, sans-serif;
 }
 
 .campo input{
@@ -97,4 +94,8 @@ body{
 .logo img{
     float: right;
     width:50px;
+}
+
+.invalid-feedback {
+    color: rgb(255, 87, 87);
 }

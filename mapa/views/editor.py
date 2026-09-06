@@ -5,11 +5,15 @@ from django.template import loader
 from typing import Any
 import json
 from ..models import *
+from django.contrib.auth.decorators import login_required
 
+
+@login_required
 def mapa_editor(request: Any):
     template = loader.get_template('mapa-editor.html')
     return HttpResponse(template.render())
 
+@login_required
 @ensure_csrf_cookie
 def mapa_editor_data(request: Any):
     

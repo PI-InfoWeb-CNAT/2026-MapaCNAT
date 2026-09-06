@@ -17,13 +17,17 @@ header img {
 }
 header #autenticar {
     margin: var(--page-margin) var(--page-margin) 0 auto;
+    display: block;
+}
+header #autenticar button {
+    display: inline;
 }
 header button {
     background-color: rgba(0, 0, 0, 0);
     border: 2px solid var(--dark-green-main);
     border-radius: 10px;
     font-size: 1em;
-    padding: .5em 2em;
+    padding: .5em 1em;
 }
 header a, header i {
     color: var(--dark-green-main);
@@ -47,6 +51,12 @@ main button {
 }
 .botao:hover {
     cursor: pointer;
+}
+.alt-botao {
+    background-color: var(--dark-green-main);
+}
+.alt-botao a, .alt-botao i {
+    color: white;
 }
 main a {
     margin: 0 1em;

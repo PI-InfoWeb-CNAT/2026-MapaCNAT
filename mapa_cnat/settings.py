@@ -52,6 +52,11 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'mapa_cnat.urls'
 
+AUTHENTICATION_BACKENDS = [
+    "mapa.backends.email.EmailBackend",
+    "django.contrib.auth.backends.ModelBackend",  # mantém login por username em outros lugares (admin, etc.)
+]
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
