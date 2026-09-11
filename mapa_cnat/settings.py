@@ -52,6 +52,11 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'mapa_cnat.urls'
 
+AUTHENTICATION_BACKENDS = [
+    "mapa.backends.email.EmailBackend",
+    "django.contrib.auth.backends.ModelBackend",  # mantém login por username em outros lugares (admin, etc.)
+]
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -117,7 +122,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.0/howto/static-files/
 
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),
+    os.path.join(BASE_DIR, 'mapa\\static'),
 ]
 
 # Default primary key field type

@@ -12,64 +12,34 @@
     <link rel="stylesheet"
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 </head>
-<body>
+    <body>
 
-<div class="card">
+        <form class="card" method="POST" action="">
 
-    <h1>CADASTRO</h1>
+            <h1>CADASTRO</h1>
 
-    <div class="campo">
-        <label>NOME COMPLETO</label>
-        <input type="text" placeholder="Seu Nome Completo">
-    </div>
+            {% if message is not None %}
+                <div class="alert alert-{{ message.type }} campo">{{ message.text }}</div>
+            {% endif %}
 
-    <div class="campo">
-        <label>EMAIL</label>
-        <input type="email" placeholder="seu.nome@email.com">
-    </div>
+            {% csrf_token %}
+            {% for f in form %}
+                <div class="form-group campo">
+            {{ f.label }}
+            {{ f }}
+            {% for error in f.errors %}
+                <div class="invalid-feedback" style="display: initial;">{{ error }}</div>
 
-    <div class="campo">
-        <label>SENHA</label>
-        <input type="password" placeholder="Sua senha ultra-secreta">
-    </div>
+            {% endfor %}
+                </div>
+            {% endfor %}
 
-    <div class="campo">
-        <label>CONFIRMAR SENHA</label>
+            <button class="btn">CRIAR CONTA</button>
 
-        <div class="senha">
-            <input type="password" id="confirmarSenha" placeholder="Sua senha ultra-secreta">
+            <div class="logo">
+                <img src="{% static 'img/logo-pequeno.png' %}" alt="Logo">
+            </div>
 
-            <button type="button" id="mostrarSenha">
-                <i class="fa-regular fa-eye"></i>
-            </button>
-        </div>
-    </div>
-
-    <button class="btn">CRIAR CONTA</button>
-
-    <div class="logo">
-        <img src="{% static 'img/logo-pequeno.png' %}" alt="Logo">
-    </div>
-
-</div>
-
-<script>
-const senha = document.getElementById("confirmarSenha");
-const btn = document.getElementById("mostrarSenha");
-const icon = btn.querySelector("i");
-
-btn.addEventListener("click", () => {
-
-    if(senha.type === "password"){
-        senha.type = "text";
-        icon.classList.replace("fa-eye","fa-eye-slash");
-    }else{
-        senha.type = "password";
-        icon.classList.replace("fa-eye-slash","fa-eye");
-    }
-
-});
-</script>
-
-</body>
+        </form>
+    </body>
 </html>

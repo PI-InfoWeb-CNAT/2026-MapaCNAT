@@ -32,9 +32,6 @@ body{
 
 .input-group{
     margin-bottom:18px;
-}
-
-.input-group label{
     color:#fff;
     display:block;
     margin-bottom:8px;

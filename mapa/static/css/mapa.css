@@ -332,3 +332,12 @@ header {
     margin: var(--body-margin) 0;
     height: calc(100vh - 2 * 56px - 4 * var(--body-margin));
 }
+
+#screen-ui {
+    position: absolute;
+    right: 0;
+}
+#save {
+    position: absolute;
+    right: 0;
+}
