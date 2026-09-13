@@ -130,7 +130,7 @@ export function newPin(x, y, text) {
     buildPino.x = x;
     buildPino.y = y;
     buildPino.scale.set(1 / zoom / 7.5);
-
+    
     pinContainer.addChild(buildPino);
 
     const nodeLabel = new PIXI.Text({
@@ -219,17 +219,21 @@ export function newReference(x, y, temp=false) {
 
     return point;
 }
-export function updateReference(graphics, x, y, temp=false) {
+export function updateReference(graphics, x, y, temp=false, isFocus=false) {
     let alpha = 1;
     if (temp) {
         alpha = .5;
+    }
+    let cols = [0xffffff, 0x4000ff];
+    if (isFocus) {
+        cols = [0x8888ff, 0x4000ff];
     }
 
     graphics
     .clear()
     .circle(x, y, 10 / zoom)
-    .fill({ color: 0xffffff, alpha: alpha})
-    .stroke({ width: 4 / zoom, color: 0x4000ff });
+    .fill({ color: cols[0], alpha: alpha})
+    .stroke({ width: 4 / zoom, color: cols[1] });
 }
 
 export function removeReference(graphics) {    

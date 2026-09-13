@@ -341,3 +341,10 @@ header {
     position: absolute;
     right: 0;
 }
+#expand-banner {
+    position: absolute;
+    right: 0;
+    top: 50vh;
+    transform: translate(0, -50%);
+    height: 150px !important;
+}

@@ -496,6 +496,10 @@ export class Referencer {
         return data;
     }
 
+    static drawMode(object) {
+        Graficos.updateReference(object.graphics, object.pos.x, object.pos.y, false, object.isFocus);
+    }
+
     static addSelection(ref, x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
         let offx = mapPos.x - ref.pos.x;
@@ -636,22 +640,12 @@ export class Referencer {
         
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
         ref.pos = mapPos;
-        Graficos.updateReference(ref.graphics, mapPos.x, mapPos.y);
+        Graficos.updateReference(ref.graphics, mapPos.x, mapPos.y, ref.isFocus);
         for(const conn of ref.lines) {
             Graficos.updateConnection(conn.graphics, conn.end.pos.x, conn.end.pos.y, conn.start.pos.x, conn.start.pos.y);
         }
         
         this.addRefHash(ref);
-        // for(const line of ref.lines) {
-        //     Graficos.setRouteLine(line, line.end.pos);
-        // }
-
-        // location = this.convertPos(ref.pos);
-        // key = this.posKey(location);
-        // if (!(key in this.hashMap)) {
-        //     this.hashMap[key] = [];
-        // }
-        // this.hashMap[key].push(ref);
     }
 
     static setReferenceObj(obj) {
@@ -667,5 +661,6 @@ export class Reference {
         this.graphics = Graficos.newReference(this.pos.x, this.pos.y);
 
         this.lines = [];
+        this.isFocus = false;
     }
 }

@@ -6,10 +6,13 @@ let buildBtn;
 let referenceBtn;
 let connectionBtn;
 let saveBtn;
+let expandBannerBtn;
 
 let selectionBtn;
 let deleteBtn;
 let confirmBtn;
+
+let focusObjects = [];
 
 let clicking = false;
 let touching = false;
@@ -118,6 +121,19 @@ class Touch {
     static end(e) {
         touching = false;
     }
+}
+
+function isInside(event, target) {
+    const element = typeof target === 'string' ? document.querySelector(target) : target;
+    
+    if (!element) return false;
+
+    const rect = element.getBoundingClientRect();
+    
+    return event.clientX >= rect.left && 
+           event.clientX <= rect.right && 
+           event.clientY >= rect.top && 
+           event.clientY <= rect.bottom;
 }
 
 class Pointer {
@@ -254,6 +270,7 @@ class Pointer {
             } else if (editorMode == EditorModes.SELECTION) {
                 for(const obj of Editor.Referencer.selection) {
                     Editor.Referencer.moveRef(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
+                    Actions.addFocus([obj.obj]);
                 }
                 for(const obj of Editor.Builder.selection) {
                     if (obj.obj instanceof Editor.Region) {
@@ -280,6 +297,13 @@ class Pointer {
                 Actions.sendRegion();
                 Actions.removeTempRegion();
             } else if (editorMode == EditorModes.SELECTION) {
+                if (!isInside(e, expandBannerBtn)) {
+                    let focusList = []
+                    if (Editor.Referencer.selection.length > 0) {
+                        focusList.push(Editor.Referencer.selection[0].obj);
+                    }
+                    Actions.addFocus(focusList);
+                }
                 Actions.clearSelection();
             }
         }
@@ -366,6 +390,9 @@ async function saveMapState(data) {
 }
 
 class Actions {
+    static toggleBanner() {
+        return;
+    }
     static createReference(x, y) {
         Editor.Referencer.createReference(x, y);
     }
@@ -402,6 +429,38 @@ class Actions {
     static clearSelection() {
         Editor.Referencer.clearSelection();
         Editor.Builder.clearSelection();
+    }
+
+    static addFocus(objects) {
+        if (focusObjects) {
+            for (const object of focusObjects) {
+                object.isFocus = false;
+                if (object instanceof Editor.Reference) {
+                    Editor.Referencer.drawMode(object);
+                }
+            }
+        }
+        focusObjects = objects;
+        
+        for (const object of objects) {
+            object.isFocus = true;
+            if (object instanceof Editor.Reference) {
+                Editor.Referencer.drawMode(object);
+            }
+        }
+        if (focusObjects.length > 0) {
+            this.showBanner();
+        } else {
+            this.hideBanner();
+        }
+    }
+
+    static showBanner() {
+        expandBannerBtn.classList.remove("hidden");
+    }
+
+    static hideBanner() {
+        expandBannerBtn.classList.add("hidden");
     }
 
     static removeTempConnection() {
@@ -601,6 +660,7 @@ export function addListeners(map) {
         referenceBtn = document.getElementById("reference");
         connectionBtn = document.getElementById("conection");
         saveBtn = document.getElementById("save");
+        expandBannerBtn = document.getElementById("expand-banner");
 
         selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
@@ -633,7 +693,8 @@ export function addListeners(map) {
         selectionBtn.addEventListener("click", () => Actions.goToMode(EditorModes.SELECTION));
         deleteBtn.addEventListener("click", () => Actions.goToMode(EditorModes.DELETION));
 
-        saveBtn.addEventListener("click", () => Actions.save());
+        saveBtn.addEventListener("click", Actions.save);
+        expandBannerBtn.addEventListener("click", Actions.toggleBanner);
         
         buildModalBtn.addEventListener("click", handleBuildSubmit);
 
