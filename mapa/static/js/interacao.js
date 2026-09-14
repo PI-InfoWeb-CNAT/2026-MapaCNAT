@@ -7,6 +7,7 @@ let referenceBtn;
 let connectionBtn;
 let saveBtn;
 let expandBannerBtn;
+let bannerTab;
 
 let selectionBtn;
 let deleteBtn;
@@ -391,7 +392,7 @@ async function saveMapState(data) {
 
 class Actions {
     static toggleBanner() {
-        return;
+        bannerTab.classList.toggle("hidden");
     }
     static createReference(x, y) {
         Editor.Referencer.createReference(x, y);
@@ -590,7 +591,7 @@ class Actions {
     }
 
     static OpenModal() {
-        const overlay = document.getElementById('buildModalOverlay');
+        const overlay = document.getElementById('build-modal-overlay');
         overlay.classList.add('active');
     }
     static pinMode(bool) {
@@ -609,7 +610,7 @@ function handleBuildSubmit(event) {
 
     Actions.createTempConstruction(buildName);
 
-    document.getElementById('buildModalOverlay').classList.remove('active');
+    document.getElementById('build-modal-overlay').classList.remove('active');
     document.getElementById('buildForm').reset();
 
     Actions.pinMode(true);
@@ -661,6 +662,7 @@ export function addListeners(map) {
         connectionBtn = document.getElementById("conection");
         saveBtn = document.getElementById("save");
         expandBannerBtn = document.getElementById("expand-banner");
+        bannerTab = document.getElementById("banner");
 
         selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
@@ -668,11 +670,11 @@ export function addListeners(map) {
         confirmBtn = document.getElementById("submit");
         
         const buildModalBtn = document.getElementById("buildFormSubmit");
-        const buildOverlay = document.getElementById('buildModalOverlay');
-        const buildCloseBtn = document.getElementById('closeBuildModal');
+        const buildOverlay = document.getElementById('build-modal-overlay');
+        const buildCloseBtn = document.getElementById('close-build-modal');
 
         const closeBuildModal = () => {
-            document.getElementById('buildModalOverlay').classList.remove('active');
+            document.getElementById('build-modal-overlay').classList.remove('active');
             document.getElementById('buildForm').reset();
 
             Actions.goToMode();

@@ -335,16 +335,31 @@ header {
 
 #screen-ui {
     position: absolute;
+    display: flex;
+    flex-direction: row;
     right: 0;
+    height: 100vh;
 }
+#screen-ui > article:first-of-type {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+}
+
 #save {
-    position: absolute;
-    right: 0;
+    flex-shrink: 0;
 }
 #expand-banner {
-    position: absolute;
-    right: 0;
-    top: 50vh;
-    transform: translate(0, -50%);
     height: 150px !important;
+
+    margin-top: auto;
+    margin-bottom: auto; 
+    flex-shrink: 0;
+}
+#banner {
+    width: 500px;
+    background-color: white;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    padding: var(--body-margin);
 }

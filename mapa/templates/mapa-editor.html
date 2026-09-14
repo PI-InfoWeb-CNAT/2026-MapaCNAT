@@ -31,15 +31,23 @@
 
 <main>
     <section id="screen-ui">
-        <button class="padding icon editor-button" id="save"><i class="fa-solid fa-save"></i></button>
-        <button class="padding icon editor-button hidden" id="expand-banner"><i class="fa-solid fa-angles-right"></i></button>
+        <article>
+            <button class="padding icon editor-button" id="save"><i class="fa-solid fa-save"></i></button>
+            
+            <button class="padding icon editor-button hidden" id="expand-banner"><i class="fa-solid fa-angles-right"></i></button>
+        </article>
+        
+        <article class="hidden" id="banner">
+            <p>aaa</p>
+        </article>
     </section>
+    
 
     <div id="map"></div>
     
-    <div class="modal-overlay" id="buildModalOverlay">
+    <div class="modal-overlay" id="build-modal-overlay">
         <div class="modal-box">
-            <button type="button" class="modal-close" id="closeBuildModal">&times;</button>
+            <button type="button" class="modal-close" id="close-build-modal">&times;</button>
             <form class="modal-form" id="buildForm">
                 <h3>Nova Construção</h3>
                 <div class="form-group">
