@@ -8,6 +8,16 @@ let connectionBtn;
 let saveBtn;
 let expandBannerBtn;
 let bannerTab;
+let imageInput;
+let imageWrapper;
+let imageLabel;
+let bannerTitle;
+let bannerDescription;
+let tempFile;
+let pinMap;
+let bannerMap;
+let previousTitle;
+let mapInterface;
 
 let selectionBtn;
 let deleteBtn;
@@ -148,8 +158,25 @@ class Pointer {
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
         clicking = true;
+        if (page == "main") {
+            let colRegion = Editor.Builder.getCollisionPin(pinMap, clickX, clickY);
+            if (colRegion) {
+                mapInterface.classList.remove("hidden");
+                
+                let banner = bannerMap[colRegion.text];
 
-        if (page == "editor") {
+                imageLabel.classList.remove("hidden");
+                if (banner.image) {
+                    imageLabel.src = banner.image;
+                } else {
+                    image.classList.add("hidden");
+                }
+                bannerTitle.innerHTML = banner.title;
+                bannerDescription.innerHTML = banner.description;
+            } else {
+                mapInterface.classList.add("hidden");
+            }
+        } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
                 Actions.createReference(clickX, clickY);
                 
@@ -236,9 +263,27 @@ class Pointer {
 
     static move(e) {
         if (page == "main") {
-            if (!clicking) return;
-            
-            Pointer.defaultMove(e);
+            if (clicking) {
+                Pointer.defaultMove(e);
+            } else {
+                if (!pinMap) return;
+                let colRegion = Editor.Builder.getCollisionPin(pinMap, e.clientX, e.clientY);
+                document.body.style.cursor = 'default';
+                if (colRegion) {
+                    let gfxObj = {"pin": colRegion.gfx, "label": colRegion.label};
+                    Graficos.updatePin(gfxObj, colRegion.x, colRegion.y, colRegion.text, true);
+                    colRegion.gfx = gfxObj.pin;
+                    colRegion.label = gfxObj.label;
+                    document.body.style.cursor = 'pointer';
+                    
+                    previousTitle = colRegion;
+                } else if (previousTitle) {
+                    let gfxObj = {"pin": previousTitle.gfx, "label": previousTitle.label};
+                    Graficos.updatePin(gfxObj, previousTitle.x, previousTitle.y, previousTitle.text, false);
+                    previousTitle.gfx = gfxObj.pin;
+                    previousTitle.label = gfxObj.label;
+                }
+            }
             
         } else if (page == "editor") {
             if (editorMode == EditorModes.FREE) {
@@ -280,6 +325,7 @@ class Pointer {
                     }
                     if (obj.obj instanceof Editor.Pin) {
                         Editor.Builder.movePin(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
+                        Actions.addFocus([obj.obj]);
                     }
                 }
             }
@@ -298,10 +344,13 @@ class Pointer {
                 Actions.sendRegion();
                 Actions.removeTempRegion();
             } else if (editorMode == EditorModes.SELECTION) {
-                if (!isInside(e, expandBannerBtn)) {
+                if (!isInside(e, expandBannerBtn) && !isInside(e, bannerTab)) {
                     let focusList = []
                     if (Editor.Referencer.selection.length > 0) {
                         focusList.push(Editor.Referencer.selection[0].obj);
+                    }
+                    if (Editor.Builder.selection.length > 0) {
+                        focusList.push(Editor.Builder.selection[0].obj);
                     }
                     Actions.addFocus(focusList);
                 }
@@ -373,11 +422,10 @@ async function saveMapState(data) {
         let req = {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`,
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify(data)
+            body: data
         }
         const response = await fetch(url, req);
 
@@ -441,6 +489,9 @@ class Actions {
                 }
             }
         }
+        if (focusObjects[0]) {
+            Actions.saveBanner(focusObjects[0]);
+        }
         focusObjects = objects;
         
         for (const object of objects) {
@@ -450,18 +501,45 @@ class Actions {
             }
         }
         if (focusObjects.length > 0) {
-            this.showBanner();
+            this.showBanner(focusObjects[0]);
         } else {
             this.hideBanner();
         }
     }
 
-    static showBanner() {
-        expandBannerBtn.classList.remove("hidden");
+    static saveBanner(oldObject) {
+        let image = tempFile;
+        let title = bannerTitle.value;
+        let description = bannerDescription.value;
+
+        Editor.Banner.saveBanner(oldObject, image, title, description);
+
+        tempFile = null;
     }
 
+    static showBanner(obj) {
+        expandBannerBtn.classList.remove("hidden");
+        let banner = obj.banner;
+        if (obj instanceof Editor.Pin) {
+            banner = obj.construction.banner;
+        }
+        resetDisplayImage();
+        if (banner) {
+            if (banner.file) {
+                setDisplayImage(banner.file);
+            }
+            bannerTitle.value = banner.title;
+            bannerDescription.value = banner.description;
+        }
+        else {
+            bannerTitle.value = "";
+            bannerDescription.value = "";
+        }
+    }
+    
     static hideBanner() {
         expandBannerBtn.classList.add("hidden");
+        bannerTab.classList.add("hidden");
     }
 
     static removeTempConnection() {
@@ -582,12 +660,19 @@ class Actions {
         let refs = Editor.Referencer.toJson();
         let builds = Editor.Builder.toJson();
         let conn = Editor.Connections.toJson();
-        let data = {
+
+        let formData = Editor.Banner.toJson();
+
+        let mapData = {
             "references": refs,
             "buildings": builds,
-            "connections": conn
-        }
-        saveMapState(data);
+            "connections": conn,
+            "banners": Editor.Banner.bannerJson()
+        };
+
+        formData.append("data", JSON.stringify(mapData));
+
+        saveMapState(formData);
     }
 
     static OpenModal() {
@@ -617,16 +702,46 @@ function handleBuildSubmit(event) {
 }
 
 function handleConfirm(event) {
-    // Editor.Builder.buildings.push(currBuild);
-    
-    // currBuild.generatePolygon();
-
     Actions.finishBuild();
 
     Actions.goToMode();
-    // Actions.commitBuild();
 
     confirmBtn.classList.add("hidden");
+}
+
+export async function setMaps(data) {
+    pinMap = data.pinMap;
+    bannerMap = data.bannerMap;
+}
+
+function setDisplayImage(file) {
+    const reader = new FileReader();
+        
+    reader.onload = function (event) {
+        imageWrapper.style.backgroundImage = `url('${event.target.result}')`;
+        imageWrapper.style.borderStyle = 'solid';
+        
+        imageLabel.textContent = 'substituir imagem';
+    };
+
+    reader.readAsDataURL(file);
+}
+
+function resetDisplayImage() {
+    imageInput.value = '';
+
+    imageWrapper.style.backgroundImage = 'none';
+    imageWrapper.style.borderStyle = '';
+
+    imageLabel.textContent = 'adicionar imagem +';
+}
+
+function updateImageDisplay(e) {
+    const file = e.target.files[0];
+    if (file) {
+        setDisplayImage(file);
+    }
+    tempFile = file;
 }
 
 export function addListeners(map) {
@@ -642,12 +757,20 @@ export function addListeners(map) {
         event.preventDefault();
     });
 
+    bannerTab = document.getElementById("banner");
+
     if (page == "main") {
         const orientationBtn = document.getElementById('orientation');
         const optionsBtn = document.getElementById('options');
         const closeBtn = document.getElementById('close-sidebar');
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebar-backdrop');
+
+        mapInterface = document.getElementById('screen-ui');
+
+        imageLabel = document.getElementById("banner-image");
+        bannerTitle = document.getElementById("banner-title");
+        bannerDescription = document.getElementById("banner-description");
 
         const closeMenu = () => deactivateList([sidebar, backdrop]);
 -
@@ -661,8 +784,13 @@ export function addListeners(map) {
         referenceBtn = document.getElementById("reference");
         connectionBtn = document.getElementById("conection");
         saveBtn = document.getElementById("save");
+
         expandBannerBtn = document.getElementById("expand-banner");
-        bannerTab = document.getElementById("banner");
+        imageInput = document.getElementById("banner-image-input");
+        imageWrapper = document.getElementById("image-upload-wrapper");
+        imageLabel = document.getElementById("image-upload-label");
+        bannerTitle = document.getElementById("place-name");
+        bannerDescription = document.getElementById("place-description");
 
         selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
@@ -670,19 +798,19 @@ export function addListeners(map) {
         confirmBtn = document.getElementById("submit");
         
         const buildModalBtn = document.getElementById("buildFormSubmit");
-        const buildOverlay = document.getElementById('build-modal-overlay');
-        const buildCloseBtn = document.getElementById('close-build-modal');
+        const buildOverlay = document.getElementById("build-modal-overlay");
+        const buildCloseBtn = document.getElementById("close-build-modal");
 
         const closeBuildModal = () => {
-            document.getElementById('build-modal-overlay').classList.remove('active');
-            document.getElementById('buildForm').reset();
+            document.getElementById("build-modal-overlay").classList.remove("active");
+            document.getElementById("buildForm").reset();
 
             Actions.goToMode();
         }
 
-        buildCloseBtn.addEventListener('click', closeBuildModal);
+        buildCloseBtn.addEventListener("click", closeBuildModal);
 
-        buildOverlay.addEventListener('click', (e) => {
+        buildOverlay.addEventListener("click", (e) => {
             if (e.target === buildOverlay) {
                 closeBuildModal();
             }
@@ -691,16 +819,15 @@ export function addListeners(map) {
         buildBtn.addEventListener("click", () => Actions.goToMode(EditorModes.CONSTRUCTION));
         referenceBtn.addEventListener("click", () => Actions.goToMode(EditorModes.REFERENCE));
         connectionBtn.addEventListener("click", () => Actions.goToMode(EditorModes.CONNECTION));
-
         selectionBtn.addEventListener("click", () => Actions.goToMode(EditorModes.SELECTION));
         deleteBtn.addEventListener("click", () => Actions.goToMode(EditorModes.DELETION));
 
         saveBtn.addEventListener("click", Actions.save);
-        expandBannerBtn.addEventListener("click", Actions.toggleBanner);
-        
         buildModalBtn.addEventListener("click", handleBuildSubmit);
-
         confirmBtn.addEventListener("click", handleConfirm);
+
+        expandBannerBtn.addEventListener("click", Actions.toggleBanner);
+        imageInput.addEventListener("change", e => updateImageDisplay(e));
 
         Editor.load();
     }

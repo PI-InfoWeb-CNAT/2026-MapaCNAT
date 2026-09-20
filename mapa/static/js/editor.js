@@ -1,38 +1,91 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
 
+async function urlToFile(url, filename = 'banner.png') {
+    if (!url) return null;
+    const response = await fetch(url);
+    const blob = await response.blob();
+    
+    const mimeType = blob.type || 'image/png'; 
+    return new File([blob], filename, { type: mimeType });
+}
+
 export async function load() {
-  try {
+    try {
         const response = await fetch(URLSaveMap);
         if (!response.ok) throw new Error('Erro de rede');
         const data = await response.json();
         
-        let refMap = {}
+        let refMap = {};
+        let buildMap = {};
 
-        for(const key of Object.keys(data.references)) {
-            let ref = data.references[key];
-            let objRef = Referencer.createReference(ref.pos.x, ref.pos.y, false);
-            refMap[key] = objRef;
-        }
-        for(const conn of data.connections) {
-            Connections.createConnection(refMap[conn[0]], refMap[conn[1]]);
-        }
-        for(const build of data.buildings) {
-            let regions = [];
-            for(const area of build.areas) {
-                let end = {
-                    x: area.pos.x + area.size.x,
-                    y: area.pos.y + area.size.y,
-                }
-                let reg = Builder.createRegionObject({start: area.pos, end: end});
-                regions.push(reg);
+        if (data.references) {
+            for (const key of Object.keys(data.references)) {
+                let ref = data.references[key];
+                let objRef = Referencer.createReference(ref.pos.x, ref.pos.y, false);
+                refMap[key] = objRef;
             }
-            let building = Builder.createConstruction({
-                name: build.name,
-                pin: build.pin_pos,
-                regions: regions
-            })
-            Builder.convertGraphical(building, "polygon");
+        }
+
+        if (data.connections) {
+            for (const conn of data.connections) {
+                let startObj = refMap[conn[0]];
+                let endObj = refMap[conn[1]];
+                if (startObj) {
+                    Connections.createConnection(startObj, endObj);
+                }
+            }
+        }
+
+        if (data.buildings) {
+            for (const key of Object.keys(data.buildings)) {
+                let build = data.buildings[key];
+                let regions = [];
+
+                for (const area of build.areas) {
+                    let end = {
+                        x: area.pos.x + area.size.x,
+                        y: area.pos.y + area.size.y,
+                    };
+                    let reg = Builder.createRegionObject({ start: area.pos, end: end });
+                    regions.push(reg);
+                }
+
+                let building = Builder.createConstruction({
+                    name: build.name,
+                    pin: build.pin_pos,
+                    regions: regions
+                });
+
+                Builder.convertGraphical(building, "polygon");
+                
+                buildMap[key] = building;
+            }
+        }
+
+        if (data.banners) {
+            for (const key of Object.keys(data.banners)) {
+                let banner = data.banners[key];
+                
+                let parentObj = banner.isRef ? refMap[key] : buildMap[key];
+
+                if (parentObj) {
+                    const fileName = banner.imageUrl ? banner.imageUrl.split('/').pop() : `banner_${key}.png`;
+                    
+                    const imageFile = banner.imageUrl 
+                        ? await urlToFile(banner.imageUrl, fileName) 
+                        : null;
+
+                    Banner.saveBanner(
+                        parentObj,
+                        imageFile,
+                        banner.title,
+                        banner.description
+                    );
+                } else {
+                    console.warn(`Parent object for banner key '${key}' not found.`);
+                }
+            }
         }
 
     } catch (error) {
@@ -239,7 +292,7 @@ export class Builder {
     static selection = [];
 
     static toJson() {
-        let jsonBuildings = [];
+        let jsonBuildings = {};
         for(const build of this.buildings) {
             let areas = [];
             for(const area of build.areas) {
@@ -255,7 +308,7 @@ export class Builder {
                 "areas": areas
             }
 
-            jsonBuildings.push(jsonBuild);
+            jsonBuildings[build.name] = jsonBuild;
         }
         return jsonBuildings;
     }
@@ -392,6 +445,19 @@ export class Builder {
         return false;
     }
 
+    static getCollisionPin(pinMap, x, y) {
+        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        for (const pin of Object.values(pinMap)) {
+            let texWid = pin.label.getSize();
+            let horizontal = Math.abs(mapPos.x - (pin.x + texWid.width / 2)) < (12 + texWid.width / 2) / Graficos.zoom;
+            let vertical = Math.abs(mapPos.y - pin.y + 16 / Graficos.zoom) < 16 / Graficos.zoom;
+            if (horizontal && vertical) {
+                return pin;
+            }
+        }
+        return false;
+    }
+
     static getCollisionArea(construction, x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
         
@@ -461,6 +527,8 @@ export class Construction {
         this.polygon = null;
         this.polygonGraphics = null;
         this.construction = null;
+
+        this.banner = null;
     }
 }
 
@@ -662,5 +730,71 @@ export class Reference {
 
         this.lines = [];
         this.isFocus = false;
+
+        this.banner = null;
+    }
+}
+
+export class Banner {
+    static banners = []
+
+    static saveBanner(focus, image, title, description) {
+        if (focus instanceof Pin) {
+            focus = focus.construction;
+        }
+        if (focus.banner) {
+            if (image) {
+                focus.banner.file = image;
+            }
+            focus.banner.title = title;
+            focus.banner.description = description;
+            return;
+        }
+        let newBanner = new BannerObject(focus, image, title, description);
+        focus.banner = newBanner;
+        this.banners.push(newBanner);
+    }
+
+    static bannerJson() {
+        let data = {};
+        for (const banner of this.banners) {
+            let parent = banner.owner;
+            let key = (parent instanceof Reference) ? parent.id : parent.name;
+
+            data[key] = {
+                "fileName": banner.file ? banner.file.name : null,
+                "title": banner.title,
+                "description": banner.description,
+                "isRef": (parent instanceof Reference)
+            };
+        }
+        return data;
+    }
+
+    static toJson() {
+        const formData = new FormData();
+
+        const jsonData = this.bannerJson();
+        formData.append("metadata", JSON.stringify(jsonData));
+
+        for (const banner of this.banners) {
+            if (banner.file instanceof File) {
+                let parent = banner.owner;
+                let key = (parent instanceof Reference) ? parent.id : parent.name;
+
+                formData.append(`file_${key}`, banner.file, banner.file.name);
+            }
+        }
+
+        return formData;
+    }
+}
+
+export class BannerObject {
+    constructor(owner, file, title, description) {
+        this.owner = owner;
+        this.file = file;
+        this.title = title;
+        this.description = description;
     }
 }

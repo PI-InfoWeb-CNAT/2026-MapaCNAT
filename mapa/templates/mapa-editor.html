@@ -38,7 +38,36 @@
         </article>
         
         <article class="hidden" id="banner">
-            <p>aaa</p>
+            <form class="banner-form" id="bannerForm">
+                <label 
+                    for="banner-image-input" 
+                    class="image-upload-wrapper" 
+                    id="image-upload-wrapper">
+                    <span class="image-upload-label" id="image-upload-label">
+                        adicionar imagem +
+                    </span>
+                    <input 
+                        type="file" 
+                        id="banner-image-input" 
+                        accept="image/*">
+                </label>
+
+                <div class="banner-content">
+                    <input 
+                        type="text" 
+                        class="editable-title" 
+                        id="place-name" 
+                        placeholder="Nome da construção">
+
+                    <hr class="banner-divider">
+
+                    <textarea 
+                        class="editable-description" 
+                        id="place-description" 
+                        placeholder="Escreva uma descrição..."
+                    ></textarea>
+                </div>
+            </form>
         </article>
     </section>
     

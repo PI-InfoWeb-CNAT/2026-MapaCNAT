@@ -7,16 +7,7 @@
 {% block style %}<link rel="stylesheet" href="{% static 'css/mapa.css' %}">{% endblock %}
 
 {% block content %}
-<header>
-    <form id="search" class="padding" action="" method="get" role="search">
-        <img src="{% static 'img/logo-pequeno.png' %}">
-        <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
-        <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." required>
-    </form>
-    <button class="padding" id="options"><i class="fa-solid fa-bars"></i></button>
-</header>
-
-<main>
+<main id="app-layout">
     <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
     <div id="sidebar" class="sidebar">
@@ -31,10 +22,36 @@
         </nav>
     </div>
 
-    <div id="map"></div>
+    <!-- Map Container: Holds the UI elements that need to shrink -->
+    <div id="map-container">
+        <header>
+            <form id="search" class="padding" action="" method="get" role="search">
+                <img src="{% static 'img/logo-pequeno.png' %}">
+                <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
+                <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." required>
+            </form>
+            <button class="padding" id="options"><i class="fa-solid fa-bars"></i></button>
+        </header>
 
-    <button class="padding icon" id="orientation"><i class="fa-solid fa-compass"></i></button>
-    
+        <div id="map"></div>
+
+        <button class="padding icon" id="orientation"><i class="fa-solid fa-compass"></i></button>
+    </div>
+
+    <section id="screen-ui" class="hidden">
+        <article id="banner">
+            <div class="banner-image-container">
+                <img id="banner-image" src="" alt="Imagem do local">
+            </div>
+
+            <div class="banner-content">
+                <h1 id="banner-title" class="banner-title">Nome do Local</h1>
+                <hr class="banner-divider">
+                <p id="banner-description" class="banner-description">Descrição do local...</p>
+            </div>
+        </article>
+    </section>
+
     <script>
         const config = "{% static 'json/config.json' %}";
         const mapImage =  "{% static 'svg/mapa.svg' %}";
