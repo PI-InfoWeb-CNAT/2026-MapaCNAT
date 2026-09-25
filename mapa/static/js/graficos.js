@@ -130,7 +130,7 @@ export function newPin(x, y, text) {
     buildPino.x = x;
     buildPino.y = y;
     buildPino.scale.set(1 / zoom / 7.5);
-
+    
     pinContainer.addChild(buildPino);
 
     const nodeLabel = new PIXI.Text({
@@ -152,17 +152,24 @@ export function newPin(x, y, text) {
 
     return {pin: buildPino, label: nodeLabel};
 }
-export function updatePin(pin, x, y, text) {
+export function updatePin(pin, x, y, text, isSelected=false) {
     pin.pin.x = x;
     pin.pin.y = y;
     pin.pin.scale.set(1 / zoom / 7.5);
+
+    let color;
+    if (isSelected) {
+        color = "#2a60d3";
+    } else {
+        color = "black";
+    }
 
     const nodeLabel = new PIXI.Text({
         text: text,
         style: {
             fontFamily: 'Arial',
             fontSize: 28,
-            fill: textColor,
+            fill: color,
             align: 'center',
             stroke: { color: "white", width: 3 }
         }
@@ -219,17 +226,21 @@ export function newReference(x, y, temp=false) {
 
     return point;
 }
-export function updateReference(graphics, x, y, temp=false) {
+export function updateReference(graphics, x, y, temp=false, isFocus=false) {
     let alpha = 1;
     if (temp) {
         alpha = .5;
+    }
+    let cols = [0xffffff, 0x4000ff];
+    if (isFocus) {
+        cols = [0x8888ff, 0x4000ff];
     }
 
     graphics
     .clear()
     .circle(x, y, 10 / zoom)
-    .fill({ color: 0xffffff, alpha: alpha})
-    .stroke({ width: 4 / zoom, color: 0x4000ff });
+    .fill({ color: cols[0], alpha: alpha})
+    .stroke({ width: 4 / zoom, color: cols[1] });
 }
 
 export function removeReference(graphics) {    
@@ -483,7 +494,7 @@ function Zoom(z) {
     }
     let references = Editor.Referencer.references;
     for (const ref of Object.values(references)) {
-        updateReference(ref.graphics, ref.pos.x, ref.pos.y);
+        updateReference(ref.graphics, ref.pos.x, ref.pos.y, false, ref.isFocus);
     };
     Editor.Referencer.radius = 15 / zoom;
 

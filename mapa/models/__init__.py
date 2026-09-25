@@ -12,4 +12,5 @@ PERFIL = (
     (2, 'Usuario'),
 )
 
+from .banner import Banner
 from .perfil import UsuarioProfile

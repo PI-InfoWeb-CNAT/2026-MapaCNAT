@@ -31,14 +31,52 @@
 
 <main>
     <section id="screen-ui">
-        <button class="padding icon editor-button" id="save"><i class="fa-solid fa-save"></i></button>
+        <article>
+            <button class="padding icon editor-button" id="save"><i class="fa-solid fa-save"></i></button>
+            
+            <button class="padding icon editor-button hidden" id="expand-banner"><i class="fa-solid fa-angles-right"></i></button>
+        </article>
+        
+        <article class="hidden" id="banner">
+            <form class="banner-form" id="bannerForm">
+                <label 
+                    for="banner-image-input" 
+                    class="image-upload-wrapper" 
+                    id="image-upload-wrapper">
+                    <span class="image-upload-label" id="image-upload-label">
+                        adicionar imagem +
+                    </span>
+                    <input 
+                        type="file" 
+                        id="banner-image-input" 
+                        accept="image/*">
+                </label>
+
+                <div class="banner-content">
+                    <input 
+                        type="text" 
+                        class="editable-title" 
+                        id="place-name" 
+                        placeholder="Nome da construção">
+
+                    <hr class="banner-divider">
+
+                    <textarea 
+                        class="editable-description" 
+                        id="place-description" 
+                        placeholder="Escreva uma descrição..."
+                    ></textarea>
+                </div>
+            </form>
+        </article>
     </section>
+    
 
     <div id="map"></div>
     
-    <div class="modal-overlay" id="buildModalOverlay">
+    <div class="modal-overlay" id="build-modal-overlay">
         <div class="modal-box">
-            <button type="button" class="modal-close" id="closeBuildModal">&times;</button>
+            <button type="button" class="modal-close" id="close-build-modal">&times;</button>
             <form class="modal-form" id="buildForm">
                 <h3>Nova Construção</h3>
                 <div class="form-group">

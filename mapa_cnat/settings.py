@@ -12,6 +12,10 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 
 from pathlib import Path
 import os
+import mimetypes
+
+mimetypes.add_type('text/javascript', '.js')
+mimetypes.add_type('text/javascript', '.mjs')
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,7 +31,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
-
+LOGIN_URL = 'login'
 # Application definition
 
 INSTALLED_APPS = [
@@ -134,5 +138,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # see https://help.pythonanywhere.com/pages/DjangoStaticFiles for more info
 MEDIA_ROOT = '/home/pdsweb/mapa_cnat/media'
 MEDIA_URL = '/media/'
-STATIC_ROOT = '/home/pdsweb/mapa_cnat/static'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 STATIC_URL = '/static/'
