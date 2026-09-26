@@ -6,7 +6,9 @@ from typing import Any
 import json
 from ..models import *
 from django.contrib.auth.decorators import login_required
-
+import os
+import shutil
+from django.conf import settings
 
 @login_required
 def mapa_editor(request: Any):
@@ -25,7 +27,19 @@ def mapa_editor_data(request: Any):
             else:
                 data = json.loads(request.body)
 
+            banners_dir = os.path.join(settings.MEDIA_ROOT, "banners")
+
+            if os.path.exists(banners_dir):
+                for filename in os.listdir(banners_dir):
+                    path = os.path.join(banners_dir, filename)
+
+                    if os.path.isdir(path):
+                        shutil.rmtree(path)
+                    else:
+                        os.remove(path)
+
             with transaction.atomic():
+                            
                 Rota.objects.all().delete()
                 Referencia.objects.all().delete()
                 Construcao.objects.all().delete()
@@ -52,7 +66,7 @@ def mapa_editor_data(request: Any):
 
                 for conn in connections_data:
                     start_frontend_id = str(conn[0])
-                    end_frontend_id = str(conn[1]) if conn[1] else None
+                    end_frontend_id = str(conn[1])
 
                     start_db_id = id_to_db.get(start_frontend_id)
                     end_db_id = id_to_db.get(end_frontend_id) if end_frontend_id else None

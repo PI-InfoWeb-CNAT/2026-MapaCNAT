@@ -9,18 +9,30 @@ async function load() {
         const data = await response.json();
         
         let pins = {};
+        let constructionMap = {};
         for(const buildKey of Object.keys(data.buildings)) {
             let build = data.buildings[buildKey];
             let gfx = Graficos.newPin(build.pin_pos.x, build.pin_pos.y, build.name);
-            pins[buildKey] = {text: build.name, x: build.pin_pos.x, y: build.pin_pos.y, gfx: gfx.pin, label: gfx.label};
+            pins[buildKey] = {id: buildKey, text: build.name, x: build.pin_pos.x, y: build.pin_pos.y, gfx: gfx.pin, label: gfx.label};
+            
+            let regionList = [];
+            for(const area of build.areas) {
+                regionList.push({text: build.name, pos: area.pos, size: area.size});
+            }
+            constructionMap[buildKey] = regionList;
         }
 
         let bannerMap = {};
         for(const bannerKey of Object.keys(data.banners)) {
             let banner = data.banners[bannerKey];
+            if (banner.isRef) {
+                let ref = data.references[bannerKey];
+                let gfx = Graficos.newPin(ref.pos.x, ref.pos.y, banner.title);
+                pins[bannerKey] = {id: bannerKey, text: banner.title, x: ref.pos.x, y: ref.pos.y, gfx: gfx.pin, label: gfx.label};
+            }
             bannerMap[bannerKey] = {"title": banner.title, "description": banner.description, "image": banner.imageUrl};
         }
-        return {"pinMap": pins, "bannerMap": bannerMap};
+        return {"pinMap": pins, "constructionMap": constructionMap, "bannerMap": bannerMap};
 
     } catch (error) {
         console.error('Fetch error:', error);
@@ -29,7 +41,7 @@ async function load() {
 
 fetch(config)
 .then(response => response.json())
-.then(async (data) => { // 1. Added async here
+.then(async (data) => {
     data.page = "main";
 
     Graficos.setContext(data);
@@ -40,7 +52,8 @@ fetch(config)
     Interacao.addListeners(Graficos.map);
     Localizacao.UserLocation();
 
-    let mapData = await load(); 
+    let mapData = await load();
+
     Interacao.setMaps(mapData);
 
     Graficos.loadMapScales();

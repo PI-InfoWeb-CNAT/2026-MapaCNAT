@@ -425,6 +425,21 @@ export class Builder {
         }
     }
 
+    static getCollisionMapArea(x, y, map) {
+        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        for(const buildKey of Object.keys(map)) {
+            let build = map[buildKey];
+            for(const area of build) {
+                let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
+                let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
+                if (horizontal && vertical) {
+                    return {"text": buildKey, "obj": build};
+                }
+            }
+        }
+        return false;
+    }
+
     static getCollision(x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
 
@@ -750,6 +765,7 @@ export class Banner {
             focus.banner.description = description;
             return;
         }
+        if (!image && !title && !description) {return};
         let newBanner = new BannerObject(focus, image, title, description);
         focus.banner = newBanner;
         this.banners.push(newBanner);
@@ -757,6 +773,7 @@ export class Banner {
 
     static bannerJson() {
         let data = {};
+
         for (const banner of this.banners) {
             let parent = banner.owner;
             let key = (parent instanceof Reference) ? parent.id : parent.name;
