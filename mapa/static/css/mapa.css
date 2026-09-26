@@ -492,8 +492,10 @@ header {
     right: var(--body-margin);
 }
 
+.main-ui {
+    position: relative !important;
+}
 #screen-ui {
-    position: relative;
     height: 100vh;
     flex: 0 0 500px;
     transition: margin-right 0.3s ease;
