@@ -278,6 +278,51 @@ export function newConnection(x1, y1, x2=null, y2=null, temp=false) {
     return routeGraphics;
 }
 
+export function multiRouteDraw(points = [], temp = false) {
+    if (points.length < 2) return null;
+
+    let routeGraphics = new PIXI.Graphics();
+    let alpha = temp ? 0.5 : 1;
+    let radius = 10;
+
+    const buildPath = (g) => {
+        g.moveTo(points[0].x, points[0].y);
+
+        for (let i = 1; i < points.length - 1; i++) {
+            const p1 = points[i];
+            const p2 = points[i + 1];
+
+            g.arcTo(p1.x, p1.y, p2.x, p2.y, radius);
+        }
+
+        const last = points[points.length - 1];
+        g.lineTo(last.x, last.y);
+    };
+
+    buildPath(routeGraphics);
+    routeGraphics.stroke({
+        width: 16,
+        color: 0xffffff,
+        alpha: alpha,
+        cap: 'round',
+        join: 'round'
+    });
+
+    buildPath(routeGraphics);
+    routeGraphics.stroke({
+        width: 12,
+        color: 0x40c0ff,
+        alpha: alpha,
+        cap: 'round',
+        join: 'round'
+    });
+
+    routeGraphics.position.set(0, 0);
+    routeContainer.addChild(routeGraphics);
+
+    return routeGraphics;
+}
+
 export function updateConnection(graphics, x1, y1, x2, y2, temp=false) {    
     let alpha = 1;
     if (temp) {

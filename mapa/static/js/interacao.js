@@ -1,6 +1,7 @@
 import * as Transformacao from "./transformacao.js";
 import * as Graficos from "./graficos.js";
 import * as Editor from "./editor.js";
+import * as Rota from "./rota.js";
 
 let buildBtn;
 let referenceBtn;
@@ -16,9 +17,14 @@ let bannerDescription;
 let tempFile;
 let pinMap;
 let bannerMap;
+let refMap;
+let connMap;
 let constructionMap;
 let previousTitle;
 let mapInterface;
+let lastBannerObj;
+let routeDraw;
+let moved;
 
 let selectionBtn;
 let deleteBtn;
@@ -159,27 +165,9 @@ class Pointer {
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
         clicking = true;
+        moved = false;
         if (page == "main") {
-            let colPin = Editor.Builder.getCollisionPin(pinMap, clickX, clickY);
-            let colConstruction = Editor.Builder.getCollisionMapArea(clickX, clickY, constructionMap);
-            let resultBanner = colPin.id || colConstruction.text;
-
-            if (resultBanner) {
-                mapInterface.classList.remove("hidden");
-                
-                let banner = bannerMap[resultBanner];
-
-                imageLabel.classList.remove("hidden");
-                if (banner.image) {
-                    imageLabel.src = banner.image;
-                } else {
-                    imageLabel.classList.add("hidden");
-                }
-                bannerTitle.innerHTML = banner.title;
-                bannerDescription.innerHTML = banner.description;
-            } else {
-                mapInterface.classList.add("hidden");
-            }
+            return;
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
                 Actions.createReference(clickX, clickY);
@@ -271,6 +259,7 @@ class Pointer {
     }
 
     static move(e) {
+        moved = true;
         if (page == "main") {
             if (clicking) {
                 Pointer.defaultMove(e);
@@ -280,13 +269,19 @@ class Pointer {
                 let colConstruction = Editor.Builder.getCollisionMapArea(e.clientX, e.clientY, constructionMap);
                 let resultPin = colPin || pinMap[colConstruction.text];
 
-                document.body.style.cursor = 'default';
+                Graficos.map.style.cursor = 'default';
                 if (resultPin) {
+                    if (resultPin != previousTitle && previousTitle) {
+                        let gfxObj = {"pin": previousTitle.gfx, "label": previousTitle.label};
+                        Graficos.updatePin(gfxObj, previousTitle.x, previousTitle.y, previousTitle.text, false);
+                        previousTitle.gfx = gfxObj.pin;
+                        previousTitle.label = gfxObj.label;
+                    }
                     let gfxObj = {"pin": resultPin.gfx, "label": resultPin.label};
                     Graficos.updatePin(gfxObj, resultPin.x, resultPin.y, resultPin.text, true);
                     resultPin.gfx = gfxObj.pin;
                     resultPin.label = gfxObj.label;
-                    document.body.style.cursor = 'pointer';
+                    Graficos.map.style.cursor = 'pointer';
                     
                     previousTitle = resultPin;
                 } else if (previousTitle) {
@@ -327,7 +322,14 @@ class Pointer {
                 }
             } else if (editorMode == EditorModes.SELECTION) {
                 for(const obj of Editor.Referencer.selection) {
-                    Editor.Referencer.moveRef(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
+                    let colRegion = Editor.Builder.getClosestValidPosition(e.clientX - obj.offx, e.clientY - obj.offy);
+                    let pos = Graficos.getScreenCoordinates(colRegion.x, colRegion.y);
+                    if (colRegion.building) {
+                        Editor.Referencer.setRelatedBuilding(obj.obj, colRegion.building);
+                    } else if (obj.obj.building) {
+                        Editor.Referencer.setUnrelatedBuilding(obj.obj, obj.obj.building);
+                    }
+                    Editor.Referencer.moveRef(obj.obj, pos.x, pos.y);
                     Actions.addFocus([obj.obj]);
                 }
                 for(const obj of Editor.Builder.selection) {
@@ -346,7 +348,52 @@ class Pointer {
 
     static up(e) {
         clicking = false;
-        if (page == "editor") {
+        if (page == "main") {
+            if (moved) {
+                return;
+            }
+            let colPin = Editor.Builder.getCollisionPin(pinMap, e.clientX, e.clientY);
+            let colConstruction = Editor.Builder.getCollisionMapArea(e.clientX, e.clientY, constructionMap);
+            let resultBanner = colPin.id || colConstruction.text;
+            let resultObj = colPin || colConstruction;
+
+            if (resultBanner) {
+                if (resultObj != lastBannerObj && lastBannerObj) {
+                    let startKey = Editor.Referencer.extractReference(resultObj, refMap, e.clientX, e.clientY);
+                    let endKey = Editor.Referencer.extractReference(lastBannerObj, refMap, e.clientX, e.clientY);
+                    
+                    let start = refMap[startKey].pos;
+                    let end = refMap[endKey].pos;
+
+                    let connKeys = Rota.getShortestPath(connMap, refMap, startKey, endKey);
+                    let points = [];
+                    for(const connKey of connKeys) {
+                        points.push(refMap[connKey].pos);
+                    }
+                    
+                    if (routeDraw) {
+                        Editor.Connections.removeDrawRoute(routeDraw);
+                    }
+                    routeDraw = Editor.Connections.drawRoute(points);
+                }
+                lastBannerObj = resultObj;
+                mapInterface.classList.remove("hidden");
+                
+                let banner = bannerMap[resultBanner];
+
+                imageLabel.classList.remove("hidden");
+                if (banner.image) {
+                    imageLabel.src = banner.image;
+                } else {
+                    imageLabel.classList.add("hidden");
+                }
+                bannerTitle.innerHTML = banner.title;
+                bannerDescription.innerHTML = banner.description;
+            } else {
+                mapInterface.classList.add("hidden");
+                lastBannerObj = null;
+            }
+        } else if (page == "editor") {
             if (editorMode == EditorModes.CONNECTION) {
                 Actions.removeTempConnection();
             } else if (editorMode == EditorModes.CONSTRUCTION) {
@@ -502,11 +549,7 @@ class Actions {
             }
         }
         if (focusObjects[0]) {
-            // console.log(fo)
-            // let object = focusObjects[0];
-            // if (object instanceof Editor.Reference || object instanceof Editor.Pin) {
-                Actions.saveBanner(focusObjects[0]);
-            // }
+            Actions.saveBanner(focusObjects[0]);
         }
         focusObjects = objects;
         
@@ -517,11 +560,7 @@ class Actions {
             }
         }
         if (focusObjects.length > 0) {
-            // if (focusObjects[0] instanceof Editor.Reference || focusObjects[0] instanceof Editor.Pin) {
-                this.showBanner(focusObjects[0]);
-            // } else {
-                // this.hideBanner();
-            // }
+            this.showBanner(focusObjects[0]);
         } else {
             this.hideBanner();
         }
@@ -733,6 +772,8 @@ export async function setMaps(data) {
     pinMap = data.pinMap;
     bannerMap = data.bannerMap;
     constructionMap = data.constructionMap;
+    refMap = data.refMap;
+    connMap = data.connMap;
 }
 
 function setDisplayImage(file) {
