@@ -364,7 +364,29 @@ export class Builder {
     
     static moveRegion(region, x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        
+        for (const ref of region.construction.refs) {
+            let movedPos = {
+                x: ref.pos.x + (mapPos.x - region.pos.x),
+                y: ref.pos.y + (mapPos.y - region.pos.y)
+            }
+            movedPos = Graficos.getScreenCoordinates(movedPos.x, movedPos.y);
+            Referencer.moveRef(ref, movedPos.x, movedPos.y);
+        }
         region.pos = {x: mapPos.x, y: mapPos.y};
+        
+        for (const ref of Object.values(Referencer.references)) {
+            let unnormedPos = Graficos.getScreenCoordinates(ref.pos.x, ref.pos.y);
+            let pos = Builder.getClosestValidPosition(unnormedPos.x, unnormedPos.y);
+            let hasBuild = pos.building;
+            // pos = Graficos.getScreenCoordinates(pos.x, pos.y);
+            // Referencer.moveRef(ref, pos.x, pos.y);
+            if (hasBuild) {
+                // console.log(ref, ref.renderProjection)
+                console.log(ref.id, Referencer.references[ref.id]);
+                ref.renderProjection(pos);
+            }
+        }
 
         Graficos.updateRegion(region.graphics, region.pos.x, region.pos.y, region.size.x, region.size.y);
     }
@@ -903,6 +925,25 @@ export class Reference {
         this.banner = null;
 
         this.building = null;
+
+        this.projGraphics = null;
+        this.projPos = null;
+    }
+
+    renderProjection(pos) {
+        if (this.projGraphics) {
+            Graficos.removeReference(this.projGraphics);
+        }
+        this.projGraphics = Graficos.newReference(pos.x, pos.y, true);
+        this.projPos = {x: pos.x, y: pos.y};
+    }
+
+    endProjection() {
+        if (this.projGraphics) {
+            Graficos.removeReference(this.projGraphics);
+        }
+        this.projGraphics = null;
+        this.projPos = null;
     }
 }
 

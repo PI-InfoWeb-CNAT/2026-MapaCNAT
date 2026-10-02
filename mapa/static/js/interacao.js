@@ -300,7 +300,7 @@ class Pointer {
 
             } else if (editorMode == EditorModes.REFERENCE) {
                 if (!tempReference) {
-                    Actions.createTempReference(e.clientX, e.clickY);
+                    Actions.createTempReference(e.clientX, e.clientY);
                 }
                 Editor.Referencer.updateTempReference(tempReference, e.clientX, e.clientY);
                 
@@ -324,6 +324,7 @@ class Pointer {
                 for(const obj of Editor.Referencer.selection) {
                     let colRegion = Editor.Builder.getClosestValidPosition(e.clientX - obj.offx, e.clientY - obj.offy);
                     let pos = Graficos.getScreenCoordinates(colRegion.x, colRegion.y);
+                    // console.log(colRegion.building, obj.obj.building);
                     if (colRegion.building) {
                         Editor.Referencer.setRelatedBuilding(obj.obj, colRegion.building);
                     } else if (obj.obj.building) {
@@ -361,9 +362,6 @@ class Pointer {
                 if (resultObj != lastBannerObj && lastBannerObj) {
                     let startKey = Editor.Referencer.extractReference(resultObj, refMap, e.clientX, e.clientY);
                     let endKey = Editor.Referencer.extractReference(lastBannerObj, refMap, e.clientX, e.clientY);
-                    
-                    let start = refMap[startKey].pos;
-                    let end = refMap[endKey].pos;
 
                     let connKeys = Rota.getShortestPath(connMap, refMap, startKey, endKey);
                     let points = [];
@@ -403,6 +401,14 @@ class Pointer {
                 Actions.sendRegion();
                 Actions.removeTempRegion();
             } else if (editorMode == EditorModes.SELECTION) {
+                for(const obj of Object.values(Editor.Referencer.references)) {
+                    if (obj.projGraphics) {
+                        let unnormPos = Graficos.getScreenCoordinates(obj.projPos.x, obj.projPos.y);
+                        Editor.Referencer.moveRef(obj, unnormPos.x, unnormPos.y);
+                        obj.endProjection();
+                    }
+                }
+
                 if (!isInside(e, expandBannerBtn) && !isInside(e, bannerTab)) {
                     let focusList = []
                     if (Editor.Referencer.selection.length > 0) {
