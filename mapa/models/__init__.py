@@ -4,13 +4,14 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from .construcao import *
-from .referencia import *
-from .rota import *
+from .feedback import *
 
 PERFIL = (
     (1, 'Admin'),
     (2, 'Usuario'),
 )
 
-from .banner import Banner
 from .perfil import UsuarioProfile
+from .referencia import Referencia
+from .banner import Banner
+from .rota import Rota

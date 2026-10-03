@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}MapaCNAT - feedback{% endblock %}
+
+{% block style %}<link rel="stylesheet" href="{% static 'css/feedback.css' %}">{% endblock %}
+
+{% block content %}
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a href="{% url 'home' %}" class="topbar__back" aria-label="Voltar">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+          <path d="M15 4 7 12l8 8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+      <h1 class="topbar__title">Feedback</h1>
+    </div>
+  </header>
+
+  <main class="page">
+    {% if messages %}
+        {% for message in messages %}
+          <div class="feedback__alert feedback__alert--{{ message.tags }}">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+    {% endif %}
+    
+    {% if success %}
+      <!-- Visual Success Response Card -->
+      <div class="feedback__success-card">
+        <div class="feedback__success-icon">
+          <svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true">
+            <path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2 class="feedback__title">Obrigado pelo seu feedback!</h2>
+        <p class="feedback__success-text">Sua avaliação foi enviada com sucesso e nos ajuda a melhorar o MapaCNAT.</p>
+        <div class="feedback__actions">
+          <a href="{% url 'home' %}" class="btn">Voltar para o início</a>
+        </div>
+      </div>
+    {% else %}
+      <form class="feedback" method="POST" action="">
+        {% csrf_token %}
+        <h2 class="feedback__title">Avalie sua experiência</h2>
+
+        <fieldset class="rating">
+          <legend class="sr-only">Nota de 1 a 5</legend>
+          {% for radio in form.rating %}
+            {{ radio.tag }}
+            <label for="{{ radio.id_for_label }}" title="{{ radio.choice_label }}">★</label>
+          {% endfor %}
+        </fieldset>
+        {% if form.rating.errors %}
+          <div class="feedback__error">{{ form.rating.errors.0 }}</div>
+        {% endif %}
+
+        <label class="sr-only" for="{{ form.comment.id_for_label }}">Comentário</label>
+        {{ form.comment }}
+        {% if form.comment.errors %}
+          <div class="feedback__error">{{ form.comment.errors.0 }}</div>
+        {% endif %}
+
+        <div class="feedback__actions">
+          <button type="submit" class="btn">Enviar</button>
+        </div>
+      </form>
+    {% endif %}
+  </main>
+{% endblock %}

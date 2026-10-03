@@ -98,3 +98,33 @@ export class AStar {
     return totalPath;
   }
 }
+
+export function getShortestPath(rawEdges, rawNodes, startId, goalId) {
+  const nodesDict = {};
+  for (const nodeId in rawNodes) {
+    if (rawNodes[nodeId]) {
+      nodesDict[nodeId] = { pos: rawNodes[nodeId] };
+    }
+  }
+
+  const edgesDict = {};
+  for (let i = 0; i < rawEdges.length; i++) {
+    const [nodeA, nodeB] = rawEdges[i];
+    
+    const posA = rawNodes[nodeA];
+    const posB = rawNodes[nodeB];
+    let weight = 1;
+    
+    if (posA && posB) {
+      const dx = posA.pos.x - posB.pos.x;
+      const dy = posA.pos.y - posB.pos.y;
+      weight = Math.sqrt(dx * dx + dy * dy);
+    }
+
+    edgesDict[`${nodeA},${nodeB}`] = { distance: weight };
+  }
+
+  const { graph, heuristics } = parseGraphData(nodesDict, edgesDict, goalId);
+
+  return AStar.findPath(graph, startId, goalId, heuristics);
+}

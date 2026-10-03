@@ -19,24 +19,6 @@ export async function load() {
         let refMap = {};
         let buildMap = {};
 
-        if (data.references) {
-            for (const key of Object.keys(data.references)) {
-                let ref = data.references[key];
-                let objRef = Referencer.createReference(ref.pos.x, ref.pos.y, false);
-                refMap[key] = objRef;
-            }
-        }
-
-        if (data.connections) {
-            for (const conn of data.connections) {
-                let startObj = refMap[conn[0]];
-                let endObj = refMap[conn[1]];
-                if (startObj) {
-                    Connections.createConnection(startObj, endObj);
-                }
-            }
-        }
-
         if (data.buildings) {
             for (const key of Object.keys(data.buildings)) {
                 let build = data.buildings[key];
@@ -60,6 +42,26 @@ export async function load() {
                 Builder.convertGraphical(building, "polygon");
                 
                 buildMap[key] = building;
+            }
+        }
+
+        if (data.references) {
+            for (const key of Object.keys(data.references)) {
+                let ref = data.references[key];
+                let building = buildMap[ref.build];
+
+                let objRef = Referencer.createReference(ref.pos.x, ref.pos.y, false, building);
+                refMap[key] = objRef;
+            }
+        }
+
+        if (data.connections) {
+            for (const conn of data.connections) {
+                let startObj = refMap[conn[0]];
+                let endObj = refMap[conn[1]];
+                if (startObj) {
+                    Connections.createConnection(startObj, endObj);
+                }
             }
         }
 
@@ -173,6 +175,13 @@ export class Connections {
             pairs.push([start, end]);
         }
         return pairs;
+    }
+
+    static drawRoute(points) {
+        return Graficos.multiRouteDraw(points);
+    }
+    static removeDrawRoute(draw) {
+        Graficos.removeConnection(draw);
     }
 
     static addPair(connection) {
@@ -294,6 +303,7 @@ export class Builder {
     static toJson() {
         let jsonBuildings = {};
         for(const build of this.buildings) {
+            
             let areas = [];
             for(const area of build.areas) {
                 let jsonArea = {
@@ -302,6 +312,7 @@ export class Builder {
                 }
                 areas.push(jsonArea);
             }
+            
             let jsonBuild = {
                 "name": build.name,
                 "pin_pos": build.pinPos,
@@ -353,7 +364,29 @@ export class Builder {
     
     static moveRegion(region, x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        
+        for (const ref of region.construction.refs) {
+            let movedPos = {
+                x: ref.pos.x + (mapPos.x - region.pos.x),
+                y: ref.pos.y + (mapPos.y - region.pos.y)
+            }
+            movedPos = Graficos.getScreenCoordinates(movedPos.x, movedPos.y);
+            Referencer.moveRef(ref, movedPos.x, movedPos.y);
+        }
         region.pos = {x: mapPos.x, y: mapPos.y};
+        
+        for (const ref of Object.values(Referencer.references)) {
+            let unnormedPos = Graficos.getScreenCoordinates(ref.pos.x, ref.pos.y);
+            let pos = Builder.getClosestValidPosition(unnormedPos.x, unnormedPos.y);
+            let hasBuild = pos.building;
+            // pos = Graficos.getScreenCoordinates(pos.x, pos.y);
+            // Referencer.moveRef(ref, pos.x, pos.y);
+            if (hasBuild) {
+                // console.log(ref, ref.renderProjection)
+                console.log(ref.id, Referencer.references[ref.id]);
+                ref.renderProjection(pos);
+            }
+        }
 
         Graficos.updateRegion(region.graphics, region.pos.x, region.pos.y, region.size.x, region.size.y);
     }
@@ -429,15 +462,102 @@ export class Builder {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
         for(const buildKey of Object.keys(map)) {
             let build = map[buildKey];
-            for(const area of build) {
+            for(const area of build.areas) {
                 let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
                 let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
                 if (horizontal && vertical) {
-                    return {"text": buildKey, "obj": build};
+                    return {"text": buildKey, "obj": build, "form": "build"};
                 }
             }
         }
         return false;
+    }
+
+    static getClosestValidPosition(x, y) {
+        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+
+        const boxes = [];
+        for (const build of this.buildings) {
+            const pinW = 24 / Graficos.zoom;
+            const pinH = 32 / Graficos.zoom;
+            boxes.push({
+                minX: build.pinPos.x - pinW / 2,
+                maxX: build.pinPos.x + pinW / 2,
+                minY: build.pinPos.y - pinH,
+                maxY: build.pinPos.y,
+                building: build
+            });
+            
+            for (const area of build.areas) {
+                boxes.push({
+                    minX: area.pos.x,
+                    maxX: area.pos.x + area.size.x,
+                    minY: area.pos.y,
+                    maxY: area.pos.y + area.size.y,
+                    building: build
+                });
+            }
+        }
+
+        const EPS = 1e-7;
+        const isInsideAnyBox = (pt) => {
+            return boxes.some(b => 
+                pt.x > b.minX + EPS && pt.x < b.maxX - EPS &&
+                pt.y > b.minY + EPS && pt.y < b.maxY - EPS
+            );
+        };
+
+        if (!isInsideAnyBox(mapPos)) {
+            return { x: mapPos.x, y: mapPos.y, building: null };
+        }
+
+        let closestPoint = null;
+        let minSqDistance = Infinity;
+
+        const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+
+        for (const box of boxes) {
+            const segments = [
+                { p1: { x: box.minX, y: box.minY }, p2: { x: box.maxX, y: box.minY }, axis: 'h' },
+                { p1: { x: box.minX, y: box.maxY }, p2: { x: box.maxX, y: box.maxY }, axis: 'h' },
+                { p1: { x: box.minX, y: box.minY }, p2: { x: box.minX, y: box.maxY }, axis: 'v' },
+                { p1: { x: box.maxX, y: box.minY }, p2: { x: box.maxX, y: box.maxY }, axis: 'v' }
+            ];
+
+            for (const seg of segments) {
+                let candidate;
+                if (seg.axis === 'h') {
+                    candidate = {
+                        x: clamp(mapPos.x, seg.p1.x, seg.p2.x),
+                        y: seg.p1.y
+                    };
+                } else {
+                    candidate = {
+                        x: seg.p1.x,
+                        y: clamp(mapPos.y, seg.p1.y, seg.p2.y)
+                    };
+                }
+
+                if (isInsideAnyBox(candidate)) {
+                    continue;
+                }
+
+                const dx = mapPos.x - candidate.x;
+                const dy = mapPos.y - candidate.y;
+                const sqDist = dx * dx + dy * dy;
+
+                if (sqDist < minSqDistance) {
+                    minSqDistance = sqDist;
+                    closestPoint = {
+                        x: candidate.x,
+                        y: candidate.y,
+                        building: box.building
+                    };
+                }
+            }
+        }
+
+        return closestPoint;
     }
 
     static getCollision(x, y) {
@@ -542,6 +662,7 @@ export class Construction {
         this.polygon = null;
         this.polygonGraphics = null;
         this.construction = null;
+        this.refs = [];
 
         this.banner = null;
     }
@@ -572,11 +693,65 @@ export class Referencer {
         let data = {};
         for(const refKey of Object.keys(this.references)) {
             let ref = this.references[refKey];
+            let build = "";
+            if (ref.building) {
+                build = ref.building.name;
+            }
             data[parseInt(refKey)] = {
+                "build": build,
                 "pos": ref.pos
             }
         }
         return data;
+    }
+
+    static extractReference(dataMap, refMap, clickX, clickY) {
+        let pos = Graficos.getNormalizedCoordinates(clickX, clickY);
+        let x = pos.x;
+        let y = pos.y;
+        let reference;
+        if (dataMap.form == "pin") {
+            let closest = [0, ""];
+            for(const ref of dataMap.refs) {
+
+                let refObj = refMap[ref];
+                let distance = Math.sqrt((refObj.pos.x - x) * (refObj.pos.x - x) + (refObj.pos.y - y) * (refObj.pos.y - y))
+                
+                if (closest[1] == "" || distance < closest[0]) {
+                    closest = [distance, ref];
+                }
+            }
+            reference = closest[1];
+        } else if (dataMap.form == "ref") {
+            reference = dataMap.ref;
+        } else if (dataMap.form == "build") {
+            let closest = [0, ""];
+            
+            for(const ref of dataMap.obj.refs) {
+
+                let refObj = refMap[ref];
+                let distance = Math.sqrt((refObj.pos.x - x) * (refObj.pos.x - x) + (refObj.pos.y - y) * (refObj.pos.y - y))
+
+                if (closest[1] == "" || distance < closest[0]) {
+                    closest = [distance, ref];
+                }
+            }
+            reference = closest[1];
+        }
+        return reference;
+    }
+
+    static setRelatedBuilding(obj, building) {
+        if (obj.building == building) {
+            return;
+        }
+        obj.building = building
+        building.refs.push(obj);
+    }
+
+    static setUnrelatedBuilding(obj, building) {
+        obj.building = null;
+        building.refs = removeObj(building.refs, obj);
     }
 
     static drawMode(object) {
@@ -604,7 +779,7 @@ export class Referencer {
         this.selection = [];
     }
 
-    static createReference(x, y, convert=true) {
+    static createReference(x, y, convert=true, building=null) {
         let mapPos;
         if (convert) {
             mapPos = Graficos.getNormalizedCoordinates(x, y);
@@ -612,6 +787,7 @@ export class Referencer {
             mapPos = {x: x, y: y};
         }
         let ref = new Reference({x: mapPos.x, y: mapPos.y});
+        this.setRelatedBuilding(ref, building);
         this.addRefKey(ref);
         this.addRefHash(ref);
 
@@ -747,6 +923,27 @@ export class Reference {
         this.isFocus = false;
 
         this.banner = null;
+
+        this.building = null;
+
+        this.projGraphics = null;
+        this.projPos = null;
+    }
+
+    renderProjection(pos) {
+        if (this.projGraphics) {
+            Graficos.removeReference(this.projGraphics);
+        }
+        this.projGraphics = Graficos.newReference(pos.x, pos.y, true);
+        this.projPos = {x: pos.x, y: pos.y};
+    }
+
+    endProjection() {
+        if (this.projGraphics) {
+            Graficos.removeReference(this.projGraphics);
+        }
+        this.projGraphics = null;
+        this.projPos = null;
     }
 }
 
