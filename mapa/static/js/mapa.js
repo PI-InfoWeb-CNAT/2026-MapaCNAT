@@ -2,22 +2,70 @@ import * as Graficos from "./graficos.js";
 import * as Interacao from "./interacao.js";
 import * as Localizacao from "./localizacao.js";
 
+async function load() {
+  try {
+        const response = await fetch(URLSaveMap);
+        if (!response.ok) throw new Error('Erro de rede');
+        const data = await response.json();
+
+        let pins = {};
+        let constructionMap = {};
+        for(const buildKey of Object.keys(data.buildings)) {
+            let build = data.buildings[buildKey];
+            let gfx = Graficos.newPin(build.pin_pos.x, build.pin_pos.y, build.name);
+            pins[buildKey] = {"form": "pin", refs:[], id: buildKey, text: build.name, x: build.pin_pos.x, y: build.pin_pos.y, gfx: gfx.pin, label: gfx.label};
+            
+            let regionList = [];
+            for(const area of build.areas) {
+                regionList.push({"form": "area", text: build.name, pos: area.pos, size: area.size});
+            }
+            constructionMap[buildKey] = {"areas": regionList, "refs": []};
+        }
+
+        let refMap = {};
+        for(const refKey of Object.keys(data.references)) {
+            let ref = data.references[refKey];
+            refMap[refKey] = ref;
+            if (ref.build) {
+                constructionMap[ref.build].refs.push(refKey);
+                pins[ref.build].refs.push(refKey);
+            }
+        }
+
+        let bannerMap = {};
+        for(const bannerKey of Object.keys(data.banners)) {
+            let banner = data.banners[bannerKey];
+            if (banner.isRef) {
+                let ref = data.references[bannerKey];
+                let gfx = Graficos.newPin(ref.pos.x, ref.pos.y, banner.title);
+                pins[bannerKey] = {"form": "ref", ref: bannerKey, id: bannerKey, text: banner.title, x: ref.pos.x, y: ref.pos.y, gfx: gfx.pin, label: gfx.label};
+            }
+            bannerMap[bannerKey] = {"title": banner.title, "description": banner.description, "image": banner.imageUrl};
+        }
+        return {"connMap": data.connections, "pinMap": pins, "constructionMap": constructionMap, "bannerMap": bannerMap, "refMap": data.references};
+
+    } catch (error) {
+        console.error('Fetch error:', error);
+    }
+}
+
 fetch(config)
 .then(response => response.json())
-.then(data => {
+.then(async (data) => {
     data.page = "main";
 
     Graficos.setContext(data);
-    Graficos.main().then(() => {
-        Interacao.setContext(data);
-        Interacao.addListeners(Graficos.map);
+    
+    await Graficos.main();
+    
+    Interacao.setContext(data);
+    Interacao.addListeners(Graficos.map);
+    Localizacao.UserLocation();
 
-        for (const label of data.labels) {
-            Graficos.nodeText(label.text, { x: label.x, y: label.y });
-        }
-        
-        Localizacao.UserLocation();
-    });
+    let mapData = await load();
+
+    Interacao.setMaps(mapData);
+
     Graficos.loadMapScales();
 })
 .catch(error => console.error('Falha ao carregar JSON:', error));

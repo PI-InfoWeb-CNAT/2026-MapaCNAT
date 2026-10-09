@@ -5,6 +5,7 @@
 | Data | Versão | Descrição | Autores |
 | :--: | :----: | :-------: | :-----: |
 | 03/04/2026 | 1.0 | Versão inicial | Gabriel Isaias |
+| 14/09/2026 | 2.0 | Versão atualizada | Gabriel Albino |
 
 ## 1. Diagrama de Casos de Uso
 

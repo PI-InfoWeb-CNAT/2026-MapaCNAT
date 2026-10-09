@@ -1,15 +1,36 @@
 import * as Transformacao from "./transformacao.js";
 import * as Graficos from "./graficos.js";
 import * as Editor from "./editor.js";
+import * as Rota from "./rota.js";
 
 let buildBtn;
 let referenceBtn;
 let connectionBtn;
 let saveBtn;
+let expandBannerBtn;
+let bannerTab;
+let imageInput;
+let imageWrapper;
+let imageLabel;
+let bannerTitle;
+let bannerDescription;
+let tempFile;
+let pinMap;
+let bannerMap;
+let refMap;
+let connMap;
+let constructionMap;
+let previousTitle;
+let mapInterface;
+let lastBannerObj;
+let routeDraw;
+let moved;
 
 let selectionBtn;
 let deleteBtn;
 let confirmBtn;
+
+let focusObjects = [];
 
 let clicking = false;
 let touching = false;
@@ -120,6 +141,19 @@ class Touch {
     }
 }
 
+function isInside(event, target) {
+    const element = typeof target === 'string' ? document.querySelector(target) : target;
+    
+    if (!element) return false;
+
+    const rect = element.getBoundingClientRect();
+    
+    return event.clientX >= rect.left && 
+           event.clientX <= rect.right && 
+           event.clientY >= rect.top && 
+           event.clientY <= rect.bottom;
+}
+
 class Pointer {
     constructor() {
         throw new Error("Classe estática. Não instancie.");
@@ -131,8 +165,10 @@ class Pointer {
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
         clicking = true;
-
-        if (page == "editor") {
+        moved = false;
+        if (page == "main") {
+            return;
+        } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
                 Actions.createReference(clickX, clickY);
                 
@@ -189,13 +225,18 @@ class Pointer {
                 } else if (colConstruction) {
                     if (holdingBuilding) {
                         let colRegion = Editor.Builder.getCollisionArea(holdingBuilding, clickX, clickY);
-                        Actions.removeRegion(colRegion);
+
+                        if (colRegion) {
+                            Actions.removeRegion(colRegion);
+                        }
                         if (holdingBuilding.areas.length == 0) {
                             Actions.removeConstruction(holdingBuilding);
                             Editor.Builder.clearSelection();
                         }
-                        Actions.addSelection(colRegion, clickX, clickY);
-                        Editor.Builder.convertGraphical(holdingBuilding, "polygon");
+                        if (colRegion) {
+                            Actions.addSelection(colRegion, clickX, clickY);
+                            Editor.Builder.convertGraphical(holdingBuilding, "polygon");
+                        }
                     }
                     Editor.Builder.convertGraphical(colConstruction, "areas");
                     holdingBuilding = colConstruction;
@@ -218,10 +259,38 @@ class Pointer {
     }
 
     static move(e) {
+        moved = true;
         if (page == "main") {
-            if (!clicking) return;
-            
-            Pointer.defaultMove(e);
+            if (clicking) {
+                Pointer.defaultMove(e);
+            } else {
+                if (!pinMap) return;
+                let colPin = Editor.Builder.getCollisionPin(pinMap, e.clientX, e.clientY);
+                let colConstruction = Editor.Builder.getCollisionMapArea(e.clientX, e.clientY, constructionMap);
+                let resultPin = colPin || pinMap[colConstruction.text];
+
+                Graficos.map.style.cursor = 'default';
+                if (resultPin) {
+                    if (resultPin != previousTitle && previousTitle) {
+                        let gfxObj = {"pin": previousTitle.gfx, "label": previousTitle.label};
+                        Graficos.updatePin(gfxObj, previousTitle.x, previousTitle.y, previousTitle.text, false);
+                        previousTitle.gfx = gfxObj.pin;
+                        previousTitle.label = gfxObj.label;
+                    }
+                    let gfxObj = {"pin": resultPin.gfx, "label": resultPin.label};
+                    Graficos.updatePin(gfxObj, resultPin.x, resultPin.y, resultPin.text, true);
+                    resultPin.gfx = gfxObj.pin;
+                    resultPin.label = gfxObj.label;
+                    Graficos.map.style.cursor = 'pointer';
+                    
+                    previousTitle = resultPin;
+                } else if (previousTitle) {
+                    let gfxObj = {"pin": previousTitle.gfx, "label": previousTitle.label};
+                    Graficos.updatePin(gfxObj, previousTitle.x, previousTitle.y, previousTitle.text, false);
+                    previousTitle.gfx = gfxObj.pin;
+                    previousTitle.label = gfxObj.label;
+                }
+            }
             
         } else if (page == "editor") {
             if (editorMode == EditorModes.FREE) {
@@ -231,7 +300,7 @@ class Pointer {
 
             } else if (editorMode == EditorModes.REFERENCE) {
                 if (!tempReference) {
-                    Actions.createTempReference(e.clientX, e.clickY);
+                    Actions.createTempReference(e.clientX, e.clientY);
                 }
                 Editor.Referencer.updateTempReference(tempReference, e.clientX, e.clientY);
                 
@@ -253,7 +322,16 @@ class Pointer {
                 }
             } else if (editorMode == EditorModes.SELECTION) {
                 for(const obj of Editor.Referencer.selection) {
-                    Editor.Referencer.moveRef(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
+                    let colRegion = Editor.Builder.getClosestValidPosition(e.clientX - obj.offx, e.clientY - obj.offy);
+                    let pos = Graficos.getScreenCoordinates(colRegion.x, colRegion.y);
+                    // console.log(colRegion.building, obj.obj.building);
+                    if (colRegion.building) {
+                        Editor.Referencer.setRelatedBuilding(obj.obj, colRegion.building);
+                    } else if (obj.obj.building) {
+                        Editor.Referencer.setUnrelatedBuilding(obj.obj, obj.obj.building);
+                    }
+                    Editor.Referencer.moveRef(obj.obj, pos.x, pos.y);
+                    Actions.addFocus([obj.obj]);
                 }
                 for(const obj of Editor.Builder.selection) {
                     if (obj.obj instanceof Editor.Region) {
@@ -262,6 +340,7 @@ class Pointer {
                     }
                     if (obj.obj instanceof Editor.Pin) {
                         Editor.Builder.movePin(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
+                        Actions.addFocus([obj.obj]);
                     }
                 }
             }
@@ -270,7 +349,49 @@ class Pointer {
 
     static up(e) {
         clicking = false;
-        if (page == "editor") {
+        if (page == "main") {
+            if (moved) {
+                return;
+            }
+            let colPin = Editor.Builder.getCollisionPin(pinMap, e.clientX, e.clientY);
+            let colConstruction = Editor.Builder.getCollisionMapArea(e.clientX, e.clientY, constructionMap);
+            let resultBanner = colPin.id || colConstruction.text;
+            let resultObj = colPin || colConstruction;
+
+            if (resultBanner) {
+                if (resultObj != lastBannerObj && lastBannerObj) {
+                    let startKey = Editor.Referencer.extractReference(resultObj, refMap, e.clientX, e.clientY);
+                    let endKey = Editor.Referencer.extractReference(lastBannerObj, refMap, e.clientX, e.clientY);
+
+                    let connKeys = Rota.getShortestPath(connMap, refMap, startKey, endKey);
+                    let points = [];
+                    for(const connKey of connKeys) {
+                        points.push(refMap[connKey].pos);
+                    }
+                    
+                    if (routeDraw) {
+                        Editor.Connections.removeDrawRoute(routeDraw);
+                    }
+                    routeDraw = Editor.Connections.drawRoute(points);
+                }
+                lastBannerObj = resultObj;
+                mapInterface.classList.remove("hidden");
+                
+                let banner = bannerMap[resultBanner];
+
+                imageLabel.classList.remove("hidden");
+                if (banner.image) {
+                    imageLabel.src = banner.image;
+                } else {
+                    imageLabel.classList.add("hidden");
+                }
+                bannerTitle.innerHTML = banner.title;
+                bannerDescription.innerHTML = banner.description;
+            } else {
+                mapInterface.classList.add("hidden");
+                lastBannerObj = null;
+            }
+        } else if (page == "editor") {
             if (editorMode == EditorModes.CONNECTION) {
                 Actions.removeTempConnection();
             } else if (editorMode == EditorModes.CONSTRUCTION) {
@@ -280,6 +401,24 @@ class Pointer {
                 Actions.sendRegion();
                 Actions.removeTempRegion();
             } else if (editorMode == EditorModes.SELECTION) {
+                for(const obj of Object.values(Editor.Referencer.references)) {
+                    if (obj.projGraphics) {
+                        let unnormPos = Graficos.getScreenCoordinates(obj.projPos.x, obj.projPos.y);
+                        Editor.Referencer.moveRef(obj, unnormPos.x, unnormPos.y);
+                        obj.endProjection();
+                    }
+                }
+
+                if (!isInside(e, expandBannerBtn) && !isInside(e, bannerTab)) {
+                    let focusList = []
+                    if (Editor.Referencer.selection.length > 0) {
+                        focusList.push(Editor.Referencer.selection[0].obj);
+                    }
+                    if (Editor.Builder.selection.length > 0) {
+                        focusList.push(Editor.Builder.selection[0].obj);
+                    }
+                    Actions.addFocus(focusList);
+                }
                 Actions.clearSelection();
             }
         }
@@ -348,11 +487,10 @@ async function saveMapState(data) {
         let req = {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`,
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify(data)
+            body: data
         }
         const response = await fetch(url, req);
 
@@ -366,6 +504,9 @@ async function saveMapState(data) {
 }
 
 class Actions {
+    static toggleBanner() {
+        bannerTab.classList.toggle("hidden");
+    }
     static createReference(x, y) {
         Editor.Referencer.createReference(x, y);
     }
@@ -402,6 +543,68 @@ class Actions {
     static clearSelection() {
         Editor.Referencer.clearSelection();
         Editor.Builder.clearSelection();
+    }
+
+    static addFocus(objects) {
+        if (focusObjects) {
+            for (const object of focusObjects) {
+                object.isFocus = false;
+                if (object instanceof Editor.Reference) {
+                    Editor.Referencer.drawMode(object);
+                }
+            }
+        }
+        if (focusObjects[0]) {
+            Actions.saveBanner(focusObjects[0]);
+        }
+        focusObjects = objects;
+        
+        for (const object of objects) {
+            object.isFocus = true;
+            if (object instanceof Editor.Reference) {
+                Editor.Referencer.drawMode(object);
+            }
+        }
+        if (focusObjects.length > 0) {
+            this.showBanner(focusObjects[0]);
+        } else {
+            this.hideBanner();
+        }
+    }
+
+    static saveBanner(oldObject) {
+        let image = tempFile;
+        let title = bannerTitle.value;
+        let description = bannerDescription.value;
+        
+        Editor.Banner.saveBanner(oldObject, image, title, description);
+
+        tempFile = null;
+    }
+
+    static showBanner(obj) {
+        expandBannerBtn.classList.remove("hidden");
+        let banner = obj.banner;
+        if (obj instanceof Editor.Pin || obj instanceof Editor.Region) {
+            banner = obj.construction.banner;
+        }
+        resetDisplayImage();
+        if (banner) {
+            if (banner.file) {
+                setDisplayImage(banner.file);
+            }
+            bannerTitle.value = banner.title;
+            bannerDescription.value = banner.description;
+        }
+        else {
+            bannerTitle.value = "";
+            bannerDescription.value = "";
+        }
+    }
+    
+    static hideBanner() {
+        expandBannerBtn.classList.add("hidden");
+        bannerTab.classList.add("hidden");
     }
 
     static removeTempConnection() {
@@ -522,16 +725,23 @@ class Actions {
         let refs = Editor.Referencer.toJson();
         let builds = Editor.Builder.toJson();
         let conn = Editor.Connections.toJson();
-        let data = {
+
+        let formData = Editor.Banner.toJson();
+
+        let mapData = {
             "references": refs,
             "buildings": builds,
-            "connections": conn
-        }
-        saveMapState(data);
+            "connections": conn,
+            "banners": Editor.Banner.bannerJson()
+        };
+
+        formData.append("data", JSON.stringify(mapData));
+
+        saveMapState(formData);
     }
 
     static OpenModal() {
-        const overlay = document.getElementById('buildModalOverlay');
+        const overlay = document.getElementById('build-modal-overlay');
         overlay.classList.add('active');
     }
     static pinMode(bool) {
@@ -550,23 +760,56 @@ function handleBuildSubmit(event) {
 
     Actions.createTempConstruction(buildName);
 
-    document.getElementById('buildModalOverlay').classList.remove('active');
+    document.getElementById('build-modal-overlay').classList.remove('active');
     document.getElementById('buildForm').reset();
 
     Actions.pinMode(true);
 }
 
 function handleConfirm(event) {
-    // Editor.Builder.buildings.push(currBuild);
-    
-    // currBuild.generatePolygon();
-
     Actions.finishBuild();
 
     Actions.goToMode();
-    // Actions.commitBuild();
 
     confirmBtn.classList.add("hidden");
+}
+
+export async function setMaps(data) {
+    pinMap = data.pinMap;
+    bannerMap = data.bannerMap;
+    constructionMap = data.constructionMap;
+    refMap = data.refMap;
+    connMap = data.connMap;
+}
+
+function setDisplayImage(file) {
+    const reader = new FileReader();
+        
+    reader.onload = function (event) {
+        imageWrapper.style.backgroundImage = `url('${event.target.result}')`;
+        imageWrapper.style.borderStyle = 'solid';
+        
+        imageLabel.textContent = 'substituir imagem';
+    };
+
+    reader.readAsDataURL(file);
+}
+
+function resetDisplayImage() {
+    imageInput.value = '';
+
+    imageWrapper.style.backgroundImage = 'none';
+    imageWrapper.style.borderStyle = '';
+
+    imageLabel.textContent = 'adicionar imagem +';
+}
+
+function updateImageDisplay(e) {
+    const file = e.target.files[0];
+    if (file) {
+        setDisplayImage(file);
+    }
+    tempFile = file;
 }
 
 export function addListeners(map) {
@@ -582,12 +825,20 @@ export function addListeners(map) {
         event.preventDefault();
     });
 
+    bannerTab = document.getElementById("banner");
+
     if (page == "main") {
         const orientationBtn = document.getElementById('orientation');
         const optionsBtn = document.getElementById('options');
         const closeBtn = document.getElementById('close-sidebar');
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebar-backdrop');
+
+        mapInterface = document.getElementById('screen-ui');
+
+        imageLabel = document.getElementById("banner-image");
+        bannerTitle = document.getElementById("banner-title");
+        bannerDescription = document.getElementById("banner-description");
 
         const closeMenu = () => deactivateList([sidebar, backdrop]);
 -
@@ -602,25 +853,32 @@ export function addListeners(map) {
         connectionBtn = document.getElementById("conection");
         saveBtn = document.getElementById("save");
 
+        expandBannerBtn = document.getElementById("expand-banner");
+        imageInput = document.getElementById("banner-image-input");
+        imageWrapper = document.getElementById("image-upload-wrapper");
+        imageLabel = document.getElementById("image-upload-label");
+        bannerTitle = document.getElementById("place-name");
+        bannerDescription = document.getElementById("place-description");
+
         selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
 
         confirmBtn = document.getElementById("submit");
         
         const buildModalBtn = document.getElementById("buildFormSubmit");
-        const buildOverlay = document.getElementById('buildModalOverlay');
-        const buildCloseBtn = document.getElementById('closeBuildModal');
+        const buildOverlay = document.getElementById("build-modal-overlay");
+        const buildCloseBtn = document.getElementById("close-build-modal");
 
         const closeBuildModal = () => {
-            document.getElementById('buildModalOverlay').classList.remove('active');
-            document.getElementById('buildForm').reset();
+            document.getElementById("build-modal-overlay").classList.remove("active");
+            document.getElementById("buildForm").reset();
 
             Actions.goToMode();
         }
 
-        buildCloseBtn.addEventListener('click', closeBuildModal);
+        buildCloseBtn.addEventListener("click", closeBuildModal);
 
-        buildOverlay.addEventListener('click', (e) => {
+        buildOverlay.addEventListener("click", (e) => {
             if (e.target === buildOverlay) {
                 closeBuildModal();
             }
@@ -629,15 +887,15 @@ export function addListeners(map) {
         buildBtn.addEventListener("click", () => Actions.goToMode(EditorModes.CONSTRUCTION));
         referenceBtn.addEventListener("click", () => Actions.goToMode(EditorModes.REFERENCE));
         connectionBtn.addEventListener("click", () => Actions.goToMode(EditorModes.CONNECTION));
-
         selectionBtn.addEventListener("click", () => Actions.goToMode(EditorModes.SELECTION));
         deleteBtn.addEventListener("click", () => Actions.goToMode(EditorModes.DELETION));
 
-        saveBtn.addEventListener("click", () => Actions.save());
-        
+        saveBtn.addEventListener("click", Actions.save);
         buildModalBtn.addEventListener("click", handleBuildSubmit);
-
         confirmBtn.addEventListener("click", handleConfirm);
+
+        expandBannerBtn.addEventListener("click", Actions.toggleBanner);
+        imageInput.addEventListener("change", e => updateImageDisplay(e));
 
         Editor.load();
     }

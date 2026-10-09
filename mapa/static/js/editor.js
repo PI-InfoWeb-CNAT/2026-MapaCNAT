@@ -1,38 +1,93 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
 
+async function urlToFile(url, filename = 'banner.png') {
+    if (!url) return null;
+    const response = await fetch(url);
+    const blob = await response.blob();
+    
+    const mimeType = blob.type || 'image/png'; 
+    return new File([blob], filename, { type: mimeType });
+}
+
 export async function load() {
-  try {
+    try {
         const response = await fetch(URLSaveMap);
         if (!response.ok) throw new Error('Erro de rede');
         const data = await response.json();
         
-        let refMap = {}
+        let refMap = {};
+        let buildMap = {};
 
-        for(const key of Object.keys(data.references)) {
-            let ref = data.references[key];
-            let objRef = Referencer.createReference(ref.pos.x, ref.pos.y, false);
-            refMap[key] = objRef;
-        }
-        for(const conn of data.connections) {
-            Connections.createConnection(refMap[conn[0]], refMap[conn[1]]);
-        }
-        for(const build of data.buildings) {
-            let regions = [];
-            for(const area of build.areas) {
-                let end = {
-                    x: area.pos.x + area.size.x,
-                    y: area.pos.y + area.size.y,
+        if (data.buildings) {
+            for (const key of Object.keys(data.buildings)) {
+                let build = data.buildings[key];
+                let regions = [];
+
+                for (const area of build.areas) {
+                    let end = {
+                        x: area.pos.x + area.size.x,
+                        y: area.pos.y + area.size.y,
+                    };
+                    let reg = Builder.createRegionObject({ start: area.pos, end: end });
+                    regions.push(reg);
                 }
-                let reg = Builder.createRegionObject({start: area.pos, end: end});
-                regions.push(reg);
+
+                let building = Builder.createConstruction({
+                    name: build.name,
+                    pin: build.pin_pos,
+                    regions: regions
+                });
+
+                Builder.convertGraphical(building, "polygon");
+                
+                buildMap[key] = building;
             }
-            let building = Builder.createConstruction({
-                name: build.name,
-                pin: build.pin_pos,
-                regions: regions
-            })
-            Builder.convertGraphical(building, "polygon");
+        }
+
+        if (data.references) {
+            for (const key of Object.keys(data.references)) {
+                let ref = data.references[key];
+                let building = buildMap[ref.build];
+
+                let objRef = Referencer.createReference(ref.pos.x, ref.pos.y, false, building);
+                refMap[key] = objRef;
+            }
+        }
+
+        if (data.connections) {
+            for (const conn of data.connections) {
+                let startObj = refMap[conn[0]];
+                let endObj = refMap[conn[1]];
+                if (startObj) {
+                    Connections.createConnection(startObj, endObj);
+                }
+            }
+        }
+
+        if (data.banners) {
+            for (const key of Object.keys(data.banners)) {
+                let banner = data.banners[key];
+                
+                let parentObj = banner.isRef ? refMap[key] : buildMap[key];
+
+                if (parentObj) {
+                    const fileName = banner.imageUrl ? banner.imageUrl.split('/').pop() : `banner_${key}.png`;
+                    
+                    const imageFile = banner.imageUrl 
+                        ? await urlToFile(banner.imageUrl, fileName) 
+                        : null;
+
+                    Banner.saveBanner(
+                        parentObj,
+                        imageFile,
+                        banner.title,
+                        banner.description
+                    );
+                } else {
+                    console.warn(`Parent object for banner key '${key}' not found.`);
+                }
+            }
         }
 
     } catch (error) {
@@ -120,6 +175,13 @@ export class Connections {
             pairs.push([start, end]);
         }
         return pairs;
+    }
+
+    static drawRoute(points) {
+        return Graficos.multiRouteDraw(points);
+    }
+    static removeDrawRoute(draw) {
+        Graficos.removeConnection(draw);
     }
 
     static addPair(connection) {
@@ -239,8 +301,9 @@ export class Builder {
     static selection = [];
 
     static toJson() {
-        let jsonBuildings = [];
+        let jsonBuildings = {};
         for(const build of this.buildings) {
+            
             let areas = [];
             for(const area of build.areas) {
                 let jsonArea = {
@@ -249,13 +312,14 @@ export class Builder {
                 }
                 areas.push(jsonArea);
             }
+            
             let jsonBuild = {
                 "name": build.name,
                 "pin_pos": build.pinPos,
                 "areas": areas
             }
 
-            jsonBuildings.push(jsonBuild);
+            jsonBuildings[build.name] = jsonBuild;
         }
         return jsonBuildings;
     }
@@ -300,7 +364,29 @@ export class Builder {
     
     static moveRegion(region, x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        
+        for (const ref of region.construction.refs) {
+            let movedPos = {
+                x: ref.pos.x + (mapPos.x - region.pos.x),
+                y: ref.pos.y + (mapPos.y - region.pos.y)
+            }
+            movedPos = Graficos.getScreenCoordinates(movedPos.x, movedPos.y);
+            Referencer.moveRef(ref, movedPos.x, movedPos.y);
+        }
         region.pos = {x: mapPos.x, y: mapPos.y};
+        
+        for (const ref of Object.values(Referencer.references)) {
+            let unnormedPos = Graficos.getScreenCoordinates(ref.pos.x, ref.pos.y);
+            let pos = Builder.getClosestValidPosition(unnormedPos.x, unnormedPos.y);
+            let hasBuild = pos.building;
+            // pos = Graficos.getScreenCoordinates(pos.x, pos.y);
+            // Referencer.moveRef(ref, pos.x, pos.y);
+            if (hasBuild) {
+                // console.log(ref, ref.renderProjection)
+                console.log(ref.id, Referencer.references[ref.id]);
+                ref.renderProjection(pos);
+            }
+        }
 
         Graficos.updateRegion(region.graphics, region.pos.x, region.pos.y, region.size.x, region.size.y);
     }
@@ -372,6 +458,108 @@ export class Builder {
         }
     }
 
+    static getCollisionMapArea(x, y, map) {
+        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        for(const buildKey of Object.keys(map)) {
+            let build = map[buildKey];
+            for(const area of build.areas) {
+                let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
+                let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
+                if (horizontal && vertical) {
+                    return {"text": buildKey, "obj": build, "form": "build"};
+                }
+            }
+        }
+        return false;
+    }
+
+    static getClosestValidPosition(x, y) {
+        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+
+        const boxes = [];
+        for (const build of this.buildings) {
+            const pinW = 24 / Graficos.zoom;
+            const pinH = 32 / Graficos.zoom;
+            boxes.push({
+                minX: build.pinPos.x - pinW / 2,
+                maxX: build.pinPos.x + pinW / 2,
+                minY: build.pinPos.y - pinH,
+                maxY: build.pinPos.y,
+                building: build
+            });
+            
+            for (const area of build.areas) {
+                boxes.push({
+                    minX: area.pos.x,
+                    maxX: area.pos.x + area.size.x,
+                    minY: area.pos.y,
+                    maxY: area.pos.y + area.size.y,
+                    building: build
+                });
+            }
+        }
+
+        const EPS = 1e-7;
+        const isInsideAnyBox = (pt) => {
+            return boxes.some(b => 
+                pt.x > b.minX + EPS && pt.x < b.maxX - EPS &&
+                pt.y > b.minY + EPS && pt.y < b.maxY - EPS
+            );
+        };
+
+        if (!isInsideAnyBox(mapPos)) {
+            return { x: mapPos.x, y: mapPos.y, building: null };
+        }
+
+        let closestPoint = null;
+        let minSqDistance = Infinity;
+
+        const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+
+        for (const box of boxes) {
+            const segments = [
+                { p1: { x: box.minX, y: box.minY }, p2: { x: box.maxX, y: box.minY }, axis: 'h' },
+                { p1: { x: box.minX, y: box.maxY }, p2: { x: box.maxX, y: box.maxY }, axis: 'h' },
+                { p1: { x: box.minX, y: box.minY }, p2: { x: box.minX, y: box.maxY }, axis: 'v' },
+                { p1: { x: box.maxX, y: box.minY }, p2: { x: box.maxX, y: box.maxY }, axis: 'v' }
+            ];
+
+            for (const seg of segments) {
+                let candidate;
+                if (seg.axis === 'h') {
+                    candidate = {
+                        x: clamp(mapPos.x, seg.p1.x, seg.p2.x),
+                        y: seg.p1.y
+                    };
+                } else {
+                    candidate = {
+                        x: seg.p1.x,
+                        y: clamp(mapPos.y, seg.p1.y, seg.p2.y)
+                    };
+                }
+
+                if (isInsideAnyBox(candidate)) {
+                    continue;
+                }
+
+                const dx = mapPos.x - candidate.x;
+                const dy = mapPos.y - candidate.y;
+                const sqDist = dx * dx + dy * dy;
+
+                if (sqDist < minSqDistance) {
+                    minSqDistance = sqDist;
+                    closestPoint = {
+                        x: candidate.x,
+                        y: candidate.y,
+                        building: box.building
+                    };
+                }
+            }
+        }
+
+        return closestPoint;
+    }
+
     static getCollision(x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
 
@@ -387,6 +575,19 @@ export class Builder {
                 if (horizontal && vertical) {
                     return build;
                 }
+            }
+        }
+        return false;
+    }
+
+    static getCollisionPin(pinMap, x, y) {
+        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+        for (const pin of Object.values(pinMap)) {
+            let texWid = pin.label.getSize();
+            let horizontal = Math.abs(mapPos.x - (pin.x + texWid.width / 2)) < (12 + texWid.width / 2) / Graficos.zoom;
+            let vertical = Math.abs(mapPos.y - pin.y + 16 / Graficos.zoom) < 16 / Graficos.zoom;
+            if (horizontal && vertical) {
+                return pin;
             }
         }
         return false;
@@ -461,6 +662,9 @@ export class Construction {
         this.polygon = null;
         this.polygonGraphics = null;
         this.construction = null;
+        this.refs = [];
+
+        this.banner = null;
     }
 }
 
@@ -489,11 +693,69 @@ export class Referencer {
         let data = {};
         for(const refKey of Object.keys(this.references)) {
             let ref = this.references[refKey];
+            let build = "";
+            if (ref.building) {
+                build = ref.building.name;
+            }
             data[parseInt(refKey)] = {
+                "build": build,
                 "pos": ref.pos
             }
         }
         return data;
+    }
+
+    static extractReference(dataMap, refMap, clickX, clickY) {
+        let pos = Graficos.getNormalizedCoordinates(clickX, clickY);
+        let x = pos.x;
+        let y = pos.y;
+        let reference;
+        if (dataMap.form == "pin") {
+            let closest = [0, ""];
+            for(const ref of dataMap.refs) {
+
+                let refObj = refMap[ref];
+                let distance = Math.sqrt((refObj.pos.x - x) * (refObj.pos.x - x) + (refObj.pos.y - y) * (refObj.pos.y - y))
+                
+                if (closest[1] == "" || distance < closest[0]) {
+                    closest = [distance, ref];
+                }
+            }
+            reference = closest[1];
+        } else if (dataMap.form == "ref") {
+            reference = dataMap.ref;
+        } else if (dataMap.form == "build") {
+            let closest = [0, ""];
+            
+            for(const ref of dataMap.obj.refs) {
+
+                let refObj = refMap[ref];
+                let distance = Math.sqrt((refObj.pos.x - x) * (refObj.pos.x - x) + (refObj.pos.y - y) * (refObj.pos.y - y))
+
+                if (closest[1] == "" || distance < closest[0]) {
+                    closest = [distance, ref];
+                }
+            }
+            reference = closest[1];
+        }
+        return reference;
+    }
+
+    static setRelatedBuilding(obj, building) {
+        if (obj.building == building) {
+            return;
+        }
+        obj.building = building
+        building.refs.push(obj);
+    }
+
+    static setUnrelatedBuilding(obj, building) {
+        obj.building = null;
+        building.refs = removeObj(building.refs, obj);
+    }
+
+    static drawMode(object) {
+        Graficos.updateReference(object.graphics, object.pos.x, object.pos.y, false, object.isFocus);
     }
 
     static addSelection(ref, x, y) {
@@ -517,7 +779,7 @@ export class Referencer {
         this.selection = [];
     }
 
-    static createReference(x, y, convert=true) {
+    static createReference(x, y, convert=true, building=null) {
         let mapPos;
         if (convert) {
             mapPos = Graficos.getNormalizedCoordinates(x, y);
@@ -525,6 +787,7 @@ export class Referencer {
             mapPos = {x: x, y: y};
         }
         let ref = new Reference({x: mapPos.x, y: mapPos.y});
+        this.setRelatedBuilding(ref, building);
         this.addRefKey(ref);
         this.addRefHash(ref);
 
@@ -636,22 +899,12 @@ export class Referencer {
         
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
         ref.pos = mapPos;
-        Graficos.updateReference(ref.graphics, mapPos.x, mapPos.y);
+        Graficos.updateReference(ref.graphics, mapPos.x, mapPos.y, ref.isFocus);
         for(const conn of ref.lines) {
             Graficos.updateConnection(conn.graphics, conn.end.pos.x, conn.end.pos.y, conn.start.pos.x, conn.start.pos.y);
         }
         
         this.addRefHash(ref);
-        // for(const line of ref.lines) {
-        //     Graficos.setRouteLine(line, line.end.pos);
-        // }
-
-        // location = this.convertPos(ref.pos);
-        // key = this.posKey(location);
-        // if (!(key in this.hashMap)) {
-        //     this.hashMap[key] = [];
-        // }
-        // this.hashMap[key].push(ref);
     }
 
     static setReferenceObj(obj) {
@@ -667,5 +920,95 @@ export class Reference {
         this.graphics = Graficos.newReference(this.pos.x, this.pos.y);
 
         this.lines = [];
+        this.isFocus = false;
+
+        this.banner = null;
+
+        this.building = null;
+
+        this.projGraphics = null;
+        this.projPos = null;
+    }
+
+    renderProjection(pos) {
+        if (this.projGraphics) {
+            Graficos.removeReference(this.projGraphics);
+        }
+        this.projGraphics = Graficos.newReference(pos.x, pos.y, true);
+        this.projPos = {x: pos.x, y: pos.y};
+    }
+
+    endProjection() {
+        if (this.projGraphics) {
+            Graficos.removeReference(this.projGraphics);
+        }
+        this.projGraphics = null;
+        this.projPos = null;
+    }
+}
+
+export class Banner {
+    static banners = []
+
+    static saveBanner(focus, image, title, description) {
+        if (focus instanceof Pin) {
+            focus = focus.construction;
+        }
+        if (focus.banner) {
+            if (image) {
+                focus.banner.file = image;
+            }
+            focus.banner.title = title;
+            focus.banner.description = description;
+            return;
+        }
+        if (!image && !title && !description) {return};
+        let newBanner = new BannerObject(focus, image, title, description);
+        focus.banner = newBanner;
+        this.banners.push(newBanner);
+    }
+
+    static bannerJson() {
+        let data = {};
+
+        for (const banner of this.banners) {
+            let parent = banner.owner;
+            let key = (parent instanceof Reference) ? parent.id : parent.name;
+
+            data[key] = {
+                "fileName": banner.file ? banner.file.name : null,
+                "title": banner.title,
+                "description": banner.description,
+                "isRef": (parent instanceof Reference)
+            };
+        }
+        return data;
+    }
+
+    static toJson() {
+        const formData = new FormData();
+
+        const jsonData = this.bannerJson();
+        formData.append("metadata", JSON.stringify(jsonData));
+
+        for (const banner of this.banners) {
+            if (banner.file instanceof File) {
+                let parent = banner.owner;
+                let key = (parent instanceof Reference) ? parent.id : parent.name;
+
+                formData.append(`file_${key}`, banner.file, banner.file.name);
+            }
+        }
+
+        return formData;
+    }
+}
+
+export class BannerObject {
+    constructor(owner, file, title, description) {
+        this.owner = owner;
+        this.file = file;
+        this.title = title;
+        this.description = description;
     }
 }

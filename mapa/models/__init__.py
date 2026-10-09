@@ -4,8 +4,6 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from .construcao import *
-from .referencia import *
-from .rota import *
 
 PERFIL = (
     (1, 'Admin'),
@@ -13,3 +11,6 @@ PERFIL = (
 )
 
 from .perfil import UsuarioProfile
+from .referencia import Referencia
+from .banner import Banner
+from .rota import Rota
