@@ -4,6 +4,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from .construcao import *
+from .feedback import *
 
 PERFIL = (
     (1, 'Admin'),
