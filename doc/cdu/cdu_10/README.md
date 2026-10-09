@@ -1,4 +1,4 @@
-# CDU0012. Editar mapa
+# CDU0010. Editar mapa
 
 - **Ator principal**: Administrador
 - **Atores secundários**: Django/Banco de Dados

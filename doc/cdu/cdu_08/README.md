@@ -1,4 +1,4 @@
-# CDU0014. Efetuar auto-cadastro
+# CDU008. Auto-cadastro
 
 - **Ator principal**: Usuário
 - **Atores secundários**: Django/Banco de Dados
