@@ -95,6 +95,62 @@ export async function load() {
     }
 }
 
+export class Coordinate {
+    constructor(pos, space = "screen") {
+        this.pos = { x: pos.x, y: pos.y };
+        this.space = space;
+    }
+
+    convertTo(targetSpace) {
+        if (this.space === targetSpace) return;
+
+        this.pos = this.getIn(targetSpace);
+        this.space = targetSpace;
+    }
+
+    getIn(targetSpace) {
+        if (this.space === targetSpace) {
+            return { x: this.pos.x, y: this.pos.y };
+        }
+
+        let pos = { x: this.pos.x, y: this.pos.y };
+
+        if (this.space === "screen") {
+            pos = Graficos.getNormalizedCoordinates(pos);
+        }
+
+        if (targetSpace === "screen") {
+            pos = Graficos.getScreenCoordinates(pos);
+        }
+
+        return pos;
+    }
+}
+
+export function newCoord(x, y, space) {
+    return new Coordinate({x: x, y: y}, space);
+}
+
+function ease(x, type = "in-out", power = 2) {
+    const t = Math.max(0, Math.min(1, x));
+
+    switch (type) {
+        case "in":
+        return Math.pow(t, power);
+
+        case "out":
+        return 1 - Math.pow(1 - t, power);
+
+        case "in-out":
+        default:
+        if (t < 0.5) {
+            return Math.pow(2, power - 1) * Math.pow(t, power);
+        } else {
+            return 1 - Math.pow(-2 * t + 2, power) / 2;
+        }
+    }
+}
+
 export class TempConnection {
     reference;
     drawRef;
@@ -681,271 +737,419 @@ export class Referencer {
         throw new Error("Classe estática. Não instancie.");
     }
     
+    static idTracker = 0;
     static references = {};
-    static idMap = [];
     static hashMap = {};
     static hashSize = 100;
-    static id = 0;
     static radius = 15;
-    static selection = [];
-
-    static toJson() {
-        let data = {};
-        for(const refKey of Object.keys(this.references)) {
-            let ref = this.references[refKey];
-            let build = "";
-            if (ref.building) {
-                build = ref.building.name;
-            }
-            data[parseInt(refKey)] = {
-                "build": build,
-                "pos": ref.pos
-            }
-        }
-        return data;
-    }
-
-    static extractReference(dataMap, refMap, clickX, clickY) {
-        let pos = Graficos.getNormalizedCoordinates(clickX, clickY);
-        let x = pos.x;
-        let y = pos.y;
-        let reference;
-        if (dataMap.form == "pin") {
-            let closest = [0, ""];
-            for(const ref of dataMap.refs) {
-
-                let refObj = refMap[ref];
-                let distance = Math.sqrt((refObj.pos.x - x) * (refObj.pos.x - x) + (refObj.pos.y - y) * (refObj.pos.y - y))
-                
-                if (closest[1] == "" || distance < closest[0]) {
-                    closest = [distance, ref];
-                }
-            }
-            reference = closest[1];
-        } else if (dataMap.form == "ref") {
-            reference = dataMap.ref;
-        } else if (dataMap.form == "build") {
-            let closest = [0, ""];
-            
-            for(const ref of dataMap.obj.refs) {
-
-                let refObj = refMap[ref];
-                let distance = Math.sqrt((refObj.pos.x - x) * (refObj.pos.x - x) + (refObj.pos.y - y) * (refObj.pos.y - y))
-
-                if (closest[1] == "" || distance < closest[0]) {
-                    closest = [distance, ref];
-                }
-            }
-            reference = closest[1];
-        }
-        return reference;
-    }
-
-    static setRelatedBuilding(obj, building) {
-        if (obj.building == building) {
+    // static idMap = [];
+    // static selection = [];
+    
+    static track(reference) {
+        if (!(reference.id === -1)) {
             return;
         }
-        obj.building = building
-        building.refs.push(obj);
+        reference.id = this.idTracker;
+        this.references[this.idTracker] = reference;
+        this.idTracker += 1;
     }
 
-    static setUnrelatedBuilding(obj, building) {
-        obj.building = null;
-        building.refs = removeObj(building.refs, obj);
+    static untrack(reference) {
+        delete this.references[reference.id];
+        reference.id = -1;
     }
 
-    static drawMode(object) {
-        Graficos.updateReference(object.graphics, object.pos.x, object.pos.y, false, object.isFocus);
-    }
-
-    static addSelection(ref, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        let offx = mapPos.x - ref.pos.x;
-        let offy = mapPos.y - ref.pos.y;
-        if (!(this.selection.includes(ref))) {
-            this.selection.push({
-                obj: ref,
-                offx: offx * Graficos.zoom,
-                offy: offy * Graficos.zoom
-            });
-        } 
-    }
-
-    static removeSelection(ref) {
-        this.selection = removeObj(this.selection, ref);
-    }
-
-    static clearSelection() {
-        this.selection = [];
-    }
-
-    static createReference(x, y, convert=true, building=null) {
-        let mapPos;
-        if (convert) {
-            mapPos = Graficos.getNormalizedCoordinates(x, y);
-        } else {
-            mapPos = {x: x, y: y};
+    static getHashKey(pos, map=true) {
+        if (map) {
+            pos = this.getHashCoord(pos);
         }
-        let ref = new Reference({x: mapPos.x, y: mapPos.y});
-        this.setRelatedBuilding(ref, building);
-        this.addRefKey(ref);
-        this.addRefHash(ref);
 
-        return ref;
+        let key = `${pos.x},${pos.y}`;
+
+        return key;
     }
 
-    static createTempReference(x, y) {
-        return Graficos.newReference(x, y, true);
-    }
+    static getHashCoord(pos) {
+        let x = pos.x;
+        let y = pos.y;
 
-    static updateTempReference(conn, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        Graficos.updateReference(conn.drawRef, mapPos.x, mapPos.y, true);
-    }
-
-    static removeTempReference(ref) {
-        Graficos.removeReference(ref.drawRef);
-    }
-    
-    static convertPos(x, y) {
         const newPos = {
             x: Math.floor(x / this.hashSize),
             y: Math.floor(y / this.hashSize)
         };
+
         return newPos;
     }
 
-    static setRadius(radius) {
-        this.radius = radius;
-    }
+    static removePositionTrack(reference) {
+        if (!reference.positionTracked) {
+            return;
+        }
+        reference.positionTracked = false;
 
-    static posKey(pos) {
-        return `${pos.x},${pos.y}`;
-    }
+        let key = this.getHashKey(reference.coordinate.pos);
 
-    static getId() {
-        let id = this.id;
-        this.id += 1;
-        return id;
+        this.hashMap[key] = removeObj(this.hashMap[key], reference);
     }
+    static addPositionTrack(reference) {
+        if (reference.positionTracked) {
+            return;
+        }
+        reference.positionTracked = true;
+        let key = this.getHashKey(reference.coordinate.pos);
+        
+        if (!(key in this.hashMap)) {
+            this.hashMap[key] = [];
+        }
+        this.hashMap[key].push(reference);
+    }
+    
+    static getOverlappingDots(coordinate, all) {
+        let pos = coordinate.getIn("normal");
+        let hashPos = this.getHashCoord(pos);
 
-    static getCollision(x, y, connection=false) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        const location = this.convertPos(mapPos.x, mapPos.y);
+        let allList = [];
+
         for (let i = 0; i < 9; i ++) {
             let offset = {
                 x: (i % 3) - 1,
                 y: Math.floor(i / 3) - 1
             }
-            const key = this.posKey({x: location.x + offset.x, y: location.y + offset.y});
+
+            const key = this.getHashKey({x: hashPos.x + offset.x, y: hashPos.y + offset.y}, false);
+            
             if (key in this.hashMap) {
-                for (const point of this.hashMap[key]) {
-                    const distance = Math.sqrt(Math.pow(point.pos.x - mapPos.x, 2) + Math.pow(point.pos.y - mapPos.y, 2));
-                    if (distance < Referencer.radius) {
-                        if (connection != false) {
-                            if (Connections.hasPair(connection, point)) {
-                                continue;
-                            }
+                for (const reference of this.hashMap[key].toReversed()) {
+                    const distance = Math.sqrt(Math.pow(reference.coordinate.pos.x - pos.x, 2) + Math.pow(reference.coordinate.pos.y - pos.y, 2));
+                    if (distance < reference.size / Graficos.zoom) {
+                        // if (connection != false) {
+                            // if (Connections.hasPair(connection, point)) {
+                                // continue;
+                            // }
+                        // }
+                        if (!all) {
+                            return reference;
                         }
-                        return point;
+                        allList.push(reference);
                     }
                 }
             }
         }
-        return false;
-    }
 
-    static removeReference(ref) {
-        Graficos.removeReference(ref.graphics);
-        
-        for (const element of ref.lines) {
-            Connections.removeConnection(element);
+        if (allList.length == 0) {
+            return false;
         }
+        return allList;
+    }
+
+    // static toJson() {
+    //     let data = {};
+    //     for(const refKey of Object.keys(this.references)) {
+    //         let ref = this.references[refKey];
+    //         let build = "";
+    //         if (ref.building) {
+    //             build = ref.building.name;
+    //         }
+    //         data[parseInt(refKey)] = {
+    //             "build": build,
+    //             "pos": ref.pos
+    //         }
+    //     }
+    //     return data;
+    // }
+
+    // static extractReference(dataMap, refMap, clickX, clickY) {
+    //     let pos = Graficos.getNormalizedCoordinates(clickX, clickY);
+    //     let x = pos.x;
+    //     let y = pos.y;
+    //     let reference;
+    //     if (dataMap.form == "pin") {
+    //         let closest = [0, ""];
+    //         for(const ref of dataMap.refs) {
+
+    //             let refObj = refMap[ref];
+    //             let distance = Math.sqrt((refObj.pos.x - x) * (refObj.pos.x - x) + (refObj.pos.y - y) * (refObj.pos.y - y))
+                
+    //             if (closest[1] == "" || distance < closest[0]) {
+    //                 closest = [distance, ref];
+    //             }
+    //         }
+    //         reference = closest[1];
+    //     } else if (dataMap.form == "ref") {
+    //         reference = dataMap.ref;
+    //     } else if (dataMap.form == "build") {
+    //         let closest = [0, ""];
+            
+    //         for(const ref of dataMap.obj.refs) {
+
+    //             let refObj = refMap[ref];
+    //             let distance = Math.sqrt((refObj.pos.x - x) * (refObj.pos.x - x) + (refObj.pos.y - y) * (refObj.pos.y - y))
+
+    //             if (closest[1] == "" || distance < closest[0]) {
+    //                 closest = [distance, ref];
+    //             }
+    //         }
+    //         reference = closest[1];
+    //     }
+    //     return reference;
+    // }
+
+    // static setRelatedBuilding(obj, building) {
+    //     if (obj.building == building) {
+    //         return;
+    //     }
+    //     obj.building = building
+    //     building.refs.push(obj);
+    // }
+
+    // static setUnrelatedBuilding(obj, building) {
+    //     obj.building = null;
+    //     building.refs = removeObj(building.refs, obj);
+    // }
+
+    // static addSelection(ref, x, y) {
+    //     let mapPos = Graficos.getNormalizedCoordinates(x, y);
+    //     let offx = mapPos.x - ref.pos.x;
+    //     let offy = mapPos.y - ref.pos.y;
+    //     if (!(this.selection.includes(ref))) {
+    //         this.selection.push({
+    //             obj: ref,
+    //             offx: offx * Graficos.zoom,
+    //             offy: offy * Graficos.zoom
+    //         });
+    //     } 
+    // }
+
+    // static removeSelection(ref) {
+    //     this.selection = removeObj(this.selection, ref);
+    // }
+
+    // static clearSelection() {
+    //     this.selection = [];
+    // }
+    
+    // static convertPos(x, y) {
+    //     const newPos = {
+    //         x: Math.floor(x / this.hashSize),
+    //         y: Math.floor(y / this.hashSize)
+    //     };
+    //     return newPos;
+    // }
+
+    // static setRadius(radius) {
+    //     this.radius = radius;
+    // }
+
+    // static posKey(pos) {
+    //     return `${pos.x},${pos.y}`;
+    // }
+
+    // static getId() {
+    //     let id = this.id;
+    //     this.id += 1;
+    //     return id;
+    // }
+
+    
+
+    // static removeReference(ref) {
+    //     Graficos.removeReference(ref.graphics);
         
-        delete this.references[String(ref.id)];
-
-        let key = this.getHashKey(ref.pos.x, ref.pos.y);
-        this.hashMap[key] = removeObj(this.hashMap[key], ref);
-
-    }
-
-    static getHashKey(x, y) {
-        const location = this.convertPos(x, y);
-        const key = this.posKey(location);
-        return key;
-    }
-
-    static addRefHash(ref) {
-        let key = this.getHashKey(ref.pos.x, ref.pos.y);
-        if (!(key in this.hashMap)) {
-            this.hashMap[key] = [];
-        }
-        this.hashMap[key].push(ref);
-    }
-    static removeRefHash(ref) {
-        let key = this.getHashKey(ref.pos.x, ref.pos.y);
-        this.hashMap[key] = removeObj(this.hashMap[key], ref);
-    }
-
-    static addRefKey(ref) {
-        this.references[String(ref.id)] = ref;
-    }
-    static removeRefKey(ref) {
-        delete this.references[String(ref.id)];
-    }
-
-    static moveRef(ref, x, y) {
-        this.removeRefHash(ref);
+    //     for (const element of ref.lines) {
+    //         Connections.removeConnection(element);
+    //     }
         
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        ref.pos = mapPos;
-        Graficos.updateReference(ref.graphics, mapPos.x, mapPos.y, ref.isFocus);
-        for(const conn of ref.lines) {
-            Graficos.updateConnection(conn.graphics, conn.end.pos.x, conn.end.pos.y, conn.start.pos.x, conn.start.pos.y);
-        }
-        
-        this.addRefHash(ref);
-    }
+    //     delete this.references[String(ref.id)];
 
-    static setReferenceObj(obj) {
-        this.referenceObj = obj;
-    }
+    //     let key = this.getHashKey(ref.pos.x, ref.pos.y);
+    //     this.hashMap[key] = removeObj(this.hashMap[key], ref);
+
+    // }
+
+    // static getHashKey(x, y) {
+    //     const location = this.convertPos(x, y);
+    //     const key = this.posKey(location);
+    //     return key;
+    // }
+
+    // static addRefHash(ref) {
+    //     let key = this.getHashKey(ref.pos.x, ref.pos.y);
+    //     if (!(key in this.hashMap)) {
+    //         this.hashMap[key] = [];
+    //     }
+    //     this.hashMap[key].push(ref);
+    // }
+    // static removeRefHash(ref) {
+    //     let key = this.getHashKey(ref.pos.x, ref.pos.y);
+    //     this.hashMap[key] = removeObj(this.hashMap[key], ref);
+    // }
+
+    // static addRefKey(ref) {
+    //     this.references[String(ref.id)] = ref;
+    // }
+    // static removeRefKey(ref) {
+    //     delete this.references[String(ref.id)];
+    // }
+
+    // static moveRef(ref, x, y) {
+    //     this.removeRefHash(ref);
+        
+    //     let mapPos = Graficos.getNormalizedCoordinates(x, y);
+    //     ref.pos = mapPos;
+    //     Graficos.updateReference(ref.graphics, mapPos.x, mapPos.y, ref.isFocus);
+    //     for(const conn of ref.lines) {
+    //         Graficos.updateConnection(conn.graphics, conn.end.pos.x, conn.end.pos.y, conn.start.pos.x, conn.start.pos.y);
+    //     }
+        
+    //     this.addRefHash(ref);
+    // }
+
+    // static setReferenceObj(obj) {
+    //     this.referenceObj = obj;
+    // }
 }
 
 export class Reference {
-    constructor(pos) {
-        this.id = Referencer.getId();
+    constructor(coordinate) {
+        this.alpha = 1;
+        this.colorOut = 0x3d97e0;
+        this.colorIn = 0xa4d1f5;
+        this.enabled = true;
+        this.size = 10;
+
+        this.id = -1;
+        this.hover = 0;
+        this.hoverTime = .2;
+        Referencer.track(this);
         
-        this.pos = pos;
-        this.graphics = Graficos.newReference(this.pos.x, this.pos.y);
+        this.positionTracked = false;
+        this.move(coordinate, true);
+        
+        this.graphics = Graficos.createReference();
 
-        this.lines = [];
-        this.isFocus = false;
-
-        this.banner = null;
-
-        this.building = null;
-
-        this.projGraphics = null;
-        this.projPos = null;
+        this.updateGraphics();
     }
 
-    renderProjection(pos) {
-        if (this.projGraphics) {
-            Graficos.removeReference(this.projGraphics);
+    hoverAdd() {
+        this.hover += 1;
+        let cap = this.hoverTime * 30;
+
+        if (this.hover >= cap) {
+            this.hover = cap;
         }
-        this.projGraphics = Graficos.newReference(pos.x, pos.y, true);
-        this.projPos = {x: pos.x, y: pos.y};
+        this.hoverUpdate();
+    }
+    hoverDec() {
+        this.hover -= 1;
+        if (this.hover <= 0) {
+            this.hover = 0;
+        }
+
+        this.hoverUpdate();
+    }
+    hoverUpdate() {
+        let ms = this.hoverTime * 1000;
+        let t = this.hover * (1000 / 30) / ms;
+        t = ease(t);
+        this.size = 10 + t * 5;
+        this.updateGraphics();
     }
 
-    endProjection() {
-        if (this.projGraphics) {
-            Graficos.removeReference(this.projGraphics);
+    buildData() {
+        return {
+            coordinate: this.coordinate,
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            size: this.size,
+            alpha: this.alpha,
         }
-        this.projGraphics = null;
-        this.projPos = null;
+    }
+
+    updateGraphics() {
+        if (this.enabled) {
+            Graficos.renderReference(this.graphics, this.buildData());
+        } else {
+            this.graphics.clear();
+        }
+    }
+    bringToFront() {
+        Referencer.removePositionTrack(this);
+        Referencer.addPositionTrack(this);
+        Graficos.BringToFrontReference(this.graphics);
+    }
+
+    move(coordinate, create=false) {
+        if (!create) {
+            Referencer.removePositionTrack(this);
+        }
+        
+        this.coordinate = coordinate;
+        this.coordinate.convertTo("normal");
+
+        if (!create) {
+            this.updateGraphics();
+            this.bringToFront();
+        }
+        
+        Referencer.addPositionTrack(this);
+    }
+    
+    enable() {
+        this.enabled = true;
+        this.updateGraphics();
+        Referencer.track(this);
+        Referencer.addPositionTrack(this);
+    }
+    disable() {
+        this.enabled = false;
+        this.updateGraphics();
+        Referencer.untrack(this);
+        Referencer.removePositionTrack(this);
+    }
+
+    destroy() {
+        Referencer.untrack(this);
+
+        Referencer.removePositionTrack(this);
+
+        Graficos.destroyReference(this.graphics);
     }
 }
+
+// export class Reference {
+//     constructor(pos) {
+//         this.id = Referencer.getId();
+        
+//         this.pos = pos;
+//         this.graphics = Graficos.newReference(this.pos.x, this.pos.y);
+
+//         this.lines = [];
+//         this.isFocus = false;
+
+//         this.banner = null;
+
+//         this.building = null;
+
+//         this.projGraphics = null;
+//         this.projPos = null;
+//     }
+
+//     renderProjection(pos) {
+//         if (this.projGraphics) {
+//             Graficos.removeReference(this.projGraphics);
+//         }
+//         this.projGraphics = Graficos.newReference(pos.x, pos.y, true);
+//         this.projPos = {x: pos.x, y: pos.y};
+//     }
+
+//     endProjection() {
+//         if (this.projGraphics) {
+//             Graficos.removeReference(this.projGraphics);
+//         }
+//         this.projGraphics = null;
+//         this.projPos = null;
+//     }
+// }
 
 export class Banner {
     static banners = []

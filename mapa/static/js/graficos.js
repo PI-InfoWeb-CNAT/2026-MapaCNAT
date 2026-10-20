@@ -35,8 +35,8 @@ export let scaleFactor = 1;
 
 export let imageSize;
 
-export function getNormalizedCoordinates(screenX, screenY) {
-    const localPoint = mapContainer.toLocal({ x: screenX, y: screenY });
+export function getNormalizedCoordinates(pos) {
+    const localPoint = mapContainer.toLocal(pos);
 
     return {
         x: localPoint.x,
@@ -44,8 +44,8 @@ export function getNormalizedCoordinates(screenX, screenY) {
     };
 }
 
-export function getScreenCoordinates(localX, localY) {
-    const screenPoint = mapContainer.toGlobal({ x: localX, y: localY });
+export function getScreenCoordinates(pos) {
+    const screenPoint = mapContainer.toGlobal(pos);
 
     return {
         x: screenPoint.x,
@@ -207,43 +207,40 @@ export function removePin(pin) {
 }
 
 
-
-export function newReference(x, y, temp=false) {
+export function createReference() {
     let point = new PIXI.Graphics();
-
-    let alpha = 1;
-    if (temp) {
-        alpha = .5;
-    }
-
-    point
-    .circle(x, y, 10 / zoom)
-    .fill({ color: 0xffffff, alpha: alpha})
-    .stroke({ width: 4 / zoom, color: 0x4000ff });
     
     point.position.set(0, 0);
     referenceContainer.addChild(point);
 
     return point;
 }
-export function updateReference(graphics, x, y, temp=false, isFocus=false) {
-    let alpha = 1;
-    if (temp) {
-        alpha = .5;
+
+export function BringToFrontReference(graphics) {
+    if (graphics && graphics.parent === referenceContainer) {
+        // Re-adding moves the child to the top of the render order
+        referenceContainer.addChild(graphics);
+
+        // Alternative explicit method:
+        // referenceContainer.setChildIndex(graphics, referenceContainer.children.length - 1);
     }
-    let cols = [0xffffff, 0x4000ff];
-    if (isFocus) {
-        cols = [0x8888ff, 0x4000ff];
-    }
+}
+
+export function renderReference(graphics, data) {
+    let alpha = data.alpha;
+    let colorOut = data.colorOut;
+    let colorIn = data.colorIn;
+    let size = data.size;
+    let pos = data.coordinate.getIn("normal");
 
     graphics
     .clear()
-    .circle(x, y, 10 / zoom)
-    .fill({ color: cols[0], alpha: alpha})
-    .stroke({ width: 4 / zoom, color: cols[1] });
+    .circle(pos.x, pos.y, size / zoom)
+    .fill({ color: colorIn, alpha: alpha})
+    .stroke({ width: 4 / zoom, color: colorOut });
 }
 
-export function removeReference(graphics) {    
+export function destroyReference(graphics) {    
     referenceContainer.removeChild(graphics);
     
     graphics.destroy({
@@ -538,14 +535,10 @@ function Zoom(z) {
         child.scale.set(1 / zoom / 2);
     }
     let references = Editor.Referencer.references;
-    for (const ref of Object.values(references)) {
-        updateReference(ref.graphics, ref.pos.x, ref.pos.y, false, ref.isFocus);
-    };
-    Editor.Referencer.radius = 15 / zoom;
 
-    // if (tempReference) {
-    //     tempReference.drawRef
-    // }
+    for (const ref of Object.values(references)) {
+        ref.updateGraphics();
+    };
 
     clampPos();
 }
@@ -600,7 +593,6 @@ export function smoothRotation(r) {
 
             Rotation(initialRotation + (shortestTargetRotation - initialRotation) * interpolation);
             let center = {x: window.visualViewport.width / 2, y: window.visualViewport.height / 2}
-            let rotatedCenter = Transformacao.rotatePoint(center.x, center.y, mapContainer.rotation);
             let pivo = Transformacao.rotatePoint(containerPos.x - center.x, containerPos.y - center.y, mapContainer.rotation - initialRotation);
             pivo = {x: pivo.x + center.x, y: pivo.y + center.y};
             Position(pivo.x, pivo.y);
