@@ -5,7 +5,7 @@ export let map;
 export let mapContainer;
 let textContainer;
 let referenceContainer;
-let routeContainer;
+let connectionContainer;
 let areasContainer;
 let pinContainer;
 let app;
@@ -216,28 +216,24 @@ export function createReference() {
     return point;
 }
 
-export function BringToFrontReference(graphics) {
-    if (graphics && graphics.parent === referenceContainer) {
-        // Re-adding moves the child to the top of the render order
-        referenceContainer.addChild(graphics);
-
-        // Alternative explicit method:
-        // referenceContainer.setChildIndex(graphics, referenceContainer.children.length - 1);
-    }
-}
-
 export function renderReference(graphics, data) {
     let alpha = data.alpha;
     let colorOut = data.colorOut;
     let colorIn = data.colorIn;
     let size = data.size;
     let pos = data.coordinate.getIn("normal");
-
+    
     graphics
     .clear()
     .circle(pos.x, pos.y, size / zoom)
     .fill({ color: colorIn, alpha: alpha})
     .stroke({ width: 4 / zoom, color: colorOut });
+}
+
+export function BringToFrontReference(graphics) {
+    if (graphics && graphics.parent === referenceContainer) {
+        referenceContainer.addChild(graphics);
+    }
 }
 
 export function destroyReference(graphics) {    
@@ -250,29 +246,71 @@ export function destroyReference(graphics) {
     });
 }
 
-
-export function newConnection(x1, y1, x2=null, y2=null, temp=false) {
-    let routeGraphics = new PIXI.Graphics();
+export function createConnection() {
+    let connection = new PIXI.Graphics();
     
-    if (x2 === null || y2 === null) {
-        x2 = x1;
-        y2 = y1;
+    connection.position.set(0, 0);
+    connectionContainer.addChild(connection);
+
+    return connection;
+}
+
+export function renderConnection(graphics, data) {
+    let alpha = data.alpha;
+    let colorOut = data.colorOut;
+    let colorIn = data.colorIn;
+    let size = data.size;
+
+    let points = data.points;
+
+    if (points.length < 2) {
+        return;
     }
 
-    let alpha = 1;
-    if (temp) {
-        alpha = .5;
-    }
+    const buildPath = (g) => {
+        let p0 = points[0].getIn("normal");
+        g.moveTo(p0.x, p0.y);
 
-    routeGraphics
-    .moveTo(x1, y1)
-    .lineTo(x2, y2)
-    .stroke({ width: 8, color: 0x4000ff, alpha: alpha});
+        for (let i = 1; i < points.length - 1; i++) {
+            const p1 = points[i].getIn("normal");
+            const p2 = points[i + 1].getIn("normal");
+
+            g.arcTo(p1.x, p1.y, p2.x, p2.y, radius);
+        }
+
+        const last = points[points.length - 1].getIn("normal");
+        g.lineTo(last.x, last.y);
+    };
+
+    graphics.clear();
+
+    buildPath(graphics);
+    graphics.stroke({
+        width: size + 2,
+        color: colorOut,
+        alpha: alpha,
+        cap: 'round',
+        join: 'round'
+    });
+
+    buildPath(graphics);
+    graphics.stroke({
+        width: size - 2,
+        color: colorIn,
+        alpha: alpha,
+        cap: 'round',
+        join: 'round'
+    });
+}
+
+export function destroyConnection(graphics) {    
+    connectionContainer.removeChild(graphics);
     
-    routeGraphics.position.set(0, 0);
-    routeContainer.addChild(routeGraphics);
-
-    return routeGraphics;
+    graphics.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
 }
 
 export function multiRouteDraw(points = [], temp = false) {
@@ -315,7 +353,7 @@ export function multiRouteDraw(points = [], temp = false) {
     });
 
     routeGraphics.position.set(0, 0);
-    routeContainer.addChild(routeGraphics);
+    connectionContainer.addChild(routeGraphics);
 
     return routeGraphics;
 }
@@ -333,7 +371,7 @@ export function updateConnection(graphics, x1, y1, x2, y2, temp=false) {
     .stroke({ width: 8, color: 0x4000ff, alpha: alpha });
 }
 export function removeConnection(graphics) {    
-    routeContainer.removeChild(graphics);
+    connectionContainer.removeChild(graphics);
     
     graphics.destroy({
         children: true,
@@ -380,6 +418,7 @@ export async function main() {
     app = new PIXI.Application();
     await app.init({ 
         resizeTo: window,
+        antialias: true,
         backgroundColor: color,
         resolution: window.devicePixelRatio || 1,
     });
@@ -422,8 +461,8 @@ export async function main() {
     areasContainer = new PIXI.Container();
     mapContainer.addChild(areasContainer);
 
-    routeContainer = new PIXI.Container();
-    mapContainer.addChild(routeContainer);
+    connectionContainer = new PIXI.Container();
+    mapContainer.addChild(connectionContainer);
 
     referenceContainer = new PIXI.Container();
     mapContainer.addChild(referenceContainer);

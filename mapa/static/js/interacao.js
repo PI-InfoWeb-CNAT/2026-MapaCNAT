@@ -30,17 +30,15 @@ let selectionBtn;
 let deleteBtn;
 let confirmBtn;
 
-let focusObjects = [];
-
-let clicking = false;
-let touching = false;
-
-let minZoom, maxZoom;
-let zoomStep;
 
 let page;
 
+let minZoom, maxZoom;
+let zoomStep;
 let zoom = Graficos.zoom;
+
+let clicking = false;
+let touching = false;
 
 let mapStartX, mapStartY;
 let clickX, clickY;
@@ -50,37 +48,48 @@ let startDistance, startAngle;
 let startZoom, startRotation;
 let startOffsetX, startOffsetY;
 
-let heldReference;
+let tempConstruction;
 
 let hoverSet = new Set();
 let hoverTargetSet = new Set();
 let hoverLoop;
 
-
-
-let tempConn;
-let tempReference;
-let tempConstruction;
-let tempRegion;
-
-let holdingBuilding;
-
 const EditorModes = Object.freeze({
-  FREE: 'FREE',
-  SELECTION: 'SELECTION',
-  DELETION: 'DELETION',
-  CONSTRUCTION: 'CONSTRUCTION',
-  REFERENCE: 'REFERENCE',
-  CONNECTION: 'CONNECTION'
+    FREE: 'FREE',
+    SELECTION: 'SELECTION',
+    DELETION: 'DELETION',
+    CONSTRUCTION: 'CONSTRUCTION',
+    REFERENCE: 'REFERENCE',
+    CONNECTION: 'CONNECTION'
 });
 
 let editorMode = EditorModes.FREE;
+
 
 export function setContext(context) {
     page = context.page;
     minZoom = Graficos.minZoom;
     maxZoom = Graficos.maxZoom;
     zoomStep = context.scroll_ratio;
+}
+
+let heldObject;
+
+class Holdable {
+    constructor(object, type, initialPos = false, phantomObject = null) {
+        this.phantomObject = phantomObject;
+        this.object = object;
+        this.type = type;
+        this.initialPos = initialPos;
+    }
+}
+
+function setHoldable(object) {
+    if (heldObject && heldObject.phantomObject) {
+        heldObject.phantomObject.destroy();
+    }
+
+    heldObject = object;
 }
 
 class Touch {
@@ -173,21 +182,16 @@ class Pointer {
         mapStartY = Graficos.mapContainer.y;
         clicking = true;
         moved = false;
+        
         if (page == "main") {
             return;
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
                 let overlap = Editor.Referencer.getOverlappingDots(coord, false);
-                heldReference = false;
+                setHoldable(false);
                 if (overlap) {
-                    heldReference = {
-                        obj: overlap,
-                        pos: {
-                            x: overlap.coordinate.pos.x,
-                            y: overlap.coordinate.pos.y
-                        }
-                    };
+                    setHoldable(new Holdable(overlap, "reference", { ...overlap.coordinate.pos }));
                 } else {
                     Actions.newReference(clickX, clickY);
                 }
@@ -197,10 +201,16 @@ class Pointer {
                 if (overlap) {
                     Actions.destroyReference(overlap);
                 }
+            } else if (editorMode == EditorModes.CONNECTION) {
+                let coord = Editor.newCoord(clickX, clickY, "screen");
+                let overlap = Editor.Referencer.getOverlappingDots(coord, false);
+
+                if (overlap) {
+                    let phantomObject = new Editor.PhantomConnection(overlap);
+                    setHoldable(new Holdable(overlap, "connectionReference", false, phantomObject=phantomObject));
+                }
             }
         //         Actions.createReference(clickX, clickY);
-                
-        //     } else if (editorMode == EditorModes.CONNECTION) {
         //         let col = Editor.Referencer.getCollision(clickX, clickY);
         //         if (col) {
         //             Actions.beginConnection(col);
@@ -327,14 +337,38 @@ class Pointer {
                 Pointer.defaultMove(e);
                 
             } else if (editorMode == EditorModes.REFERENCE) {
-                if (heldReference) {
+                if (heldObject) {
                     let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-                    heldReference.obj.move(coord);
+                    heldObject.object.move(coord);
                 } else {
                     let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
                     let overlap = Editor.Referencer.getOverlappingDots(coord);
                     if (overlap) {
                         hoverTargetSet.add(overlap);
+                    }
+                }
+            } else if (editorMode == EditorModes.CONNECTION) {
+                let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+                if (heldObject && heldObject.type == "connectionReference") {
+                    heldObject.phantomObject.setEndPoint(coord);
+
+                    let overlap = Editor.Referencer.getOverlappingDots(coord);
+                    if (overlap) {
+                        if (overlap != heldObject.phantomObject.start && !Editor.Connections.hasPair(overlap, heldObject.phantomObject.start)) {
+                            Actions.newConnection(heldObject.phantomObject.start, overlap);
+    
+                            let phantomObject = new Editor.PhantomConnection(overlap);
+                            setHoldable(new Holdable(overlap, "connectionReference", false, phantomObject=phantomObject));
+                        }
+                    }
+
+                } else {
+                    let overlap = Editor.Referencer.getOverlappingDots(coord);
+                    if (overlap) {
+                        hoverTargetSet.add(overlap);
+                    } else {
+                        if (!clicking) return;
+                        Pointer.defaultMove(e);
                     }
                 }
             } else {
@@ -436,13 +470,18 @@ class Pointer {
             }
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
-                if (heldReference) {
-                    Actions.moveReference(heldReference);
+                if (heldObject) {
+                    Actions.moveReference(heldObject);
                 }
-                heldReference = false;
+                setHoldable(false);
             }
 
-            // if (editorMode == EditorModes.CONNECTION) {
+            if (editorMode == EditorModes.CONNECTION) {
+                if (heldObject && heldObject.type == "connectionReference") {
+                    heldObject.phantomObject.destroy();
+                    setHoldable(false);
+                }
+            }
             //     Actions.removeTempConnection();
             // } else if (editorMode == EditorModes.CONSTRUCTION) {
             //     if (tempRegion) {
@@ -806,7 +845,6 @@ class Actions {
         const forward = () => {
             reference.enable();
             Actions.forceMode(EditorModes.REFERENCE);
-            // reference = new Editor.Reference(coord);
         };
         
         const backward = () => {
@@ -824,8 +862,6 @@ class Actions {
         forward();
 
         this.newAction(forward, backward, prune);
-
-        return reference;
     }
 
     static destroyReference(reference) {
@@ -839,25 +875,18 @@ class Actions {
             Actions.forceMode(EditorModes.REFERENCE);
         };
 
-        // const prune = () => {
-        //     if (reference) {
-        //         reference.destroy();
-        //         reference = null;
-        //     }
-        // }
-
         forward();
 
-        this.newAction(forward, backward);//, prune);
+        this.newAction(forward, backward);
 
         return reference;
     }
 
-    static moveReference(heldReference) {
-        let object = heldReference.obj;
+    static moveReference(heldObject) {
+        let object = heldObject.object;
 
         let forwardCoord = {x: object.coordinate.pos.x, y: object.coordinate.pos.y};
-        let backwardCoord = {x: heldReference.pos.x, y: heldReference.pos.y};
+        let backwardCoord = {x: heldObject.initialPos.x, y: heldObject.initialPos.y};
 
         const forward = () => {
             const coord = Editor.newCoord(forwardCoord.x, forwardCoord.y, "normal");
@@ -872,9 +901,34 @@ class Actions {
         };
 
         this.newAction(forward, backward);
-
-        // return reference;
     }
+
+
+    static newConnection(start, end) {
+        let connection = new Editor.Connection(start, end);
+
+        const forward = () => {
+            connection.enable();
+            Actions.forceMode(EditorModes.CONNECTION);
+        };
+        
+        const backward = () => {
+            connection.disable();
+            Actions.forceMode(EditorModes.CONNECTION);
+        };
+
+        const prune = () => {
+            if (connection) {
+                connection.destroy();
+                connection = null;
+            }
+        }
+
+        forward();
+
+        this.newAction(forward, backward, prune);
+    }
+
 
     static forceMode(mode=EditorModes.FREE) {
         lightButton(selectionBtn, mode, EditorModes.SELECTION);

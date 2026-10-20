@@ -151,43 +151,42 @@ function ease(x, type = "in-out", power = 2) {
     }
 }
 
-export class TempConnection {
-    reference;
-    drawRef;
-
-    constructor(reference, drawRef) {
-        this.reference = reference;
-        this.drawRef = drawRef;
-        // Graficos.tempConnection = this;
-    }
-}
-export class TempReference {
-    drawRef;
-
-    constructor(drawRef) {
-        this.drawRef = drawRef;
-        // Graficos.tempReference = this;
-    }
-}
-export class TempConstruction {
-    name;
-    pin;
-    pin_graphics;
-    regions;
-
-    constructor(name) {
-        this.name = name;
-        this.regions = [];
-    }
-}
-export class TempRegion {
-    start;
-    end;
-    drawRef;
-
-    constructor(graphics, start) {
-        this.drawRef = graphics;
+export class PhantomConnection {
+    constructor(start) {
         this.start = start;
+
+        this.alpha = .6;
+        this.colorOut = 0x3d97e0;
+        this.colorIn = 0xa4d1f5;
+
+        this.size = 5;
+
+        this.graphics = Graficos.createConnection();
+    }
+
+    setEndPoint(end) {
+        this.end = end;
+        this.updateGraphics();
+    }
+
+    buildData() {
+        let start = this.start instanceof Reference ? this.start.coordinate : this.start;
+        let end = this.end instanceof Reference ? this.end.coordinate : this.end;
+        return {
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            alpha: this.alpha,
+            size: this.size,
+            points: [start, end],
+        }
+    }
+
+    updateGraphics() {
+        Graficos.renderConnection(this.graphics, this.buildData());
+    }
+
+    destroy() {
+        Graficos.destroyConnection(this.graphics);
     }
 }
 
@@ -198,6 +197,14 @@ function removeObj(list, obj) {
         list.splice(index, 1);
     }
     return list;
+}
+
+function addObj(list, item) {
+    if (!list.includes(item)) {
+        list.push(item);
+        return true;
+    }
+    return false;
 }
 
 function polygonUnion(squares) {
@@ -220,8 +227,7 @@ export class Connections {
         throw new Error("Classe estática. Não instancie.");
     }
 
-    static pairs = {};
-
+    
     static toJson() {
         let pairs = [];
         for(const rawKey of Object.keys(this.pairs)) {
@@ -232,56 +238,90 @@ export class Connections {
         }
         return pairs;
     }
+    
+    static connections = {};
 
-    static drawRoute(points) {
-        return Graficos.multiRouteDraw(points);
+    static track(connection) {
+        let key = this.createKey(connection);
+
+        if (this.connections[key]) {
+            return;
+        }
+        this.connections[key] = connection;
+
+        this.setRelation(connection, connection.start, true);
+        this.setRelation(connection, connection.end, true);
     }
-    static removeDrawRoute(draw) {
-        Graficos.removeConnection(draw);
+
+    static untrack(connection) {
+        let key = this.createKey(connection);
+        delete this.connections[key];
+
+        this.setRelation(connection, connection.start, false);
+        this.setRelation(connection, connection.end, false);
+    }
+    
+    static setRelation(connection, reference, state) {
+        if (state) {
+            reference.connections = addObj(reference.connections, connection);
+        } else {
+            reference.connections = removeObj(reference.connections, connection);
+        }
     }
 
-    static addPair(connection) {
+    // static drawRoute(points) {
+    //     return Graficos.multiRouteDraw(points);
+    // }
+    // static removeDrawRoute(draw) {
+    //     Graficos.removeConnection(draw);
+    // }
 
-        this.pairs[`${connection.start.id},${connection.end.id}`] = connection;
+    // static addPair(connection) {
+
+    //     this.pairs[`${connection.start.id},${connection.end.id}`] = connection;
+    // }
+
+    static createKey(connection) {
+        return `${connection.start.id},${connection.end.id}`;
     }
 
     static hasPair(a, b) {
         const keyAB = `${a.id},${b.id}`;
         const keyBA = `${b.id},${a.id}`;
 
-        if (this.pairs[keyAB]) {
-            return this.pairs[keyAB];
+        if (this.connections[keyAB]) {
+            return this.connections[keyAB];
         }
-        if (this.pairs[keyBA]) {
-            return this.pairs[keyBA];
+        if (this.connections[keyBA]) {
+            return this.connections[keyBA];
         }
 
         return false;
     }
 
-    static createConnection(a, b) {
-        if (a == b) {
-            return;
-        }
-        let conn = new Connection(a, b);
-        this.addPair(conn);
-    }
+    // static createConnection(a, b) {
+    //     if (a == b) {
+    //         return;
+    //     }
+    //     let conn = new Connection(a, b);
+    //     this.addPair(conn);
+    // }
 
-    static createTempConnection(ref) {
-        return Graficos.newConnection(ref.pos.x, ref.pos.y, null, null, true);
-    }
-    static updateTempConnection(conn, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        Graficos.updateConnection(
-            conn.drawRef,
-            conn.reference.pos.x,
-            conn.reference.pos.y,
-            mapPos.x, mapPos.y, true
-        );
-    }
-    static removeTempConnection(conn) {
-        Graficos.removeConnection(conn.drawRef);
-    }
+    // static createTempConnection(ref) {
+    //     return Graficos.newConnection(ref.pos.x, ref.pos.y, null, null, true);
+    // }
+    // static updateTempConnection(conn, x, y) {
+    //     let mapPos = Graficos.getNormalizedCoordinates(x, y);
+    //     Graficos.updateConnection(
+    //         conn.drawRef,
+    //         conn.reference.pos.x,
+    //         conn.reference.pos.y,
+    //         mapPos.x, mapPos.y, true
+    //     );
+    // }
+    // static removeTempConnection(conn) {
+    //     Graficos.removeConnection(conn.drawRef);
+    // }
 
     static getCollision(x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
@@ -319,32 +359,6 @@ export class Connections {
             }
         }
         return false;
-    }
-
-    static removeConnection(conn, reverb=false) {
-        Graficos.removeConnection(conn.graphics);
-        
-        delete this.pairs[`${conn.start.id},${conn.end.id}`]; 
-        delete this.pairs[`${conn.end.id},${conn.start.id}`];
-
-        if (reverb) {
-            conn.start.lines = removeObj(conn.start.lines, conn);
-            conn.end.lines = removeObj(conn.end.lines, conn);
-        }
-    }
-}
-
-class Connection {
-    constructor(start, end) {
-        this.start = start;
-        this.end = end;
-        this.graphics = Graficos.newConnection(start.pos.x, start.pos.y, end.pos.x, end.pos.y);
-        if (!(end.lines.includes(this))) {
-            end.lines.push(this);
-        }
-        if (!(start.lines.includes(this))) {
-            start.lines.push(this);
-        }
     }
 }
 
@@ -752,11 +766,19 @@ export class Referencer {
         reference.id = this.idTracker;
         this.references[this.idTracker] = reference;
         this.idTracker += 1;
+;
+        for(const connection of reference.connections) {
+            Connections.track(connection);
+        }
     }
 
     static untrack(reference) {
         delete this.references[reference.id];
         reference.id = -1;
+
+        for(const connection of reference.connections) {
+            Connections.untrack(connection);
+        }
     }
 
     static getHashKey(pos, map=true) {
@@ -1018,9 +1040,11 @@ export class Reference {
         this.size = 10;
 
         this.id = -1;
+        this.connections = [];
         this.hover = 0;
         this.hoverTime = .2;
         Referencer.track(this);
+
         
         this.positionTracked = false;
         this.move(coordinate, true);
@@ -1068,28 +1092,37 @@ export class Reference {
     updateGraphics() {
         if (this.enabled) {
             Graficos.renderReference(this.graphics, this.buildData());
+            for(const connection of this.connections) {
+                connection.updateGraphics();
+            }
         } else {
             this.graphics.clear();
         }
     }
+
     bringToFront() {
         Referencer.removePositionTrack(this);
         Referencer.addPositionTrack(this);
         Graficos.BringToFrontReference(this.graphics);
     }
-
+    
     move(coordinate, create=false) {
         if (!create) {
             Referencer.removePositionTrack(this);
+            
+            this.coordinate = coordinate;
+            this.coordinate.convertTo("normal");
+            
+            Referencer.addPositionTrack(this);
+
+            this.updateGraphics();
+            this.bringToFront();
+
+            return;
         }
         
         this.coordinate = coordinate;
         this.coordinate.convertTo("normal");
-
-        if (!create) {
-            this.updateGraphics();
-            this.bringToFront();
-        }
         
         Referencer.addPositionTrack(this);
     }
@@ -1113,6 +1146,67 @@ export class Reference {
         Referencer.removePositionTrack(this);
 
         Graficos.destroyReference(this.graphics);
+    }
+}
+
+export class Connection {
+    constructor(start, end) {
+        this.alpha = 1;
+        this.colorOut = 0x3d97e0;
+        this.colorIn = 0xa4d1f5;
+        this.enabled = true;
+        this.size = 5;
+
+        this.start = start;
+        this.end = end;
+
+        this.id = -1;
+        this.hover = 0;
+        this.hoverTime = .2;
+        Connections.track(this);
+        
+        this.positionTracked = false;
+        
+        this.graphics = Graficos.createConnection();
+        
+        this.updateGraphics();
+    }
+    
+    buildData() {
+        let start = this.start.coordinate;
+        let end = this.end.coordinate;
+        return {
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            alpha: this.alpha,
+            size: this.size,
+            points: [start, end],
+        }
+    }
+    
+    updateGraphics() {
+        if (this.enabled) {
+            Graficos.renderConnection(this.graphics, this.buildData());
+        } else {
+            this.graphics.clear();
+        }
+    }
+
+    enable() {
+        this.enabled = true;
+        this.updateGraphics();
+        Connections.track(this);
+    }
+    disable() {
+        this.enabled = false;
+        this.updateGraphics();
+        Connections.untrack(this);
+    }
+    
+    destroy() {
+        Graficos.destroyConnection(this.graphics);
+
+        Connections.untrack(this);
     }
 }
 
