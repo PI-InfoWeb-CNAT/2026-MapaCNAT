@@ -197,9 +197,12 @@ class Pointer {
                 }
             } else if (editorMode == EditorModes.DELETION) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
-                let overlap = Editor.Referencer.getOverlappingDots(coord, false);
-                if (overlap) {
-                    Actions.destroyReference(overlap);
+                let overlapDots = Editor.Referencer.getOverlappingDots(coord, false);
+                let overlapLines = Editor.Connections.getOverlappingLines(coord, false);
+                if (overlapDots) {
+                    Actions.destroyReference(overlapDots);
+                } else if (overlapLines) {
+                    Actions.destroyConnection(overlapLines);
                 }
             } else if (editorMode == EditorModes.CONNECTION) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
@@ -370,6 +373,18 @@ class Pointer {
                         if (!clicking) return;
                         Pointer.defaultMove(e);
                     }
+                }
+            } else if (editorMode == EditorModes.DELETION) {
+                let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+                let overlapDots = Editor.Referencer.getOverlappingDots(coord);
+                let overlapLines = Editor.Connections.getOverlappingLines(coord);
+                if (overlapDots) {
+                    hoverTargetSet.add(overlapDots);
+                } else if (overlapLines) {
+                    hoverTargetSet.add(overlapLines);
+                } else {
+                    if (!clicking) return;
+                    Pointer.defaultMove(e);
                 }
             } else {
                 if (!clicking) return;
@@ -628,7 +643,7 @@ class Actions {
         }
     }
 
-    static newAction(forward, backward, prune = () => {}) {
+    static newAction(forward, backward, prune = () => {}, overflow = () => {}) {
     
         if (this.actionStackTraversal > 0) {
             const prunedActions = this.actionStack.splice(
@@ -644,12 +659,12 @@ class Actions {
             this.actionStackTraversal = 0;
         }
 
-        this.actionStack.push({ forward, backward, prune });
+        this.actionStack.push({ forward, backward, prune, overflow });
 
         if (this.actionStack.length > this.actionStackLimit) {
             const droppedAction = this.actionStack.shift();
-            if (droppedAction && typeof droppedAction.prune === "function") {
-                droppedAction.prune();
+            if (droppedAction && typeof droppedAction.overflow === "function") {
+                droppedAction.overflow();
             }
         }
     }
@@ -859,25 +874,44 @@ class Actions {
             }
         }
 
-        forward();
+        reference.enable();
 
         this.newAction(forward, backward, prune);
     }
 
     static destroyReference(reference) {
+        let goneConnections = [...reference.connections].filter(item => item.enabled);
+        console.log(goneConnections);
         const forward = () => {
             reference.disable();
+            for (const connection of goneConnections) {
+                connection.disable();
+            }
+            
             Actions.forceMode(EditorModes.REFERENCE);
         };
         
         const backward = () => {
             reference.enable();
+            for (const connection of goneConnections) {
+                connection.enable();
+            }
             Actions.forceMode(EditorModes.REFERENCE);
         };
+        
+        const overflow = () => {
+            if (reference) {
+                reference.destroy();
+                reference = null;
+            }
+        }
+        
+        reference.disable();
+        for (const connection of goneConnections) {
+            connection.disable();
+        }
 
-        forward();
-
-        this.newAction(forward, backward);
+        this.newAction(forward, backward, undefined, overflow);
 
         return reference;
     }
@@ -924,11 +958,35 @@ class Actions {
             }
         }
 
-        forward();
+        connection.enable();
 
         this.newAction(forward, backward, prune);
     }
 
+    static destroyConnection(connection) {
+        const forward = () => {
+            connection.disable();
+            Actions.forceMode(EditorModes.CONNECTION);
+        };
+        
+        const backward = () => {
+            connection.enable();
+            Actions.forceMode(EditorModes.CONNECTION);
+        };
+
+        const overflow = () => {
+            if (connection) {
+                connection.destroy();
+                connection = null;
+            }
+        }
+
+        connection.disable();
+
+        this.newAction(forward, backward, undefined, overflow);
+
+        return connection;
+    }
 
     static forceMode(mode=EditorModes.FREE) {
         lightButton(selectionBtn, mode, EditorModes.SELECTION);
@@ -936,6 +994,7 @@ class Actions {
         lightButton(buildBtn, mode, EditorModes.CONSTRUCTION);
         lightButton(referenceBtn, mode, EditorModes.REFERENCE);
         lightButton(connectionBtn, mode, EditorModes.CONNECTION);
+        editorMode = mode;
     }
 
     static switchMode(mode=EditorModes.FREE) {

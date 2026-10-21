@@ -159,7 +159,7 @@ export class PhantomConnection {
         this.colorOut = 0x3d97e0;
         this.colorIn = 0xa4d1f5;
 
-        this.size = 5;
+        this.size = 10;
 
         this.graphics = Graficos.createConnection();
     }
@@ -202,9 +202,9 @@ function removeObj(list, obj) {
 function addObj(list, item) {
     if (!list.includes(item)) {
         list.push(item);
-        return true;
+        return list;
     }
-    return false;
+    return list;
 }
 
 function polygonUnion(squares) {
@@ -248,17 +248,16 @@ export class Connections {
             return;
         }
         this.connections[key] = connection;
-
-        this.setRelation(connection, connection.start, true);
-        this.setRelation(connection, connection.end, true);
     }
 
     static untrack(connection) {
         let key = this.createKey(connection);
         delete this.connections[key];
+    }
 
-        this.setRelation(connection, connection.start, false);
-        this.setRelation(connection, connection.end, false);
+    static setRelated(connection, state) {
+        this.setRelation(connection, connection.start, state);
+        this.setRelation(connection, connection.end, state);
     }
     
     static setRelation(connection, reference, state) {
@@ -323,6 +322,64 @@ export class Connections {
     //     Graficos.removeConnection(conn.drawRef);
     // }
 
+    static getOverlappingLines(coordinate, all) {
+        let pos = coordinate.getIn("normal");
+        let allList = [];
+
+        for(const key of Object.keys(this.connections)) {
+            let connection = this.connections[key];
+            
+            const px = pos.x;
+            const py = pos.y;
+            const x1 = connection.start.coordinate.pos.x;
+            const y1 = connection.start.coordinate.pos.y;
+            const x2 = connection.end.coordinate.pos.x;
+            const y2 = connection.end.coordinate.pos.y;
+
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+            
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            
+            let param = -1;
+            if (lenSq !== 0) {
+                param = dot / lenSq;
+            }
+            
+            let closestX, closestY;
+            
+            if (param < 0) {
+                closestX = x1;
+                closestY = y1;
+            } else if (param > 1) {
+                closestX = x2;
+                closestY = y2;
+            } else {
+                closestX = x1 + param * C;
+                closestY = y1 + param * D;
+            }
+            
+            const dx = px - closestX;
+            const dy = py - closestY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            let Radius = connection.size / 2;
+            if (distance <= Radius) {
+                if (!all) {
+                    return connection;
+                }
+                allList.push(connection);
+            }
+        }
+        if (allList.length === 0) {
+            return false;
+        }
+        return allList;
+    }
+
     static getCollision(x, y) {
         let mapPos = Graficos.getNormalizedCoordinates(x, y);
 
@@ -362,389 +419,389 @@ export class Connections {
     }
 }
 
-export class Builder {
-    constructor() {
-        throw new Error("Classe estática. Não instancie.");
-    }
+// export class Builder {
+//     constructor() {
+//         throw new Error("Classe estática. Não instancie.");
+//     }
 
-    static buildings = [];
-    static selection = [];
+//     static buildings = [];
+//     static selection = [];
 
-    static toJson() {
-        let jsonBuildings = {};
-        for(const build of this.buildings) {
+//     static toJson() {
+//         let jsonBuildings = {};
+//         for(const build of this.buildings) {
             
-            let areas = [];
-            for(const area of build.areas) {
-                let jsonArea = {
-                    "pos": area.pos,
-                    "size": area.size
-                }
-                areas.push(jsonArea);
-            }
+//             let areas = [];
+//             for(const area of build.areas) {
+//                 let jsonArea = {
+//                     "pos": area.pos,
+//                     "size": area.size
+//                 }
+//                 areas.push(jsonArea);
+//             }
             
-            let jsonBuild = {
-                "name": build.name,
-                "pin_pos": build.pinPos,
-                "areas": areas
-            }
+//             let jsonBuild = {
+//                 "name": build.name,
+//                 "pin_pos": build.pinPos,
+//                 "areas": areas
+//             }
 
-            jsonBuildings[build.name] = jsonBuild;
-        }
-        return jsonBuildings;
-    }
+//             jsonBuildings[build.name] = jsonBuild;
+//         }
+//         return jsonBuildings;
+//     }
 
-    static calcBox(start, end) {
-        let pos = {
-            x: Math.min(start.x, end.x),
-            y: Math.min(start.y, end.y)
-        }
-        let size = {
-            x: Math.abs(start.x - end.x),
-            y: Math.abs(start.y - end.y),
-        }
-        return {pos: pos, size: size};
-    }
+//     static calcBox(start, end) {
+//         let pos = {
+//             x: Math.min(start.x, end.x),
+//             y: Math.min(start.y, end.y)
+//         }
+//         let size = {
+//             x: Math.abs(start.x - end.x),
+//             y: Math.abs(start.y - end.y),
+//         }
+//         return {pos: pos, size: size};
+//     }
 
-    static createPin(x, y, text) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        return Graficos.newPin(mapPos.x, mapPos.y, text);
-    }
-    static createRegion() {
-        return Graficos.newRegion();
-    }
-    static createRegionObject(region) {
-        let box = this.calcBox(region.start, region.end);
-        let regionObject = new Region(box.pos, box.size);
-        return regionObject;
-    }
+//     static createPin(x, y, text) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//         return Graficos.newPin(mapPos.x, mapPos.y, text);
+//     }
+//     static createRegion() {
+//         return Graficos.newRegion();
+//     }
+//     static createRegionObject(region) {
+//         let box = this.calcBox(region.start, region.end);
+//         let regionObject = new Region(box.pos, box.size);
+//         return regionObject;
+//     }
 
-    static updateRegion(region, x, y, convert=true) {
-        let mapStart = region.start;
-        let mapEnd;
-        if (convert) {
-            mapEnd = Graficos.getNormalizedCoordinates(x, y);
-        } else {
-            mapEnd = {x: x, y: y};
-        }
-        let box = this.calcBox(mapStart, mapEnd);
+//     static updateRegion(region, x, y, convert=true) {
+//         let mapStart = region.start;
+//         let mapEnd;
+//         if (convert) {
+//             mapEnd = Graficos.getNormalizedCoordinates(x, y);
+//         } else {
+//             mapEnd = {x: x, y: y};
+//         }
+//         let box = this.calcBox(mapStart, mapEnd);
         
-        Graficos.updateRegion(region.drawRef, box.pos.x, box.pos.y, box.size.x, box.size.y);
-    }
+//         Graficos.updateRegion(region.drawRef, box.pos.x, box.pos.y, box.size.x, box.size.y);
+//     }
     
-    static moveRegion(region, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//     static moveRegion(region, x, y) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
         
-        for (const ref of region.construction.refs) {
-            let movedPos = {
-                x: ref.pos.x + (mapPos.x - region.pos.x),
-                y: ref.pos.y + (mapPos.y - region.pos.y)
-            }
-            movedPos = Graficos.getScreenCoordinates(movedPos.x, movedPos.y);
-            Referencer.moveRef(ref, movedPos.x, movedPos.y);
-        }
-        region.pos = {x: mapPos.x, y: mapPos.y};
+//         for (const ref of region.construction.refs) {
+//             let movedPos = {
+//                 x: ref.pos.x + (mapPos.x - region.pos.x),
+//                 y: ref.pos.y + (mapPos.y - region.pos.y)
+//             }
+//             movedPos = Graficos.getScreenCoordinates(movedPos.x, movedPos.y);
+//             Referencer.moveRef(ref, movedPos.x, movedPos.y);
+//         }
+//         region.pos = {x: mapPos.x, y: mapPos.y};
         
-        for (const ref of Object.values(Referencer.references)) {
-            let unnormedPos = Graficos.getScreenCoordinates(ref.pos.x, ref.pos.y);
-            let pos = Builder.getClosestValidPosition(unnormedPos.x, unnormedPos.y);
-            let hasBuild = pos.building;
-            // pos = Graficos.getScreenCoordinates(pos.x, pos.y);
-            // Referencer.moveRef(ref, pos.x, pos.y);
-            if (hasBuild) {
-                // console.log(ref, ref.renderProjection)
-                console.log(ref.id, Referencer.references[ref.id]);
-                ref.renderProjection(pos);
-            }
-        }
+//         for (const ref of Object.values(Referencer.references)) {
+//             let unnormedPos = Graficos.getScreenCoordinates(ref.pos.x, ref.pos.y);
+//             let pos = Builder.getClosestValidPosition(unnormedPos.x, unnormedPos.y);
+//             let hasBuild = pos.building;
+//             // pos = Graficos.getScreenCoordinates(pos.x, pos.y);
+//             // Referencer.moveRef(ref, pos.x, pos.y);
+//             if (hasBuild) {
+//                 // console.log(ref, ref.renderProjection)
+//                 console.log(ref.id, Referencer.references[ref.id]);
+//                 ref.renderProjection(pos);
+//             }
+//         }
 
-        Graficos.updateRegion(region.graphics, region.pos.x, region.pos.y, region.size.x, region.size.y);
-    }
-    static movePin(pin, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        pin.construction.pinPos = {x: mapPos.x, y: mapPos.y};
+//         Graficos.updateRegion(region.graphics, region.pos.x, region.pos.y, region.size.x, region.size.y);
+//     }
+//     static movePin(pin, x, y) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//         pin.construction.pinPos = {x: mapPos.x, y: mapPos.y};
 
-        Graficos.updatePin(pin.construction.pinGraphics, mapPos.x, mapPos.y, pin.construction.name);
-    }
-    static reOrder(region) {
-        let construction = region.construction;
-        construction.areas = removeObj(construction.areas, region)
-        construction.areas.push(region);
-        for(const area of construction.areas) {
-            Graficos.removeRegion(area.graphics);
-            area.graphics = Graficos.newRegion(
-                area.pos.x,
-                area.pos.y,
-                area.size.x,
-                area.size.y,
-            );
-        }
-    }
+//         Graficos.updatePin(pin.construction.pinGraphics, mapPos.x, mapPos.y, pin.construction.name);
+//     }
+//     static reOrder(region) {
+//         let construction = region.construction;
+//         construction.areas = removeObj(construction.areas, region)
+//         construction.areas.push(region);
+//         for(const area of construction.areas) {
+//             Graficos.removeRegion(area.graphics);
+//             area.graphics = Graficos.newRegion(
+//                 area.pos.x,
+//                 area.pos.y,
+//                 area.size.x,
+//                 area.size.y,
+//             );
+//         }
+//     }
 
-    static removeTempConstruction(construction) {
-        return Graficos.removePin(construction.pin_graphics);
-    }
-    static removeTempRegion(region) {
-        return Graficos.removeRegion(region.drawRef);
-    }
-    static removeRegion(region) {
-        Graficos.removeRegion(region.graphics);
-        region.construction.areas = removeObj(region.construction.areas, region);
-    }
-    static removeConstruction(construction) {
-        Graficos.removePin(construction.pinGraphics);
-        this.buildings = removeObj(this.buildings, construction);
-    }
+//     static removeTempConstruction(construction) {
+//         return Graficos.removePin(construction.pin_graphics);
+//     }
+//     static removeTempRegion(region) {
+//         return Graficos.removeRegion(region.drawRef);
+//     }
+//     static removeRegion(region) {
+//         Graficos.removeRegion(region.graphics);
+//         region.construction.areas = removeObj(region.construction.areas, region);
+//     }
+//     static removeConstruction(construction) {
+//         Graficos.removePin(construction.pinGraphics);
+//         this.buildings = removeObj(this.buildings, construction);
+//     }
 
-    static createConstruction(construction) {
-        let constructionObject = new Construction(construction.name, construction.pin, construction.regions);
-        for(const region of construction.regions) {
-            region.construction = constructionObject;
-        }
-        this.buildings.push(constructionObject);
-        return constructionObject;
-    }
-    static convertGraphical(construction, state) {
-        if (state == "polygon") {
-            if (construction.polygonGraphics == null) {
-                for(const square of construction.areas) {
-                    Graficos.removeRegion(square.graphics);
-                    square.graphics = null;
-                }
-                construction.polygon = polygonUnion(construction.areas);
-                construction.polygonGraphics = Graficos.newPolygon(construction.polygon);
-            }
-        } else if (state == "areas") {
-            if (construction.polygonGraphics != null) {
-                Graficos.removePolygon(construction.polygonGraphics);
-                construction.polygonGraphics = null;
+//     static createConstruction(construction) {
+//         let constructionObject = new Construction(construction.name, construction.pin, construction.regions);
+//         for(const region of construction.regions) {
+//             region.construction = constructionObject;
+//         }
+//         this.buildings.push(constructionObject);
+//         return constructionObject;
+//     }
+//     static convertGraphical(construction, state) {
+//         if (state == "polygon") {
+//             if (construction.polygonGraphics == null) {
+//                 for(const square of construction.areas) {
+//                     Graficos.removeRegion(square.graphics);
+//                     square.graphics = null;
+//                 }
+//                 construction.polygon = polygonUnion(construction.areas);
+//                 construction.polygonGraphics = Graficos.newPolygon(construction.polygon);
+//             }
+//         } else if (state == "areas") {
+//             if (construction.polygonGraphics != null) {
+//                 Graficos.removePolygon(construction.polygonGraphics);
+//                 construction.polygonGraphics = null;
 
 
-                for(const square of construction.areas) {
-                    let graphics = Graficos.newRegion(square.pos.x, square.pos.y, square.size.x, square.size.y);
-                    square.graphics = graphics;
-                }
-            }
-        }
-    }
+//                 for(const square of construction.areas) {
+//                     let graphics = Graficos.newRegion(square.pos.x, square.pos.y, square.size.x, square.size.y);
+//                     square.graphics = graphics;
+//                 }
+//             }
+//         }
+//     }
 
-    static getCollisionMapArea(x, y, map) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        for(const buildKey of Object.keys(map)) {
-            let build = map[buildKey];
-            for(const area of build.areas) {
-                let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
-                let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
-                if (horizontal && vertical) {
-                    return {"text": buildKey, "obj": build, "form": "build"};
-                }
-            }
-        }
-        return false;
-    }
+//     static getCollisionMapArea(x, y, map) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//         for(const buildKey of Object.keys(map)) {
+//             let build = map[buildKey];
+//             for(const area of build.areas) {
+//                 let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
+//                 let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
+//                 if (horizontal && vertical) {
+//                     return {"text": buildKey, "obj": build, "form": "build"};
+//                 }
+//             }
+//         }
+//         return false;
+//     }
 
-    static getClosestValidPosition(x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//     static getClosestValidPosition(x, y) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
 
-        const boxes = [];
-        for (const build of this.buildings) {
-            const pinW = 24 / Graficos.zoom;
-            const pinH = 32 / Graficos.zoom;
-            boxes.push({
-                minX: build.pinPos.x - pinW / 2,
-                maxX: build.pinPos.x + pinW / 2,
-                minY: build.pinPos.y - pinH,
-                maxY: build.pinPos.y,
-                building: build
-            });
+//         const boxes = [];
+//         for (const build of this.buildings) {
+//             const pinW = 24 / Graficos.zoom;
+//             const pinH = 32 / Graficos.zoom;
+//             boxes.push({
+//                 minX: build.pinPos.x - pinW / 2,
+//                 maxX: build.pinPos.x + pinW / 2,
+//                 minY: build.pinPos.y - pinH,
+//                 maxY: build.pinPos.y,
+//                 building: build
+//             });
             
-            for (const area of build.areas) {
-                boxes.push({
-                    minX: area.pos.x,
-                    maxX: area.pos.x + area.size.x,
-                    minY: area.pos.y,
-                    maxY: area.pos.y + area.size.y,
-                    building: build
-                });
-            }
-        }
+//             for (const area of build.areas) {
+//                 boxes.push({
+//                     minX: area.pos.x,
+//                     maxX: area.pos.x + area.size.x,
+//                     minY: area.pos.y,
+//                     maxY: area.pos.y + area.size.y,
+//                     building: build
+//                 });
+//             }
+//         }
 
-        const EPS = 1e-7;
-        const isInsideAnyBox = (pt) => {
-            return boxes.some(b => 
-                pt.x > b.minX + EPS && pt.x < b.maxX - EPS &&
-                pt.y > b.minY + EPS && pt.y < b.maxY - EPS
-            );
-        };
+//         const EPS = 1e-7;
+//         const isInsideAnyBox = (pt) => {
+//             return boxes.some(b => 
+//                 pt.x > b.minX + EPS && pt.x < b.maxX - EPS &&
+//                 pt.y > b.minY + EPS && pt.y < b.maxY - EPS
+//             );
+//         };
 
-        if (!isInsideAnyBox(mapPos)) {
-            return { x: mapPos.x, y: mapPos.y, building: null };
-        }
+//         if (!isInsideAnyBox(mapPos)) {
+//             return { x: mapPos.x, y: mapPos.y, building: null };
+//         }
 
-        let closestPoint = null;
-        let minSqDistance = Infinity;
+//         let closestPoint = null;
+//         let minSqDistance = Infinity;
 
-        const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+//         const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
 
-        for (const box of boxes) {
-            const segments = [
-                { p1: { x: box.minX, y: box.minY }, p2: { x: box.maxX, y: box.minY }, axis: 'h' },
-                { p1: { x: box.minX, y: box.maxY }, p2: { x: box.maxX, y: box.maxY }, axis: 'h' },
-                { p1: { x: box.minX, y: box.minY }, p2: { x: box.minX, y: box.maxY }, axis: 'v' },
-                { p1: { x: box.maxX, y: box.minY }, p2: { x: box.maxX, y: box.maxY }, axis: 'v' }
-            ];
+//         for (const box of boxes) {
+//             const segments = [
+//                 { p1: { x: box.minX, y: box.minY }, p2: { x: box.maxX, y: box.minY }, axis: 'h' },
+//                 { p1: { x: box.minX, y: box.maxY }, p2: { x: box.maxX, y: box.maxY }, axis: 'h' },
+//                 { p1: { x: box.minX, y: box.minY }, p2: { x: box.minX, y: box.maxY }, axis: 'v' },
+//                 { p1: { x: box.maxX, y: box.minY }, p2: { x: box.maxX, y: box.maxY }, axis: 'v' }
+//             ];
 
-            for (const seg of segments) {
-                let candidate;
-                if (seg.axis === 'h') {
-                    candidate = {
-                        x: clamp(mapPos.x, seg.p1.x, seg.p2.x),
-                        y: seg.p1.y
-                    };
-                } else {
-                    candidate = {
-                        x: seg.p1.x,
-                        y: clamp(mapPos.y, seg.p1.y, seg.p2.y)
-                    };
-                }
+//             for (const seg of segments) {
+//                 let candidate;
+//                 if (seg.axis === 'h') {
+//                     candidate = {
+//                         x: clamp(mapPos.x, seg.p1.x, seg.p2.x),
+//                         y: seg.p1.y
+//                     };
+//                 } else {
+//                     candidate = {
+//                         x: seg.p1.x,
+//                         y: clamp(mapPos.y, seg.p1.y, seg.p2.y)
+//                     };
+//                 }
 
-                if (isInsideAnyBox(candidate)) {
-                    continue;
-                }
+//                 if (isInsideAnyBox(candidate)) {
+//                     continue;
+//                 }
 
-                const dx = mapPos.x - candidate.x;
-                const dy = mapPos.y - candidate.y;
-                const sqDist = dx * dx + dy * dy;
+//                 const dx = mapPos.x - candidate.x;
+//                 const dy = mapPos.y - candidate.y;
+//                 const sqDist = dx * dx + dy * dy;
 
-                if (sqDist < minSqDistance) {
-                    minSqDistance = sqDist;
-                    closestPoint = {
-                        x: candidate.x,
-                        y: candidate.y,
-                        building: box.building
-                    };
-                }
-            }
-        }
+//                 if (sqDist < minSqDistance) {
+//                     minSqDistance = sqDist;
+//                     closestPoint = {
+//                         x: candidate.x,
+//                         y: candidate.y,
+//                         building: box.building
+//                     };
+//                 }
+//             }
+//         }
 
-        return closestPoint;
-    }
+//         return closestPoint;
+//     }
 
-    static getCollision(x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//     static getCollision(x, y) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
 
-        for(const build of this.buildings) {
-            let horizontal = Math.abs(mapPos.x - build.pinPos.x) < 12 / Graficos.zoom;
-            let vertical = Math.abs(mapPos.y - build.pinPos.y + 16 / Graficos.zoom) < 16 / Graficos.zoom;
-            if (horizontal && vertical) {
-                return build;
-            }
-            for(const area of build.areas) {
-                let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
-                let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
-                if (horizontal && vertical) {
-                    return build;
-                }
-            }
-        }
-        return false;
-    }
+//         for(const build of this.buildings) {
+//             let horizontal = Math.abs(mapPos.x - build.pinPos.x) < 12 / Graficos.zoom;
+//             let vertical = Math.abs(mapPos.y - build.pinPos.y + 16 / Graficos.zoom) < 16 / Graficos.zoom;
+//             if (horizontal && vertical) {
+//                 return build;
+//             }
+//             for(const area of build.areas) {
+//                 let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
+//                 let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
+//                 if (horizontal && vertical) {
+//                     return build;
+//                 }
+//             }
+//         }
+//         return false;
+//     }
 
-    static getCollisionPin(pinMap, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        for (const pin of Object.values(pinMap)) {
-            let texWid = pin.label.getSize();
-            let horizontal = Math.abs(mapPos.x - (pin.x + texWid.width / 2)) < (12 + texWid.width / 2) / Graficos.zoom;
-            let vertical = Math.abs(mapPos.y - pin.y + 16 / Graficos.zoom) < 16 / Graficos.zoom;
-            if (horizontal && vertical) {
-                return pin;
-            }
-        }
-        return false;
-    }
+//     static getCollisionPin(pinMap, x, y) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//         for (const pin of Object.values(pinMap)) {
+//             let texWid = pin.label.getSize();
+//             let horizontal = Math.abs(mapPos.x - (pin.x + texWid.width / 2)) < (12 + texWid.width / 2) / Graficos.zoom;
+//             let vertical = Math.abs(mapPos.y - pin.y + 16 / Graficos.zoom) < 16 / Graficos.zoom;
+//             if (horizontal && vertical) {
+//                 return pin;
+//             }
+//         }
+//         return false;
+//     }
 
-    static getCollisionArea(construction, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//     static getCollisionArea(construction, x, y) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
         
-        let horizontal = Math.abs(mapPos.x - construction.pinPos.x) < 12 / Graficos.zoom;
-        let vertical = Math.abs(mapPos.y - construction.pinPos.y + 16 / Graficos.zoom) < 16 / Graficos.zoom;
-        if (horizontal && vertical) {
-            return new Pin(construction);
-        }
+//         let horizontal = Math.abs(mapPos.x - construction.pinPos.x) < 12 / Graficos.zoom;
+//         let vertical = Math.abs(mapPos.y - construction.pinPos.y + 16 / Graficos.zoom) < 16 / Graficos.zoom;
+//         if (horizontal && vertical) {
+//             return new Pin(construction);
+//         }
 
-        for(const area of construction.areas.toReversed()) {
-            let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
-            let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
-            if (horizontal && vertical) {
-                return area;
-            }
-        }
-        return false;
-    }
+//         for(const area of construction.areas.toReversed()) {
+//             let horizontal = mapPos.x > area.pos.x && mapPos.x < area.pos.x + area.size.x;
+//             let vertical = mapPos.y > area.pos.y && mapPos.y < area.pos.y + area.size.y;
+//             if (horizontal && vertical) {
+//                 return area;
+//             }
+//         }
+//         return false;
+//     }
 
-    static addPinSelection(pin, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        let offx = mapPos.x - pin.construction.pinPos.x;
-        let offy = mapPos.y - pin.construction.pinPos.y;
-        if (!(this.selection.includes(pin))) {
-            this.selection.push({
-                obj: pin,
-                offx: offx * Graficos.zoom,
-                offy: offy * Graficos.zoom
-            });
-        } 
-    }
+//     static addPinSelection(pin, x, y) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//         let offx = mapPos.x - pin.construction.pinPos.x;
+//         let offy = mapPos.y - pin.construction.pinPos.y;
+//         if (!(this.selection.includes(pin))) {
+//             this.selection.push({
+//                 obj: pin,
+//                 offx: offx * Graficos.zoom,
+//                 offy: offy * Graficos.zoom
+//             });
+//         } 
+//     }
 
-    static addSelection(area, x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-        let offx = mapPos.x - area.pos.x;
-        let offy = mapPos.y - area.pos.y;
-        if (!(this.selection.includes(area))) {
-            this.selection.push({
-                obj: area,
-                offx: offx * Graficos.zoom,
-                offy: offy * Graficos.zoom
-            });
-        } 
-    }
+//     static addSelection(area, x, y) {
+//         let mapPos = Graficos.getNormalizedCoordinates(x, y);
+//         let offx = mapPos.x - area.pos.x;
+//         let offy = mapPos.y - area.pos.y;
+//         if (!(this.selection.includes(area))) {
+//             this.selection.push({
+//                 obj: area,
+//                 offx: offx * Graficos.zoom,
+//                 offy: offy * Graficos.zoom
+//             });
+//         } 
+//     }
 
-    static removeSelection(area) {
-        this.selection = removeObj(this.selection, area);
-    }
+//     static removeSelection(area) {
+//         this.selection = removeObj(this.selection, area);
+//     }
 
-    static clearSelection() {
-        this.selection = [];
-    }
-}
+//     static clearSelection() {
+//         this.selection = [];
+//     }
+// }
 
-export class Pin {
-    constructor(construction) {
-        this.construction = construction;
-    }
-}
+// export class Pin {
+//     constructor(construction) {
+//         this.construction = construction;
+//     }
+// }
 
-export class Construction {
-    constructor(name, pinPos, areas) {
-        this.name = name;
-        this.pinPos = pinPos;
-        this.areas = areas;
-        this.pinGraphics = Graficos.newPin(pinPos.x, pinPos.y, name);
-        this.polygon = null;
-        this.polygonGraphics = null;
-        this.construction = null;
-        this.refs = [];
+// export class Construction {
+//     constructor(name, pinPos, areas) {
+//         this.name = name;
+//         this.pinPos = pinPos;
+//         this.areas = areas;
+//         this.pinGraphics = Graficos.newPin(pinPos.x, pinPos.y, name);
+//         this.polygon = null;
+//         this.polygonGraphics = null;
+//         this.construction = null;
+//         this.refs = [];
 
-        this.banner = null;
-    }
-}
+//         this.banner = null;
+//     }
+// }
 
-export class Region {
-    constructor(pos, size) {
-        this.pos = pos;
-        this.size = size;
-        this.graphics = Graficos.newRegion(this.pos.x, this.pos.y, this.size.x, this.size.y);
-    }
-}
+// export class Region {
+//     constructor(pos, size) {
+//         this.pos = pos;
+//         this.size = size;
+//         this.graphics = Graficos.newRegion(this.pos.x, this.pos.y, this.size.x, this.size.y);
+//     }
+// }
 
 export class Referencer {
     constructor() {
@@ -1092,6 +1149,7 @@ export class Reference {
     updateGraphics() {
         if (this.enabled) {
             Graficos.renderReference(this.graphics, this.buildData());
+
             for(const connection of this.connections) {
                 connection.updateGraphics();
             }
@@ -1130,19 +1188,26 @@ export class Reference {
     enable() {
         this.enabled = true;
         this.updateGraphics();
+        
         Referencer.track(this);
         Referencer.addPositionTrack(this);
     }
     disable() {
         this.enabled = false;
         this.updateGraphics();
+        
         Referencer.untrack(this);
         Referencer.removePositionTrack(this);
+        
     }
-
+    
     destroy() {
-        Referencer.untrack(this);
+        let copyConnections = [...this.connections];
+        for(const connection of copyConnections) {
+            connection.destroy();
+        }
 
+        Referencer.untrack(this);
         Referencer.removePositionTrack(this);
 
         Graficos.destroyReference(this.graphics);
@@ -1155,7 +1220,7 @@ export class Connection {
         this.colorOut = 0x3d97e0;
         this.colorIn = 0xa4d1f5;
         this.enabled = true;
-        this.size = 5;
+        this.size = 10;
 
         this.start = start;
         this.end = end;
@@ -1164,11 +1229,37 @@ export class Connection {
         this.hover = 0;
         this.hoverTime = .2;
         Connections.track(this);
+        Connections.setRelated(this, true);
         
         this.positionTracked = false;
         
         this.graphics = Graficos.createConnection();
         
+        this.updateGraphics();
+    }
+
+    hoverAdd() {
+        this.hover += 1;
+        let cap = this.hoverTime * 30;
+
+        if (this.hover >= cap) {
+            this.hover = cap;
+        }
+        this.hoverUpdate();
+    }
+    hoverDec() {
+        this.hover -= 1;
+        if (this.hover <= 0) {
+            this.hover = 0;
+        }
+
+        this.hoverUpdate();
+    }
+    hoverUpdate() {
+        let ms = this.hoverTime * 1000;
+        let t = this.hover * (1000 / 30) / ms;
+        t = ease(t);
+        this.size = 10 + t * 5;
         this.updateGraphics();
     }
     
@@ -1185,7 +1276,7 @@ export class Connection {
     }
     
     updateGraphics() {
-        if (this.enabled) {
+        if (this.enabled && this.end.enabled && this.start.enabled) {
             Graficos.renderConnection(this.graphics, this.buildData());
         } else {
             this.graphics.clear();
@@ -1205,7 +1296,7 @@ export class Connection {
     
     destroy() {
         Graficos.destroyConnection(this.graphics);
-
+        Connections.setRelated(this, false);
         Connections.untrack(this);
     }
 }
