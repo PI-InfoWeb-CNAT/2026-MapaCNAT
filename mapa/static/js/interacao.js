@@ -73,23 +73,38 @@ export function setContext(context) {
     zoomStep = context.scroll_ratio;
 }
 
-let heldObject;
-
 class Holdable {
-    constructor(object, type, initialPos = false, phantomObject = null) {
-        this.phantomObject = phantomObject;
+    constructor() {
+        throw new Error("Classe estática. Não instancie.");
+    }
+    static object = null;
+    static type = "";
+    static initialPos = null;
+    static phantomObject = null;
+    static set(object, type = "", initialPos = false, phantomObject = false) {
+        if (this.phantomObject) {
+            this.phantomObject.destroy();
+        }
+        
         this.object = object;
         this.type = type;
         this.initialPos = initialPos;
+        this.phantomObject = phantomObject;
     }
 }
 
-function setHoldable(object) {
-    if (heldObject && heldObject.phantomObject) {
-        heldObject.phantomObject.destroy();
+class Task {
+    constructor() {
+        throw new Error("Classe estática. Não instancie.");
     }
+    static task = "";
+    static taskStep = 0;
 
-    heldObject = object;
+    static setTask(name, data) {
+        this.task = name;
+        this.taskStep = 0;
+        this.data = data;
+    }
 }
 
 class Touch {
@@ -189,9 +204,9 @@ class Pointer {
             if (editorMode == EditorModes.REFERENCE) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
                 let overlap = Editor.Referencer.getOverlappingDots(coord, false);
-                setHoldable(false);
+                Holdable.set(false);
                 if (overlap) {
-                    setHoldable(new Holdable(overlap, "reference", { ...overlap.coordinate.pos }));
+                    Holdable.set(overlap, "reference", { ...overlap.coordinate.pos });
                 } else {
                     Actions.newReference(clickX, clickY);
                 }
@@ -210,7 +225,11 @@ class Pointer {
 
                 if (overlap) {
                     let phantomObject = new Editor.PhantomConnection(overlap);
-                    setHoldable(new Holdable(overlap, "connectionReference", false, phantomObject=phantomObject));
+                    Holdable.set(overlap, "connectionReference", false, phantomObject=phantomObject);
+                }
+            } else if (editorMode == EditorModes.CONSTRUCTION) {
+                if (Task.taskStep == 0) {
+                    
                 }
             }
         //         Actions.createReference(clickX, clickY);
@@ -340,9 +359,9 @@ class Pointer {
                 Pointer.defaultMove(e);
                 
             } else if (editorMode == EditorModes.REFERENCE) {
-                if (heldObject) {
+                if (Holdable.object) {
                     let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-                    heldObject.object.move(coord);
+                    Holdable.object.move(coord);
                 } else {
                     let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
                     let overlap = Editor.Referencer.getOverlappingDots(coord);
@@ -352,16 +371,16 @@ class Pointer {
                 }
             } else if (editorMode == EditorModes.CONNECTION) {
                 let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-                if (heldObject && heldObject.type == "connectionReference") {
-                    heldObject.phantomObject.setEndPoint(coord);
+                if (Holdable.type == "connectionReference") {
+                    Holdable.phantomObject.setEndPoint(coord);
 
                     let overlap = Editor.Referencer.getOverlappingDots(coord);
                     if (overlap) {
-                        if (overlap != heldObject.phantomObject.start && !Editor.Connections.hasPair(overlap, heldObject.phantomObject.start)) {
-                            Actions.newConnection(heldObject.phantomObject.start, overlap);
+                        if (overlap != Holdable.phantomObject.start && !Editor.Connections.hasPair(overlap, Holdable.phantomObject.start)) {
+                            Actions.newConnection(Holdable.phantomObject.start, overlap);
     
                             let phantomObject = new Editor.PhantomConnection(overlap);
-                            setHoldable(new Holdable(overlap, "connectionReference", false, phantomObject=phantomObject));
+                            Holdable.set(overlap, "connectionReference", false, phantomObject=phantomObject);
                         }
                     }
 
@@ -485,16 +504,16 @@ class Pointer {
             }
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
-                if (heldObject) {
-                    Actions.moveReference(heldObject);
+                if (Holdable.object) {
+                    Actions.moveReference(Holdable);
                 }
-                setHoldable(false);
+                Holdable.set(false);
             }
 
             if (editorMode == EditorModes.CONNECTION) {
-                if (heldObject && heldObject.type == "connectionReference") {
-                    heldObject.phantomObject.destroy();
-                    setHoldable(false);
+                if (Holdable.object && Holdable.type == "connectionReference") {
+                    Holdable.phantomObject.destroy();
+                    Holdable.set(false);
                 }
             }
             //     Actions.removeTempConnection();
@@ -1010,7 +1029,6 @@ class Actions {
 
         Graficos.editorFocus(false);
         if ([
-            EditorModes.SELECTION,
             EditorModes.DELETION,
             EditorModes.CONSTRUCTION,
             EditorModes.REFERENCE,
@@ -1020,7 +1038,8 @@ class Actions {
         }
 
         if (editorMode == EditorModes.CONSTRUCTION) {
-            Actions.OpenModal();
+            const overlay = document.getElementById('build-modal-overlay');
+            overlay.classList.add('active');
         }
 
         lightButton(selectionBtn, mode, EditorModes.SELECTION);
@@ -1028,6 +1047,33 @@ class Actions {
         lightButton(buildBtn, mode, EditorModes.CONSTRUCTION);
         lightButton(referenceBtn, mode, EditorModes.REFERENCE);
         lightButton(connectionBtn, mode, EditorModes.CONNECTION);
+    }
+
+    static newBuilding(mouseX, mouseY) {
+        const coord = Editor.newCoord(mouseX, mouseY, "screen");
+        
+        let building = new Editor.Building(coord, Task.data["name"]);
+
+        const forward = () => {
+            building.enable();
+            Actions.forceMode(EditorModes.CONSTRUCTION);
+        };
+        
+        const backward = () => {
+            building.disable();
+            Actions.forceMode(EditorModes.CONSTRUCTION);
+        };
+
+        const prune = () => {
+            if (building) {
+                building.destroy();
+                building = null;
+            }
+        }
+
+        building.enable();
+
+        this.newAction(forward, backward, prune);
     }
 
     // static save() {
@@ -1053,27 +1099,32 @@ class Actions {
     //     const overlay = document.getElementById('build-modal-overlay');
     //     overlay.classList.add('active');
     // }
-    // static pinMode(bool) {
-    //     if (bool) {
-    //         map.classList.add("custom-cursor");
-    //     } else {
-    //         map.classList.remove("custom-cursor");
-    //     }
-    // }
+    static pinMode(bool) {
+        if (bool) {
+            map.classList.add("custom-cursor");
+        } else {
+            map.classList.remove("custom-cursor");
+        }
+    }
+    static beginTask(name, data) {
+        if (name == "build") {
+            Task.setTask(name, data)
+        }
+    }
 }
 
-// function handleBuildSubmit(event) {
-//     event.preventDefault();
+function handleBuildSubmit(event) {
+    event.preventDefault();
 
-//     let buildName = document.getElementById('build-name').value;
+    let buildName = document.getElementById('build-name').value;
 
-//     Actions.createTempConstruction(buildName);
+    Actions.beginTask("build", {name: buildName});
 
-//     document.getElementById('build-modal-overlay').classList.remove('active');
-//     document.getElementById('buildForm').reset();
+    document.getElementById('build-modal-overlay').classList.remove('active');
+    document.getElementById('buildForm').reset();
 
-//     Actions.pinMode(true);
-// }
+    Actions.pinMode(true);
+}
 
 // function handleConfirm(event) {
 //     Actions.finishBuild();
@@ -1242,8 +1293,9 @@ export function addListeners(map) {
             }
         }
         setInterval(hoverLoop, 1000 / 30);
+
+        buildModalBtn.addEventListener("click", handleBuildSubmit);
         // saveBtn.addEventListener("click", Actions.save);
-        // buildModalBtn.addEventListener("click", handleBuildSubmit);
         // confirmBtn.addEventListener("click", handleConfirm);
 
         // expandBannerBtn.addEventListener("click", Actions.toggleBanner);
