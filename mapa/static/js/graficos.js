@@ -54,159 +54,6 @@ export function getScreenCoordinates(pos) {
 }
 
 
-
-
-export function newRegion(x=0, y=0, w=0, h=0) {
-    let square = new PIXI.Graphics();
-
-    if (!(w == 0 && h == 0)) {
-        square
-        .rect(0, 0, w, h)
-        .fill({ color: 0x5c56f9, alpha: 0.78 })
-        .stroke({ width: 4, color: 0x4000ff });
-    }
-    
-    square.position.set(x, y);
-    areasContainer.addChild(square);
-
-    return square;
-}
-export function updateRegion(region, x, y, w, h) {
-    region
-    .clear()
-    .rect(0, 0, w, h)
-    .fill({ color: 0x5c56f9, alpha: 0.78 })
-    .stroke({ width: 4, color: 0x4000ff });
-
-    region.position.set(x, y);
-}
-export function removeRegion(region) {
-    areasContainer.removeChild(region);
-    
-    region.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-}
-
-export function newPolygon(points) {
-    let polygons = [];
-    for (const region of points) {
-        let flattenedPoints = region.flat();
-    
-        let polygonObj = new PIXI.Graphics();
-
-        polygonObj
-            .poly(flattenedPoints, true)
-            .fill({ color: 0x5c56f9, alpha: 0.78 })
-            .stroke({ width: 4, color: 0x4000ff });
-    
-        polygonObj.position.set(0, 0);
-        areasContainer.addChild(polygonObj);
-    
-        polygons.push(polygonObj);
-    }
-
-    return polygons;
-}
-
-export function removePolygon(polygons) {
-    for(const polygon of polygons) {
-
-        areasContainer.removeChild(polygon);
-        
-        polygon.destroy({
-            children: true,
-            texture: true,
-            baseTexture: true
-        });
-    }
-}
-
-export function newPin(x, y, text) {
-    let buildPino = PIXI.Sprite.from(pinImagePath);
-    buildPino.anchor.set(0.5, 1);
-    buildPino.x = x;
-    buildPino.y = y;
-    buildPino.scale.set(1 / zoom / 7.5);
-    
-    pinContainer.addChild(buildPino);
-
-    const nodeLabel = new PIXI.Text({
-        text: text,
-        style: {
-            fontFamily: 'Arial',
-            fontSize: 28,
-            fill: textColor,
-            align: 'center',
-            stroke: { color: "white", width: 3 }
-        }
-    });
-    nodeLabel.anchor.set(-0.2, 1);
-    nodeLabel.x = x;
-    nodeLabel.y = y;
-    nodeLabel.scale.set(1 / zoom / 2);
-
-    pinContainer.addChild(nodeLabel);
-
-    return {pin: buildPino, label: nodeLabel};
-}
-export function updatePin(pin, x, y, text, isSelected=false) {
-    pin.pin.x = x;
-    pin.pin.y = y;
-    pin.pin.scale.set(1 / zoom / 7.5);
-
-    let color;
-    if (isSelected) {
-        color = "#2a60d3";
-    } else {
-        color = "black";
-    }
-
-    const nodeLabel = new PIXI.Text({
-        text: text,
-        style: {
-            fontFamily: 'Arial',
-            fontSize: 28,
-            fill: color,
-            align: 'center',
-            stroke: { color: "white", width: 3 }
-        }
-    });
-    nodeLabel.anchor.set(-0.2, 1);
-    nodeLabel.x = x;
-    nodeLabel.y = y;
-    nodeLabel.scale.set(1 / zoom / 2);
-
-    pinContainer.addChild(nodeLabel);
-
-    pinContainer.removeChild(pin.label);
-    pin.label.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-
-    pin.label = nodeLabel;
-}
-export function removePin(pin) {    
-    pinContainer.removeChild(pin.pin);
-    pinContainer.removeChild(pin.label);
-    
-    pin.pin.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-    pin.label.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-}
-
-
 export function createReference() {
     let point = new PIXI.Graphics();
     
@@ -380,18 +227,53 @@ export function removeConnection(graphics) {
     });
 }
 
+export function createPin(name) {
+    let buildPino = PIXI.Sprite.from(pinImagePath);
+    buildPino.anchor.set(0.5, 1);
+    buildPino.scale.set(1 / zoom / 7.5);
+    
+    pinContainer.addChild(buildPino);
 
-export async function setBuildAreaSize(square) {
-    if (!(Math.abs(square.width) > 10 && Math.abs(square.height) > 10)) {
-        square.areaObj.clear();
-    } else {
-        square.areaObj
-        .clear()
-        .rect(0, 0, Math.abs(square.width), Math.abs(square.height))
-        .fill({ color: 0x5c56f9, alpha: 0.78 })
-        .stroke({ width: 4, color: 0x4000ff });
-        square.areaObj.position.set(Math.min(square.x, square.x - square.width), Math.min(square.y, square.y - square.height));
-    }
+    const nodeLabel = new PIXI.Text({
+        text: name,
+        style: {
+            fontFamily: 'Arial',
+            fontSize: 28,
+            fill: textColor,
+            align: 'center',
+            stroke: { color: "white", width: 3 }
+        }
+    });
+    nodeLabel.anchor.set(-0.2, 1);
+    nodeLabel.scale.set(1 / zoom / 2);
+
+    pinContainer.addChild(nodeLabel);
+
+    return {pin: buildPino, label: nodeLabel};
+}
+
+export function renderPin(graphics, data) {
+    let pos = data.coordinate.getIn("normal");
+    graphics.pin.x = pos.x;
+    graphics.pin.y = pos.y;
+    graphics.label.x = pos.x;
+    graphics.label.y = pos.y;
+}
+
+export function destroyPin(graphics) {
+    pinContainer.removeChild(graphics.pin);
+    pinContainer.removeChild(graphics.label);
+    
+    graphics.pin.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+    graphics.label.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
 }
 
 export function setContext(context) {

@@ -400,7 +400,7 @@ export class Referencer {
         reference.id = this.idTracker;
         this.references[this.idTracker] = reference;
         this.idTracker += 1;
-;
+        
         for(const connection of reference.connections) {
             Connections.track(connection);
         }
@@ -458,6 +458,62 @@ export class Referencer {
             this.hashMap[key] = [];
         }
         this.hashMap[key].push(reference);
+    }
+    
+    static getOverlappingDots(coordinate, all) {
+        let pos = coordinate.getIn("normal");
+        let hashPos = this.getHashCoord(pos);
+
+        let allList = [];
+
+        for (let i = 0; i < 9; i ++) {
+            let offset = {
+                x: (i % 3) - 1,
+                y: Math.floor(i / 3) - 1
+            }
+
+            const key = this.getHashKey({x: hashPos.x + offset.x, y: hashPos.y + offset.y}, false);
+            
+            if (key in this.hashMap) {
+                for (const reference of this.hashMap[key].toReversed()) {
+                    const distance = Math.sqrt(Math.pow(reference.coordinate.pos.x - pos.x, 2) + Math.pow(reference.coordinate.pos.y - pos.y, 2));
+                    if (distance < reference.size / Graficos.zoom) {
+                        if (!all) {
+                            return reference;
+                        }
+                        allList.push(reference);
+                    }
+                }
+            }
+        }
+
+        if (allList.length == 0) {
+            return false;
+        }
+        return allList;
+    }
+}
+
+export class Buildings {
+    constructor() {
+        throw new Error("Classe estática. Não instancie.");
+    }
+    
+    static idTracker = 0;
+    static buildings = {};
+    
+    static track(building) {
+        if (!(building.id === -1)) {
+            return;
+        }
+        building.id = this.idTracker;
+        this.buildings[this.idTracker] = building;
+        this.idTracker += 1;
+    }
+
+    static untrack(building) {
+        delete this.buildings[building.id];
+        building.id = -1;
     }
     
     static getOverlappingDots(coordinate, all) {
@@ -708,24 +764,66 @@ export class Connection {
 }
 
 export class Building {
-    constructor(start, end) {
-        this.alpha = 1;
-        this.colorOut = 0x3d97e0;
-        this.colorIn = 0xa4d1f5;
+    constructor(coordinate, name) {
         this.enabled = true;
         this.size = 10;
 
         this.id = -1;
         this.hover = 0;
         this.hoverTime = .2;
-        // Connections.track(this);
-        // Connections.setRelated(this, true);
+        Buildings.track(this);
         
-        this.positionTracked = false;
-        
-        this.graphics = Graficos.createConnection();
+        this.move(coordinate, true);
+
+        this.graphics = Graficos.createPin(name);
         
         this.updateGraphics();
+    }
+
+    buildData() {
+        return {
+            size: this.size,
+            coordinate: this.coordinate
+        }
+    }
+    
+    updateGraphics() {
+        if (this.enabled) {
+            Graficos.renderPin(this.graphics, this.buildData());
+        } else {
+            this.graphics.clear();
+        }
+    }
+
+    enable() {
+        this.enabled = true;
+        this.updateGraphics();
+        Buildings.track(this);
+    }
+    disable() {
+        this.enabled = false;
+        this.updateGraphics();
+        Buildings.untrack(this);
+    }
+
+    move(coordinate, create=false) {
+        if (!create) {
+            this.coordinate = coordinate;
+            this.coordinate.convertTo("normal");
+            
+            this.updateGraphics();
+            this.bringToFront();
+
+            return;
+        }
+        
+        this.coordinate = coordinate;
+        this.coordinate.convertTo("normal");
+    }
+
+    destroy() {
+        Graficos.destroyPin(this.graphics);
+        Buildings.untrack(this);
     }
 }
 

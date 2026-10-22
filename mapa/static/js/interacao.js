@@ -105,6 +105,12 @@ class Task {
         this.taskStep = 0;
         this.data = data;
     }
+    static nextStep() {
+        this.taskStep += 1;
+    }
+    static previousStep() {
+        this.taskStep -= 1;
+    }
 }
 
 class Touch {
@@ -229,7 +235,7 @@ class Pointer {
                 }
             } else if (editorMode == EditorModes.CONSTRUCTION) {
                 if (Task.taskStep == 0) {
-                    
+                    Actions.newBuilding(clickX, clickY);
                 }
             }
         //         Actions.createReference(clickX, clickY);
@@ -405,6 +411,8 @@ class Pointer {
                     if (!clicking) return;
                     Pointer.defaultMove(e);
                 }
+            } else if (editorMode == EditorModes.CONSTRUCTION) {
+
             } else {
                 if (!clicking) return;
                 Pointer.defaultMove(e);
@@ -873,7 +881,6 @@ class Actions {
 
     static newReference(mouseX, mouseY) {
         const coord = Editor.newCoord(mouseX, mouseY, "screen");
-        
         let reference = new Editor.Reference(coord);
 
         const forward = () => {
@@ -900,7 +907,7 @@ class Actions {
 
     static destroyReference(reference) {
         let goneConnections = [...reference.connections].filter(item => item.enabled);
-        console.log(goneConnections);
+        
         const forward = () => {
             reference.disable();
             for (const connection of goneConnections) {
@@ -1053,14 +1060,16 @@ class Actions {
         const coord = Editor.newCoord(mouseX, mouseY, "screen");
         
         let building = new Editor.Building(coord, Task.data["name"]);
-
+        
         const forward = () => {
             building.enable();
+            Task.nextStep();
             Actions.forceMode(EditorModes.CONSTRUCTION);
         };
         
         const backward = () => {
             building.disable();
+            Task.previousStep();
             Actions.forceMode(EditorModes.CONSTRUCTION);
         };
 
@@ -1302,5 +1311,17 @@ export function addListeners(map) {
         // imageInput.addEventListener("change", e => updateImageDisplay(e));
 
         // Editor.load();
+
+        // let k = 100;
+        // let r = 100;
+        // let c = [1920 / 2, 1080 / 2];
+        // for(let i = 0; i < k; i ++) {
+        //     Actions.newReference(c[0] + Math.cos(i / k * Math.PI * 2) * r, c[1] + Math.sin(i / k * Math.PI * 2) * r);
+        // }
+        // for(let i of Object.values(Editor.Referencer.references)) {
+        //     for(let j of Object.values(Editor.Referencer.references)) {
+        //         Actions.newConnection(i, j);
+        //     }
+        // }
     }
 }
