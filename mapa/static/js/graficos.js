@@ -53,6 +53,7 @@ export function getScreenCoordinates(pos) {
     };
 }
 
+/////////////////// Reference
 
 export function createReference() {
     let point = new PIXI.Graphics();
@@ -92,6 +93,8 @@ export function destroyReference(graphics) {
         baseTexture: true
     });
 }
+
+/////////////////// Connection
 
 export function createConnection() {
     let connection = new PIXI.Graphics();
@@ -160,72 +163,7 @@ export function destroyConnection(graphics) {
     });
 }
 
-export function multiRouteDraw(points = [], temp = false) {
-    if (points.length < 2) return null;
-
-    let routeGraphics = new PIXI.Graphics();
-    let alpha = temp ? 0.5 : 1;
-    let radius = 10;
-
-    const buildPath = (g) => {
-        g.moveTo(points[0].x, points[0].y);
-
-        for (let i = 1; i < points.length - 1; i++) {
-            const p1 = points[i];
-            const p2 = points[i + 1];
-
-            g.arcTo(p1.x, p1.y, p2.x, p2.y, radius);
-        }
-
-        const last = points[points.length - 1];
-        g.lineTo(last.x, last.y);
-    };
-
-    buildPath(routeGraphics);
-    routeGraphics.stroke({
-        width: 16,
-        color: 0xffffff,
-        alpha: alpha,
-        cap: 'round',
-        join: 'round'
-    });
-
-    buildPath(routeGraphics);
-    routeGraphics.stroke({
-        width: 12,
-        color: 0x40c0ff,
-        alpha: alpha,
-        cap: 'round',
-        join: 'round'
-    });
-
-    routeGraphics.position.set(0, 0);
-    connectionContainer.addChild(routeGraphics);
-
-    return routeGraphics;
-}
-
-export function updateConnection(graphics, x1, y1, x2, y2, temp=false) {    
-    let alpha = 1;
-    if (temp) {
-        alpha = .5;
-    }
-    
-    graphics
-    .clear()
-    .moveTo(x1, y1)
-    .lineTo(x2, y2)
-    .stroke({ width: 8, color: 0x4000ff, alpha: alpha });
-}
-export function removeConnection(graphics) {    
-    connectionContainer.removeChild(graphics);
-    
-    graphics.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-}
+/////////////////// Pin
 
 export function createPin(name) {
     let buildPino = PIXI.Sprite.from(pinImagePath);
@@ -276,6 +214,108 @@ export function destroyPin(graphics) {
     });
 }
 
+/////////////////// Areas
+
+function normalizeBox(x1, y1, x2, y2) {
+    return {
+        x: Math.min(x1, x2),
+        y: Math.min(y1, y2),
+        width: Math.abs(x2 - x1),
+        height: Math.abs(y2 - y1),
+        minX: Math.min(x1, x2),
+        maxX: Math.max(x1, x2),
+        minY: Math.min(y1, y2),
+        maxY: Math.max(y1, y2)
+    };
+}
+
+export function createArea() {
+    let area = new PIXI.Graphics();
+    area.position.set(0, 0);
+    areasContainer.addChild(area);
+    return area;
+}
+
+export function renderArea(graphics, data) {
+    let alpha = data.alpha;
+    let colorOut = data.colorOut;
+    let colorIn = data.colorIn;
+    let size = data.borderSize;
+    let radius = data.radius !== undefined ? data.radius : 12;
+
+    let start = data.start.getIn("normal");
+    let end = data.end.getIn("normal");
+    let box = normalizeBox(start.x, start.y, end.x, end.y);
+
+    graphics.clear();
+
+    if (box.width < 2 || box.height < 2) return;
+
+    graphics.roundRect(box.x, box.y, box.width, box.height, radius);
+    graphics.fill({ color: colorIn, alpha: alpha * 0.35 });
+
+    graphics.roundRect(box.x, box.y, box.width, box.height, radius);
+    graphics.stroke({
+        width: size,
+        color: colorOut,
+        alpha: alpha,
+        alignment: 0.5
+    });
+}
+
+export function renderAreas(graphics, data) {
+    graphics.clear();
+    
+    let points = data.points;
+    if (!points || points.length === 0) return;
+
+    let alpha = data.alpha;
+    let colorOut = data.colorOut;
+    let colorIn = data.colorIn;
+    let size = data.borderSize;
+    let radius = data.radius !== undefined ? data.radius : 12;
+
+    if (points.length < 3) return;
+
+    const buildPolygonPath = (g) => {
+        let p0 = points[0].getIn("normal");
+        g.moveTo(p0.x, p0.y);
+        
+        for (let i = 0; i < points.length; i++) {
+            let p1 = points[i].getIn("normal");
+            let p2 = points[(i + 1) % points.length].getIn("normal");
+            let midX = (p1.x + p2.x) / 2;
+            let midY = (p1.y + p2.y) / 2;
+            g.arcTo(p1.x, p1.y, midX, midY, Math.min(radius, 20));
+        }
+    };
+
+    buildPolygonPath(graphics);
+    graphics.fill({ color: colorIn, alpha: alpha * 0.45 });
+
+    buildPolygonPath(graphics);
+    graphics.stroke({
+        width: size + 1,
+        color: colorOut,
+        alpha: alpha,
+        cap: 'round',
+        join: 'round'
+    });
+}
+
+export function destroyArea(graphics) {
+    if (!graphics) return;
+    areasContainer.removeChild(graphics);
+    
+    graphics.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+}
+
+/////////////////// Context
+
 export function setContext(context) {
     page = context.page;
     color = context.blank_color;
@@ -285,15 +325,6 @@ export function setContext(context) {
 
     mapImagePath = mapImage;
     pinImagePath = pinImage;
-}
-
-export function setPinPosition(x, y) {
-    pinoSprite.x = x;
-    pinoSprite.y = y;
-}
-
-export function showPin(show) {
-    pinoSprite.visible = show;
 }
 
 export async function main() {

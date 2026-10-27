@@ -81,6 +81,7 @@ class Holdable {
     static type = "";
     static initialPos = null;
     static phantomObject = null;
+
     static set(object, type = "", initialPos = false, phantomObject = false) {
         if (this.phantomObject) {
             this.phantomObject.destroy();
@@ -104,12 +105,30 @@ class Task {
         this.task = name;
         this.taskStep = 0;
         this.data = data;
+
+        if (this.task == "build") {
+            Actions.pinMode(true);
+        }
     }
     static nextStep() {
         this.taskStep += 1;
+        if (this.task == "build") {
+            if (this.taskStep > 0) {
+                Actions.pinMode(false);
+            } else {
+                Actions.pinMode(true);
+            }
+        }
     }
     static previousStep() {
         this.taskStep -= 1;
+        if (this.task == "build") {
+            if (this.taskStep > 0) {
+                Actions.pinMode(false);
+            } else {
+                Actions.pinMode(true);
+            }
+        }
     }
 }
 
@@ -236,84 +255,11 @@ class Pointer {
             } else if (editorMode == EditorModes.CONSTRUCTION) {
                 if (Task.taskStep == 0) {
                     Actions.newBuilding(clickX, clickY);
+                } else if (Task.taskStep == 1) {
+                    let phantomObject = new Editor.PhantomArea(clickX, clickY);
+                    Holdable.set(true, "BuildArea", {x: clickX, y: clickY}, phantomObject=phantomObject);
                 }
             }
-        //         Actions.createReference(clickX, clickY);
-        //         let col = Editor.Referencer.getCollision(clickX, clickY);
-        //         if (col) {
-        //             Actions.beginConnection(col);
-        //         }
-        //     } else if (editorMode == EditorModes.CONSTRUCTION) {
-        //         if (tempConstruction.pin == null) {
-        //             Actions.addPin(clickX, clickY);
-        //         } else {
-        //             Actions.beginRegion(clickX, clickY);
-        //         }
-        //     } else if (editorMode == EditorModes.SELECTION) {
-        //         let colRef = Editor.Referencer.getCollision(clickX, clickY);
-        //         let colConstruction = Editor.Builder.getCollision(clickX, clickY);
-
-        //         Actions.clearSelection();
-        //         if (colRef) {
-        //             Actions.addSelection(colRef, clickX, clickY);
-
-        //             if (holdingBuilding) {
-        //                 Editor.Builder.convertGraphical(holdingBuilding, "polygon");
-        //                 holdingBuilding = null;
-        //             }
-        //         } else {
-        //             if (colConstruction) {
-        //                 if (holdingBuilding) {
-        //                     let colRegion = Editor.Builder.getCollisionArea(holdingBuilding, clickX, clickY);
-        //                     Actions.addSelection(colRegion, clickX, clickY);
-        //                     Editor.Builder.convertGraphical(holdingBuilding, "polygon");
-        //                 }
-        //                 Editor.Builder.convertGraphical(colConstruction, "areas");
-        //                 holdingBuilding = colConstruction;
-                        
-        //             } else {
-        //                 if (holdingBuilding) {
-        //                     Editor.Builder.convertGraphical(holdingBuilding, "polygon");
-        //                     holdingBuilding = null;
-        //                 }
-        //             }
-                    
-        //         }
-        //     } else if (editorMode == EditorModes.DELETION) {
-        //         let colRef = Editor.Referencer.getCollision(clickX, clickY);
-        //         let colLine = Editor.Connections.getCollision(clickX, clickY);
-        //         let colConstruction = Editor.Builder.getCollision(clickX, clickY);
-
-        //         if (colRef) {
-        //             Actions.removeReference(colRef);
-        //         } else if (colLine) {
-        //             Actions.removeConnection(colLine);
-        //         } else if (colConstruction) {
-        //             if (holdingBuilding) {
-        //                 let colRegion = Editor.Builder.getCollisionArea(holdingBuilding, clickX, clickY);
-
-        //                 if (colRegion) {
-        //                     Actions.removeRegion(colRegion);
-        //                 }
-        //                 if (holdingBuilding.areas.length == 0) {
-        //                     Actions.removeConstruction(holdingBuilding);
-        //                     Editor.Builder.clearSelection();
-        //                 }
-        //                 if (colRegion) {
-        //                     Actions.addSelection(colRegion, clickX, clickY);
-        //                     Editor.Builder.convertGraphical(holdingBuilding, "polygon");
-        //                 }
-        //             }
-        //             Editor.Builder.convertGraphical(colConstruction, "areas");
-        //             holdingBuilding = colConstruction;
-                    
-        //         } else {
-        //             if (holdingBuilding) {
-        //                 Editor.Builder.convertGraphical(holdingBuilding, "polygon");
-        //                 holdingBuilding = null;
-        //             }
-        //         }
-        //     }
         }
     }
 
@@ -412,57 +358,14 @@ class Pointer {
                     Pointer.defaultMove(e);
                 }
             } else if (editorMode == EditorModes.CONSTRUCTION) {
-
+                if (Holdable.type == "BuildArea") {
+                    let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+                    Holdable.phantomObject.setEndPoint(coord);
+                }
             } else {
                 if (!clicking) return;
                 Pointer.defaultMove(e);
             }
-            // } else if (editorMode == EditorModes.REFERENCE) {
-            //     if (!tempReference) {
-            //         Actions.createTempReference(e.clientX, e.clientY);
-            //     }
-            //     Editor.Referencer.updateTempReference(tempReference, e.clientX, e.clientY);
-                
-            // } else if (editorMode == EditorModes.CONSTRUCTION) {
-            //     if (tempRegion) {
-            //         Editor.Builder.updateRegion(tempRegion, e.clientX, e.clientY);
-            //     }
-            //     if (tempRegion || tempConstruction.regions.length > 0) {
-            //         confirmBtn.classList.remove("hidden");
-            //     }
-            // } else if (editorMode == EditorModes.CONNECTION) {
-            //     if (tempConn != null) {
-            //         Editor.Connections.updateTempConnection(tempConn, e.clientX, e.clientY);
-
-            //         let col = Editor.Referencer.getCollision(e.clientX, e.clientY, tempConn.reference);
-            //         if (col) {
-            //             Actions.createConnection(tempConn.reference, col);
-            //         }
-            //     }
-            // } else if (editorMode == EditorModes.SELECTION) {
-            //     for(const obj of Editor.Referencer.selection) {
-            //         let colRegion = Editor.Builder.getClosestValidPosition(e.clientX - obj.offx, e.clientY - obj.offy);
-            //         let pos = Graficos.getScreenCoordinates(colRegion.x, colRegion.y);
-            //         // console.log(colRegion.building, obj.obj.building);
-            //         if (colRegion.building) {
-            //             Editor.Referencer.setRelatedBuilding(obj.obj, colRegion.building);
-            //         } else if (obj.obj.building) {
-            //             Editor.Referencer.setUnrelatedBuilding(obj.obj, obj.obj.building);
-            //         }
-            //         Editor.Referencer.moveRef(obj.obj, pos.x, pos.y);
-            //         Actions.addFocus([obj.obj]);
-            //     }
-            //     for(const obj of Editor.Builder.selection) {
-            //         if (obj.obj instanceof Editor.Region) {
-            //             Editor.Builder.moveRegion(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
-            //             Editor.Builder.reOrder(obj.obj);
-            //         }
-            //         if (obj.obj instanceof Editor.Pin) {
-            //             Editor.Builder.movePin(obj.obj, e.clientX - obj.offx, e.clientY - obj.offy);
-            //             Actions.addFocus([obj.obj]);
-            //         }
-            //     }
-            // }
         }
     }
 
@@ -516,42 +419,19 @@ class Pointer {
                     Actions.moveReference(Holdable);
                 }
                 Holdable.set(false);
-            }
-
-            if (editorMode == EditorModes.CONNECTION) {
+            } else if (editorMode == EditorModes.CONNECTION) {
                 if (Holdable.object && Holdable.type == "connectionReference") {
                     Holdable.phantomObject.destroy();
                     Holdable.set(false);
                 }
-            }
-            //     Actions.removeTempConnection();
-            // } else if (editorMode == EditorModes.CONSTRUCTION) {
-            //     if (tempRegion) {
-            //         tempRegion.end = Graficos.getNormalizedCoordinates(e.clientX, e.clientY);
-            //     }
-            //     Actions.sendRegion();
-            //     Actions.removeTempRegion();
-            // } else if (editorMode == EditorModes.SELECTION) {
-            //     for(const obj of Object.values(Editor.Referencer.references)) {
-            //         if (obj.projGraphics) {
-            //             let unnormPos = Graficos.getScreenCoordinates(obj.projPos.x, obj.projPos.y);
-            //             Editor.Referencer.moveRef(obj, unnormPos.x, unnormPos.y);
-            //             obj.endProjection();
-            //         }
-            //     }
+            } else if (editorMode == EditorModes.CONSTRUCTION) {
+                if (Holdable.object && Holdable.type == "BuildArea") {
+                    Actions.newArea(Holdable.phantomObject.start, Holdable.phantomObject.end);
 
-            //     if (!isInside(e, expandBannerBtn) && !isInside(e, bannerTab)) {
-            //         let focusList = []
-            //         if (Editor.Referencer.selection.length > 0) {
-            //             focusList.push(Editor.Referencer.selection[0].obj);
-            //         }
-            //         if (Editor.Builder.selection.length > 0) {
-            //             focusList.push(Editor.Builder.selection[0].obj);
-            //         }
-            //         Actions.addFocus(focusList);
-            //     }
-            //     Actions.clearSelection();
-            // }
+                    Holdable.phantomObject.destroy();
+                    Holdable.set(false);
+                }
+            }
         }
     }
 
@@ -593,46 +473,6 @@ function lightButton(button, mode, buttonMode) {
         button.classList.add('mode-active');
     }
 }
-
-// function getCookie(name) {
-//     let cookieValue = null;
-//     if (document.cookie && document.cookie !== '') {
-//         const cookies = document.cookie.split(';');
-//         for (let i = 0; i < cookies.length; i++) {
-//             const cookie = cookies[i].trim();
-//             if (cookie.substring(0, name.length + 1) === (name + '=')) {
-//                 cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-//                 break;
-//             }
-//         }
-//     }
-//     return cookieValue;
-// }
-
-// async function saveMapState(data) {
-//     const url = URLSaveMap;
-    
-//     const token = sessionStorage.getItem('authToken'); 
-
-//     try {
-//         let req = {
-//             method: 'POST',
-//             headers: {
-//                 'Authorization': `Bearer ${token}`,
-//                 'X-CSRFToken': getCookie('csrftoken')
-//             },
-//             body: data
-//         }
-//         const response = await fetch(url, req);
-
-//         if (response.status === 401) {
-//         console.error('Usuário não autorizado.');
-//             return;
-//         }
-//     } catch (error) {
-//         console.error('Erro de rede:', error);
-//     }
-// }
 
 class Actions {
     static actionStack = [];
@@ -884,13 +724,13 @@ class Actions {
         let reference = new Editor.Reference(coord);
 
         const forward = () => {
-            reference.enable();
             Actions.forceMode(EditorModes.REFERENCE);
+            reference.enable();
         };
         
         const backward = () => {
-            reference.disable();
             Actions.forceMode(EditorModes.REFERENCE);
+            reference.disable();
         };
 
         const prune = () => {
@@ -909,20 +749,21 @@ class Actions {
         let goneConnections = [...reference.connections].filter(item => item.enabled);
         
         const forward = () => {
+            Actions.forceMode(EditorModes.REFERENCE);
+
             reference.disable();
             for (const connection of goneConnections) {
                 connection.disable();
             }
-            
-            Actions.forceMode(EditorModes.REFERENCE);
         };
         
         const backward = () => {
+            Actions.forceMode(EditorModes.REFERENCE);
+            
             reference.enable();
             for (const connection of goneConnections) {
                 connection.enable();
             }
-            Actions.forceMode(EditorModes.REFERENCE);
         };
         
         const overflow = () => {
@@ -949,15 +790,17 @@ class Actions {
         let backwardCoord = {x: heldObject.initialPos.x, y: heldObject.initialPos.y};
 
         const forward = () => {
+            Actions.forceMode(EditorModes.REFERENCE);
+
             const coord = Editor.newCoord(forwardCoord.x, forwardCoord.y, "normal");
             object.move(coord);
-            Actions.forceMode(EditorModes.REFERENCE);
         };
         
         const backward = () => {
+            Actions.forceMode(EditorModes.REFERENCE);
+
             const coord = Editor.newCoord(backwardCoord.x, backwardCoord.y, "normal");
             object.move(coord);
-            Actions.forceMode(EditorModes.REFERENCE);
         };
 
         this.newAction(forward, backward);
@@ -968,13 +811,13 @@ class Actions {
         let connection = new Editor.Connection(start, end);
 
         const forward = () => {
-            connection.enable();
             Actions.forceMode(EditorModes.CONNECTION);
+            connection.enable();
         };
         
         const backward = () => {
-            connection.disable();
             Actions.forceMode(EditorModes.CONNECTION);
+            connection.disable();
         };
 
         const prune = () => {
@@ -991,13 +834,13 @@ class Actions {
 
     static destroyConnection(connection) {
         const forward = () => {
-            connection.disable();
             Actions.forceMode(EditorModes.CONNECTION);
+            connection.disable();
         };
         
         const backward = () => {
-            connection.enable();
             Actions.forceMode(EditorModes.CONNECTION);
+            connection.enable();
         };
 
         const overflow = () => {
@@ -1020,6 +863,7 @@ class Actions {
         lightButton(buildBtn, mode, EditorModes.CONSTRUCTION);
         lightButton(referenceBtn, mode, EditorModes.REFERENCE);
         lightButton(connectionBtn, mode, EditorModes.CONNECTION);
+        this.pinMode(false);
         editorMode = mode;
     }
 
@@ -1062,15 +906,15 @@ class Actions {
         let building = new Editor.Building(coord, Task.data["name"]);
         
         const forward = () => {
+            Actions.forceMode(EditorModes.CONSTRUCTION);
             building.enable();
             Task.nextStep();
-            Actions.forceMode(EditorModes.CONSTRUCTION);
         };
         
         const backward = () => {
+            Actions.forceMode(EditorModes.CONSTRUCTION);
             building.disable();
             Task.previousStep();
-            Actions.forceMode(EditorModes.CONSTRUCTION);
         };
 
         const prune = () => {
@@ -1080,7 +924,33 @@ class Actions {
             }
         }
 
+        Task.nextStep();
         building.enable();
+
+        this.newAction(forward, backward, prune);
+    }
+
+    static newArea(start, end) {
+        let area = new Editor.Area(start, end);
+
+        const forward = () => {
+            Actions.forceMode(EditorModes.CONSTRUCTION);
+            area.enable();
+        };
+        
+        const backward = () => {
+            Actions.forceMode(EditorModes.CONSTRUCTION);
+            area.disable();
+        };
+
+        const prune = () => {
+            if (area) {
+                area.destroy();
+                area = null;
+            }
+        }
+
+        area.enable();
 
         this.newAction(forward, backward, prune);
     }
@@ -1131,8 +1001,6 @@ function handleBuildSubmit(event) {
 
     document.getElementById('build-modal-overlay').classList.remove('active');
     document.getElementById('buildForm').reset();
-
-    Actions.pinMode(true);
 }
 
 // function handleConfirm(event) {

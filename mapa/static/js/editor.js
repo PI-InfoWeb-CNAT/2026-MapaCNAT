@@ -190,6 +190,49 @@ export class PhantomConnection {
     }
 }
 
+export class PhantomArea {
+    constructor(startX, startY) {
+        let coord = newCoord(startX, startY, "screen");
+        
+        this.start = coord;
+        this.alpha = .6;
+        this.colorOut = 0x3d97e0;
+        this.colorIn = 0xa4d1f5;
+        
+        this.borderRadius = 15;
+        this.borderSize = 10;
+        
+        this.graphics = Graficos.createArea();
+    }
+
+    setEndPoint(end) {
+        this.end = end;
+        this.updateGraphics();
+    }
+
+    buildData() {
+        let start = this.start;
+        let end = this.end;
+        return {
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            alpha: this.alpha,
+            borderSize: this.borderSize,
+            borderRadius: this.borderRadius,
+            start: start,
+            end: end,
+        }
+    }
+
+    updateGraphics() {
+        Graficos.renderArea(this.graphics, this.buildData());
+    }
+
+    destroy() {
+        Graficos.destroyArea(this.graphics);
+    }
+}
+
 function removeObj(list, obj) {
     const index = list.indexOf(obj);
 
@@ -501,7 +544,22 @@ export class Buildings {
     
     static idTracker = 0;
     static buildings = {};
+    static areas = {};
     
+    static trackArea(area) {
+        if (!(area.id === -1)) {
+            return;
+        }
+        area.id = this.idTracker;
+        this.areas[this.idTracker] = area;
+        this.idTracker += 1;
+    }
+
+    static untrackArea(area) {
+        delete this.areas[area.id];
+        area.id = -1;
+    }
+
     static track(building) {
         if (!(building.id === -1)) {
             return;
@@ -509,11 +567,31 @@ export class Buildings {
         building.id = this.idTracker;
         this.buildings[this.idTracker] = building;
         this.idTracker += 1;
-    }
 
+        for(const area of building.areas) {
+            Buildings.trackArea(area);
+        }
+    }
+    
     static untrack(building) {
         delete this.buildings[building.id];
         building.id = -1;
+
+        for(const area of building.areas) {
+            Buildings.untrackArea(area);
+        }
+    }
+
+    static setRelated(area, building, state) {
+        this.setRelation(area, building, state);
+    }
+    
+    static setRelation(area, building, state) {
+        if (state) {
+            building.areas = addObj(building.areas, area);
+        } else {
+            building.areas = removeObj(building.areas, area);
+        }
     }
     
     static getOverlappingDots(coordinate, all) {
@@ -769,6 +847,7 @@ export class Building {
         this.size = 10;
 
         this.id = -1;
+        this.areas = [];
         this.hover = 0;
         this.hoverTime = .2;
         Buildings.track(this);
@@ -789,9 +868,12 @@ export class Building {
     
     updateGraphics() {
         if (this.enabled) {
+            this.graphics.pin.visible = true;
+            this.graphics.label.visible = true;
             Graficos.renderPin(this.graphics, this.buildData());
         } else {
-            this.graphics.clear();
+            this.graphics.pin.visible = false;
+            this.graphics.label.visible = false;
         }
     }
 
@@ -824,6 +906,93 @@ export class Building {
     destroy() {
         Graficos.destroyPin(this.graphics);
         Buildings.untrack(this);
+    }
+}
+
+export class Area {
+    constructor(start, end) {
+        this.alpha = 1;
+        this.colorOut = 0x3d97e0;
+        this.colorIn = 0xa4d1f5;
+        this.borderRadius = 15;
+        this.borderSize = 10;
+        
+        this.enabled = true;
+        
+        this.start = start;
+        this.end = end;
+
+        this.id = -1;
+        this.hover = 0;
+        this.hoverTime = .2;
+        Buildings.trackArea(this);
+
+        this.graphics = Graficos.createArea();
+        
+        this.updateGraphics();
+    }
+
+    hoverAdd() {
+        this.hover += 1;
+        let cap = this.hoverTime * 30;
+
+        if (this.hover >= cap) {
+            this.hover = cap;
+        }
+        this.hoverUpdate();
+    }
+    hoverDec() {
+        this.hover -= 1;
+        if (this.hover <= 0) {
+            this.hover = 0;
+        }
+
+        this.hoverUpdate();
+    }
+    hoverUpdate() {
+        let ms = this.hoverTime * 1000;
+        let t = this.hover * (1000 / 30) / ms;
+        t = ease(t);
+        this.size = 10 + t * 5;
+        this.updateGraphics();
+    }
+    
+    buildData() {
+        let start = this.start;
+        let end = this.end;
+        return {
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            alpha: this.alpha,
+            borderSize: this.borderSize,
+            borderRadius: this.borderRadius,
+            start: start,
+            end: end,
+        }
+    }
+    
+    updateGraphics() {
+        if (this.enabled) {
+            Graficos.renderArea(this.graphics, this.buildData());
+        } else {
+            this.graphics.clear();
+        }
+    }
+
+    enable() {
+        this.enabled = true;
+        this.updateGraphics();
+        Buildings.trackArea(this);
+    }
+    disable() {
+        this.enabled = false;
+        this.updateGraphics();
+        Buildings.untrackArea(this);
+    }
+
+    destroy() {
+        Graficos.destroyArea(this.graphics);
+        Buildings.untrackArea(this);
     }
 }
 
