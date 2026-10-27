@@ -8,6 +8,10 @@ let referenceBtn;
 let connectionBtn;
 let saveBtn;
 let expandBannerBtn;
+
+let modalConfirmBtn;
+let modalDeclineBtn;
+
 let bannerTab;
 let imageInput;
 let imageWrapper;
@@ -110,6 +114,13 @@ class Task {
             Actions.pinMode(true);
         }
     }
+
+    static reset() {
+        this.task = "";
+        this.taskStep = 0;
+        this.data = {};
+    }
+    
     static nextStep() {
         this.taskStep += 1;
         if (this.task == "build") {
@@ -472,6 +483,41 @@ function lightButton(button, mode, buttonMode) {
     if (mode == buttonMode) {
         button.classList.add('mode-active');
     }
+}
+
+export function WaitButtonClick(buttonElements) {
+    return new Promise((resolve) => {
+        const elements = buttonElements.map(el => 
+            typeof el === 'string' ? document.querySelector(el) : el
+        );
+
+        if (elements.some(el => !el)) {
+            console.error("One or more button elements were not found!");
+            return;
+        }
+
+        const cleanup = () => {
+            elements.forEach((btn, idx) => {
+                btn.removeEventListener('click', handlers[idx]);
+            });
+        };
+
+        const handlers = elements.map((btn, index) => {
+            return (event) => {
+                cleanup();
+                resolve({
+                    index: index,
+                    button: btn,
+                    event: event,
+                    id: btn.id || btn.className || `btn_${index}`
+                });
+            };
+        });
+
+        elements.forEach((btn, idx) => {
+            btn.addEventListener('click', handlers[idx]);
+        });
+    });
 }
 
 class Actions {
@@ -863,20 +909,53 @@ class Actions {
         lightButton(buildBtn, mode, EditorModes.CONSTRUCTION);
         lightButton(referenceBtn, mode, EditorModes.REFERENCE);
         lightButton(connectionBtn, mode, EditorModes.CONNECTION);
+        
         this.pinMode(false);
         editorMode = mode;
+
+        Graficos.editorFocus(false);
+        if ([
+            EditorModes.DELETION,
+            EditorModes.CONSTRUCTION,
+            EditorModes.REFERENCE,
+            EditorModes.CONNECTION
+            ].includes(editorMode)) {
+            Graficos.editorFocus(true);
+        }
+
+        this.resetTask();
     }
 
-    static switchMode(mode=EditorModes.FREE) {
-        if (editorMode == EditorModes.CONSTRUCTION && tempConstruction) {
-            return;
+    static resetTask() {
+        if (Task.name == "build") {
+            Task.reset();
         }
+    }
+
+    static async switchMode(mode=EditorModes.FREE) {
+        if (editorMode == EditorModes.CONSTRUCTION) {
+            const overlay = document.getElementById('confirm-modal-overlay');
+
+            overlay.classList.add('active');
+            
+            let close = document.getElementById('close-confirm-modal');
+            let decline = document.getElementById('modal-decline');
+            let confirm = document.getElementById('modal-confirm');
+            
+            const result = await WaitButtonClick([close, decline, confirm]);
+            if(result.index == 0 || result.index == 1) {
+                overlay.classList.remove('active');
+                return;
+            }
+            overlay.classList.remove('active');
+            this.resetTask();
+        }
+
         if (editorMode == mode) {
             mode = EditorModes.FREE;
         }
-        editorMode = mode;
 
-        // Actions.clearProgress();
+        editorMode = mode;
 
         Graficos.editorFocus(false);
         if ([
@@ -1049,10 +1128,6 @@ function handleBuildSubmit(event) {
 //     tempFile = file;
 // }
 
-function hover() {
-
-}
-
 export function addListeners(map) {
     map.addEventListener("pointerdown", Pointer.down);
     map.addEventListener("pointermove", Pointer.move);
@@ -1110,6 +1185,8 @@ export function addListeners(map) {
         const buildModalBtn = document.getElementById("build-form-submit");
         const buildOverlay = document.getElementById("build-modal-overlay");
         const buildCloseBtn = document.getElementById("close-build-modal");
+
+        const confirmationCloseBtn = document.getElementById("close-confirm-modal");
 
         document.addEventListener("keydown", (e) => {
             const isModifierPressed = e.ctrlKey || e.metaKey;

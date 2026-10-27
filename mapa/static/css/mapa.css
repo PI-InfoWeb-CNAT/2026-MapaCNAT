@@ -519,3 +519,17 @@ header {
     object-fit: cover;
     display: block;
 }
+.modal-button {
+    background-color: white;
+    color: green;
+    border: none;
+    padding: 1em;
+}
+.modal-button:hover {
+    cursor: pointer;
+}
+.modal-button-main {
+    background-color: green;
+    color: white;
+    border-radius: 15px;
+}
