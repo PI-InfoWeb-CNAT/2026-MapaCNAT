@@ -192,6 +192,11 @@ header {
     background-color: white;
 }
 
+#logo-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
 #editor-logo {
     width: 56px;
     margin: var(--body-margin);
@@ -207,6 +212,15 @@ header {
     height: 100%;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
+
+#pin-mode {
+    position: fixed;
+    left: calc(var(--body-margin) * 5 + 56px);
+    bottom: var(--body-margin);
+}
+#pin-mode button {
+    margin: 0 !important;
+}
 #editor-modes hr {
     border: none;
     height: 2px;
@@ -215,8 +229,11 @@ header {
 }
 
 .editor-button {
-    margin: var(--body-margin);
+    margin: 0 var(--body-margin);
     border-radius: 5px;
+}
+.editor-button:first-child {
+    margin-top:var(--body-margin);
 }
 .mode-active {
     background-color: #aaa;
@@ -328,8 +345,12 @@ header {
 }
 .button-list {
     background-color: #ddd;
-    overflow-y: scroll;
-    margin: var(--body-margin) 0;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+
+    margin: var(--body-margin);
     height: calc(100vh - 2 * 56px - 4 * var(--body-margin));
 }
 
@@ -373,7 +394,6 @@ header {
     flex-direction: column;
 }
 
-/* Image Upload Wrapper - Edge-to-Edge */
 .image-upload-wrapper {
     position: relative;
     width: 100%;

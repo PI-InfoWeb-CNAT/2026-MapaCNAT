@@ -1,6 +1,29 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
 
+function rgbToHex(r, g, b) {
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+function hexToRgb(hex) {
+    return {
+        r: (hex >> 16) & 0xFF,
+        g: (hex >> 8) & 0xFF,
+        b: hex & 0xFF
+    };
+}
+function interpCol(start, end, t) {
+    let rgbStart = hexToRgb(start);
+    let rgbEnd = hexToRgb(end);
+
+    let final = [
+        rgbStart.r * (1 - t) + rgbEnd.r * t,
+        rgbStart.g * (1 - t) + rgbEnd.g * t,
+        rgbStart.b * (1 - t) + rgbEnd.b * t,
+    ];
+
+    return rgbToHex(final[0], final[1], final[2]);
+}
+
 async function urlToFile(url, filename = 'banner.png') {
     if (!url) return null;
     const response = await fetch(url);
@@ -196,7 +219,12 @@ export class PhantomArea {
         
         this.start = coord;
         this.alpha = .6;
-        this.colorOut = 0x3d97e0;
+        this.colorOut = {
+            left: 0x3d97e0,
+            top: 0x3d97e0,
+            right: 0x3d97e0,
+            bottom: 0x3d97e0,
+        };
         this.colorIn = 0xa4d1f5;
         
         this.borderRadius = 15;
@@ -582,8 +610,8 @@ export class Buildings {
         }
     }
 
-    static setRelated(area, building, state) {
-        this.setRelation(area, building, state);
+    static setRelated(area, state) {
+        this.setRelation(area, area.building, state);
     }
     
     static setRelation(area, building, state) {
@@ -594,34 +622,101 @@ export class Buildings {
         }
     }
     
-    static getOverlappingDots(coordinate, all) {
+    static getOverlappingAreas(coordinate, all) {
         let pos = coordinate.getIn("normal");
-        let hashPos = this.getHashCoord(pos);
-
         let allList = [];
 
-        for (let i = 0; i < 9; i ++) {
-            let offset = {
-                x: (i % 3) - 1,
-                y: Math.floor(i / 3) - 1
-            }
+        const areas = Object.values(this.areas).toReversed();
 
-            const key = this.getHashKey({x: hashPos.x + offset.x, y: hashPos.y + offset.y}, false);
-            
-            if (key in this.hashMap) {
-                for (const reference of this.hashMap[key].toReversed()) {
-                    const distance = Math.sqrt(Math.pow(reference.coordinate.pos.x - pos.x, 2) + Math.pow(reference.coordinate.pos.y - pos.y, 2));
-                    if (distance < reference.size / Graficos.zoom) {
-                        if (!all) {
-                            return reference;
-                        }
-                        allList.push(reference);
-                    }
+        for (const area of areas) {
+            const minX = Math.min(area.start.pos.x, area.end.pos.x);
+            const maxX = Math.max(area.start.pos.x, area.end.pos.x);
+            const minY = Math.min(area.start.pos.y, area.end.pos.y);
+            const maxY = Math.max(area.start.pos.y, area.end.pos.y);
+
+            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+                if (!all) {
+                    return area;
                 }
+                allList.push(area);
             }
         }
 
-        if (allList.length == 0) {
+        if (allList.length === 0) {
+            return false;
+        }
+        return allList;
+    }
+
+    static getOverlappingAreaBorders(coordinate, all) {
+        let pos = coordinate.getIn("normal");
+        let allList = [];
+
+        const zoom = (typeof Graficos !== "undefined" && Graficos.zoom) ? Graficos.zoom : 1;
+        const thickness = 15 / zoom;
+        const halfThick = thickness / 2;
+
+        const areas = Object.values(this.areas).toReversed();
+        let isCovered = false;
+
+        for (const area of areas) {
+            const minX = Math.min(area.start.pos.x, area.end.pos.x);
+            const maxX = Math.max(area.start.pos.x, area.end.pos.x);
+            const minY = Math.min(area.start.pos.y, area.end.pos.y);
+            const maxY = Math.max(area.start.pos.y, area.end.pos.y);
+
+            if (isCovered) {
+                break;
+            }
+
+            if (
+                pos.x >= minX - halfThick && pos.x <= maxX + halfThick &&
+                pos.y >= minY - halfThick && pos.y <= maxY + halfThick
+            ) {
+                const sides = [
+                    {
+                        side: "top",
+                        hit: Math.abs(pos.y - minY) <= halfThick,
+                        dist: Math.abs(pos.y - minY)
+                    },
+                    {
+                        side: "right",
+                        hit: Math.abs(pos.x - maxX) <= halfThick,
+                        dist: Math.abs(pos.x - maxX)
+                    },
+                    {
+                        side: "bottom",
+                        hit: Math.abs(pos.y - maxY) <= halfThick,
+                        dist: Math.abs(pos.y - maxY)
+                    },
+                    {
+                        side: "left",
+                        hit: Math.abs(pos.x - minX) <= halfThick,
+                        dist: Math.abs(pos.x - minX)
+                    }
+                ];
+
+                const matchedSides = sides.filter(s => s.hit);
+
+                if (matchedSides.length > 0) {
+                    matchedSides.sort((a, b) => a.dist - b.dist);
+
+                    if (!all) {
+                        return { area, side: matchedSides[0].side };
+                    }
+
+                    for (const match of matchedSides) {
+                        allList.push({ area, side: match.side });
+                    }
+                }
+            }
+
+            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+                isCovered = true;
+            }
+        }
+
+        if (allList.length === 0) {
             return false;
         }
         return allList;
@@ -845,8 +940,10 @@ export class Building {
     constructor(coordinate, name) {
         this.enabled = true;
         this.size = 10;
+        this._helperCreate = null;
 
         this.id = -1;
+        this.visual = "areas";
         this.areas = [];
         this.hover = 0;
         this.hoverTime = .2;
@@ -856,6 +953,55 @@ export class Building {
 
         this.graphics = Graficos.createPin(name);
         
+        this.points = [];
+        this.alpha = 1;
+        this.colorOut = 0x3d97e0
+        this.colorIn = 0xa4d1f5;
+        this.borderSize = 10;
+        this.radius = 5;
+
+        this.polygonGraphics = Graficos.createPoly();
+        
+        this.updateGraphics();
+    }
+
+    getBoxes() {
+        let boxes = [];
+        for(const area of this.areas) {
+            let box = area.getBox();
+            boxes.push(box);
+        }
+        return boxes;
+    }
+
+    convertTo(mode) {
+        this.visual = mode;
+
+        if (mode == "polygon") {
+            for(const area of this.areas) {
+                area.areaMode = false;
+                area.updateGraphics();
+            }
+            
+            let boxes = this.getBoxes();
+            let polygons = Geometria.getUnionPolygonVertices(boxes);
+            let coordPolygon = [];
+            for(const polygon of polygons) {
+                let coordPoints = [];
+                for(const point of polygon) {
+                    let coord = newCoord(point[0], point[1], "normal");
+                    coordPoints.push(coord);
+                }
+                coordPolygon.push(coordPoints);
+            }
+            this.points = coordPolygon;
+        } else {
+            for(const area of this.areas) {
+                area.areaMode = true;
+                area.updateGraphics();
+            }
+        }
+
         this.updateGraphics();
     }
 
@@ -865,15 +1011,31 @@ export class Building {
             coordinate: this.coordinate
         }
     }
+
+    buildDataPoly() {
+        return {
+            points: this.points,
+            alpha: this.alpha,
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            borderSize: this.borderSize,
+            radius: this.radius
+        }
+    }
     
     updateGraphics() {
         if (this.enabled) {
             this.graphics.pin.visible = true;
             this.graphics.label.visible = true;
             Graficos.renderPin(this.graphics, this.buildData());
+
+            if (this.visual == "polygon") {
+                Graficos.renderPoly(this.polygonGraphics, this.buildDataPoly());
+            }
         } else {
             this.graphics.pin.visible = false;
             this.graphics.label.visible = false;
+            this.polygonGraphics.clear();
         }
     }
 
@@ -909,27 +1071,109 @@ export class Building {
     }
 }
 
+class AreaBorder {
+    constructor(side, area) {
+        this.color = 0x3d97e0;
+        this.colorBase = 0x3d97e0;
+        this.colorHovered = 0xffffcc;
+        this.side = side;
+        this.area = area;
+        this.hover = 0;
+        this.hoverTime = .2;
+    }
+    hoverAdd() {
+        this.hover += 1;
+        let cap = this.hoverTime * 30;
+
+        if (this.hover >= cap) {
+            this.hover = cap;
+        }
+        this.hoverUpdate();
+    }
+    hoverDec() {
+        this.hover -= 1;
+        if (this.hover <= 0) {
+            this.hover = 0;
+        }
+
+        this.hoverUpdate();
+    }
+    hoverUpdate() {
+        let ms = this.hoverTime * 1000;
+        let t = this.hover * (1000 / 30) / ms;
+        t = ease(t);
+        
+        this.area.colorOut[this.side] = interpCol(this.colorBase, this.colorHovered, t);
+        this.area.updateGraphics();
+    }
+}
+
 export class Area {
-    constructor(start, end) {
+    constructor(start, end, building) {
         this.alpha = 1;
-        this.colorOut = 0x3d97e0;
+        this.colorOut = {
+            left: 0x3d97e0,
+            top: 0x3d97e0,
+            right: 0x3d97e0,
+            bottom: 0x3d97e0,
+        };
+        this.sides = {
+            left: new AreaBorder("left", this),
+            top: new AreaBorder("top", this),
+            right: new AreaBorder("right", this),
+            bottom: new AreaBorder("bottom", this),
+        };
+
         this.colorIn = 0xa4d1f5;
-        this.borderRadius = 15;
+        this.colorInBase = 0xa4d1f5;
+        this.colorInHover = 0xd4f1ff;
+        this.borderRadius = 5;
         this.borderSize = 10;
         
         this.enabled = true;
+        this.areaMode = true;
+    
+        this.hover = 0;
+        this.hoverTime = .2;
         
         this.start = start;
         this.end = end;
+        this.start.convertTo("normal");
+        this.end.convertTo("normal");
 
         this.id = -1;
-        this.hover = 0;
-        this.hoverTime = .2;
         Buildings.trackArea(this);
+        this.building = building;
+        Buildings.setRelated(this, true);
 
         this.graphics = Graficos.createArea();
         
         this.updateGraphics();
+    }
+
+    getBox() {
+        let start = this.start.getIn("normal");
+        let end = this.end.getIn("normal");
+        return [
+            start.x,
+            start.y,
+            end.x,
+            end.y
+        ]
+    }
+    
+    buildData() {
+        let start = this.start;
+        let end = this.end;
+        return {
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            alpha: this.alpha,
+            borderSize: this.borderSize,
+            borderRadius: this.borderRadius,
+            start: start,
+            end: end,
+        }
     }
 
     hoverAdd() {
@@ -953,26 +1197,12 @@ export class Area {
         let ms = this.hoverTime * 1000;
         let t = this.hover * (1000 / 30) / ms;
         t = ease(t);
-        this.size = 10 + t * 5;
+        this.colorIn = interpCol(this.colorInBase, this.colorInHover, t);
         this.updateGraphics();
     }
-    
-    buildData() {
-        let start = this.start;
-        let end = this.end;
-        return {
-            colorOut: this.colorOut,
-            colorIn: this.colorIn,
-            alpha: this.alpha,
-            borderSize: this.borderSize,
-            borderRadius: this.borderRadius,
-            start: start,
-            end: end,
-        }
-    }
-    
+
     updateGraphics() {
-        if (this.enabled) {
+        if (this.enabled && this.areaMode) {
             Graficos.renderArea(this.graphics, this.buildData());
         } else {
             this.graphics.clear();
@@ -992,6 +1222,7 @@ export class Area {
 
     destroy() {
         Graficos.destroyArea(this.graphics);
+        Buildings.setRelated(this, this.building, false);
         Buildings.untrackArea(this);
     }
 }

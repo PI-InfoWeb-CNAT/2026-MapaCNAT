@@ -251,23 +251,89 @@ export function renderArea(graphics, data) {
 
     if (box.width < 2 || box.height < 2) return;
 
-    graphics.roundRect(box.x, box.y, box.width, box.height, radius);
+    const { x, y, width: w, height: h } = box;
+    const r = Math.min(radius, w / 2, h / 2);
+
+    graphics.roundRect(x, y, w, h, r);
     graphics.fill({ color: colorIn, alpha: alpha * 0.35 });
 
-    graphics.roundRect(box.x, box.y, box.width, box.height, radius);
-    graphics.stroke({
+    const borderColors = typeof colorOut === "object" && colorOut !== null ? colorOut : {
+        top: colorOut,
+        right: colorOut,
+        bottom: colorOut,
+        left: colorOut
+    };
+
+    const getStroke = (color) => ({
         width: size,
-        color: colorOut,
+        color: color,
         alpha: alpha,
         alignment: 0.5
     });
+
+    if (r > 0) {
+        graphics.beginPath();
+        graphics.arc(x + r, y + r, r, Math.PI * 1.25, Math.PI * 1.5);
+        graphics.lineTo(x + w - r, y);
+        graphics.arc(x + w - r, y + r, r, Math.PI * 1.5, Math.PI * 1.75);
+        graphics.stroke(getStroke(borderColors.top));
+
+        graphics.beginPath();
+        graphics.arc(x + w - r, y + r, r, Math.PI * 1.75, Math.PI * 2);
+        graphics.lineTo(x + w, y + h - r);
+        graphics.arc(x + w - r, y + h - r, r, 0, Math.PI * 0.25);
+        graphics.stroke(getStroke(borderColors.right));
+
+        graphics.beginPath();
+        graphics.arc(x + w - r, y + h - r, r, Math.PI * 0.25, Math.PI * 0.5);
+        graphics.lineTo(x + r, y + h);
+        graphics.arc(x + r, y + h - r, r, Math.PI * 0.5, Math.PI * 0.75);
+        graphics.stroke(getStroke(borderColors.bottom));
+
+        graphics.beginPath();
+        graphics.arc(x + r, y + h - r, r, Math.PI * 0.75, Math.PI);
+        graphics.lineTo(x, y + r);
+        graphics.arc(x + r, y + r, r, Math.PI, Math.PI * 1.25);
+        graphics.stroke(getStroke(borderColors.left));
+    } else {
+        graphics.beginPath().moveTo(x, y).lineTo(x + w, y).stroke(getStroke(borderColors.top));
+        graphics.beginPath().moveTo(x + w, y).lineTo(x + w, y + h).stroke(getStroke(borderColors.right));
+        graphics.beginPath().moveTo(x + w, y + h).lineTo(x, y + h).stroke(getStroke(borderColors.bottom));
+        graphics.beginPath().moveTo(x, y + h).lineTo(x, y).stroke(getStroke(borderColors.left));
+    }
 }
 
-export function renderAreas(graphics, data) {
-    graphics.clear();
+export function destroyArea(graphics) {
+    if (!graphics) return;
+    areasContainer.removeChild(graphics);
     
-    let points = data.points;
-    if (!points || points.length === 0) return;
+    graphics.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+}
+
+export function createPoly() {
+    let area = new PIXI.Graphics();
+    area.position.set(0, 0);
+    areasContainer.addChild(area);
+    return area;
+}
+
+export function renderPoly(graphics, data) {
+    graphics.clear();
+
+    let rawPoints = data.points;
+    if (!rawPoints || rawPoints.length === 0) return;
+
+    const isSinglePolygon = rawPoints[0] && (
+        typeof rawPoints[0].getIn === "function" ||
+        typeof rawPoints[0].x === "number" ||
+        (Array.isArray(rawPoints[0]) && typeof rawPoints[0][0] === "number")
+    );
+
+    let polygons = isSinglePolygon ? [rawPoints] : rawPoints;
 
     let alpha = data.alpha;
     let colorOut = data.colorOut;
@@ -275,25 +341,36 @@ export function renderAreas(graphics, data) {
     let size = data.borderSize;
     let radius = data.radius !== undefined ? data.radius : 12;
 
-    if (points.length < 3) return;
+    const getPos = (p) => {
+        if (!p) return { x: 0, y: 0 };
+        if (typeof p.getIn === "function") return p.getIn("normal");
+        if (Array.isArray(p)) return { x: p[0], y: p[1] };
+        return p;
+    };
 
-    const buildPolygonPath = (g) => {
-        let p0 = points[0].getIn("normal");
+    const buildPolygonPath = (g, points) => {
+        if (!points || points.length < 3) return;
+
+        let p0 = getPos(points[0]);
         g.moveTo(p0.x, p0.y);
-        
+
         for (let i = 0; i < points.length; i++) {
-            let p1 = points[i].getIn("normal");
-            let p2 = points[(i + 1) % points.length].getIn("normal");
+            let p1 = getPos(points[i]);
+            let p2 = getPos(points[(i + 1) % points.length]);
             let midX = (p1.x + p2.x) / 2;
             let midY = (p1.y + p2.y) / 2;
             g.arcTo(p1.x, p1.y, midX, midY, Math.min(radius, 20));
         }
     };
 
-    buildPolygonPath(graphics);
+    for (const poly of polygons) {
+        buildPolygonPath(graphics, poly);
+    }
     graphics.fill({ color: colorIn, alpha: alpha * 0.45 });
 
-    buildPolygonPath(graphics);
+    for (const poly of polygons) {
+        buildPolygonPath(graphics, poly);
+    }
     graphics.stroke({
         width: size + 1,
         color: colorOut,
@@ -303,7 +380,7 @@ export function renderAreas(graphics, data) {
     });
 }
 
-export function destroyArea(graphics) {
+export function destroyPoly(graphics) {
     if (!graphics) return;
     areasContainer.removeChild(graphics);
     
