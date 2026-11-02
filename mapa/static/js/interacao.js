@@ -72,12 +72,30 @@ const EditorModes = Object.freeze({
 
 let editorMode = EditorModes.FREE;
 
-
 export function setContext(context) {
     page = context.page;
     minZoom = Graficos.minZoom;
     maxZoom = Graficos.maxZoom;
     zoomStep = context.scroll_ratio;
+}
+
+class Detail {
+    constructor() {
+        throw new Error("Classe estática. Não instancie.");
+    }
+    static detail = null;
+    static set(detail) {
+        if (this.detail) {
+            this.detail.convertTo("polygon");
+        }
+        
+        this.detail = detail;
+        
+        if (this.detail) {
+            this.detail.convertTo("areas");
+        }
+    }
+
 }
 
 class Holdable {
@@ -102,47 +120,37 @@ class Holdable {
 }
 
 class Task {
-    constructor() {
-        throw new Error("Classe estática. Não instancie.");
-    }
+    constructor() { throw new Error("Classe estática. Não instancie."); }
     static task = "";
     static taskStep = 0;
     static data = {};
 
+    static snapshot() {
+        return { task: this.task, taskStep: this.taskStep, data: { ...this.data } };
+    }
+    static restore(snap) {
+        this.task = snap.task;
+        this.taskStep = snap.taskStep;
+        this.data = { ...snap.data };
+        Actions.syncTaskUI();
+    }
     static setTask(name, data) {
-        this.task = name;
-        this.taskStep = 0;
-        this.data = data;
-
-        if (this.task == "build") {
-            Actions.pinMode(true);
-        }
+        this.task = name; this.taskStep = 0; this.data = data;
+        Actions.syncTaskUI();
     }
-
     static reset() {
-        this.task = "";
-        this.taskStep = 0;
-        this.data = {};
+        this.task = ""; this.taskStep = 0; this.data = {};
+        Actions.syncTaskUI();
     }
-    
     static nextStep() {
         this.taskStep += 1;
-        this.updateStepState();
-    }
-    static updateStepState() {
-        if (this.task == "build") {
-            if (this.taskStep > 0) {
-                Actions.pinMode(false);
-            } else {
-                Actions.pinMode(true);
-            }
-        }
-    }
-    static previousStep() {
-        this.taskStep -= 1;
-        this.updateStepState();
+        Actions.syncTaskUI();
     }
 }
+
+
+
+const hasEnabledAreas = (b) => !!b && b.areas.some(a => a.enabled);
 
 class Touch {
     constructor() {
@@ -277,10 +285,18 @@ class Pointer {
                         let border = Editor.Buildings.getOverlappingAreaBorders(coord);
                         if(border) {
                             Holdable.set(border, "BuildAreaBorder", {start: border.area.start.getIn("normal"), end: border.area.end.getIn("normal")});
+                            Editor.Referencer.beginReport();
                         } else {
                             let phantomObject = new Editor.PhantomArea(clickX, clickY);
                             Holdable.set(true, "BuildArea", {x: clickX, y: clickY}, phantomObject=phantomObject);
                         }
+                    }
+                } else {
+                    let coord = Editor.newCoord(clickX, clickY, "screen");
+                    let border = Editor.Buildings.getOverlappingAreaBorders(coord);
+                    if(border) {
+                        Holdable.set(border, "BuildAreaBorder", {start: border.area.start.getIn("normal"), end: border.area.end.getIn("normal")});
+                        Editor.Referencer.beginReport();
                     }
                 }
             }
@@ -337,6 +353,7 @@ class Pointer {
             } else if (editorMode == EditorModes.REFERENCE) {
                 if (Holdable.object) {
                     let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+                    
                     Holdable.object.move(coord);
                 } else {
                     let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
@@ -374,6 +391,11 @@ class Pointer {
                 let overlapDots = Editor.Referencer.getOverlappingDots(coord);
                 let overlapLines = Editor.Connections.getOverlappingLines(coord);
                 let overlapAreas = Editor.Buildings.getOverlappingAreas(coord);
+                let area = Editor.Buildings.getOverlappingAreas(coord);
+                Detail.set(false);
+                if (area) {
+                    Detail.set(area.building);
+                }
                 if (overlapDots) {
                     hoverTargetSet.add(overlapDots);
                 } else if (overlapLines) {
@@ -402,9 +424,7 @@ class Pointer {
                         screenEnd = Editor.newCoord(screenEnd.x, screenEnd.y, "screen");
                         screenStart.convertTo("normal");
                         screenEnd.convertTo("normal");
-                        Holdable.object.area.start = screenStart;
-                        Holdable.object.area.end = screenEnd;
-                        Holdable.object.area.updateGraphics();
+                        Holdable.object.area.move(screenStart, screenEnd);
                     }
                     if (Holdable.type == "BuildArea") {
                         let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
@@ -419,13 +439,39 @@ class Pointer {
                     }
                 } else {
                     let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+                    let area = Editor.Buildings.getOverlappingAreas(coord);
                     let border = Editor.Buildings.getOverlappingAreaBorders(coord);
-                    if(border) {
+                    Detail.set(false);
+                    if (area) {
+                        Detail.set(area.building);
+                    }
+                    if (border) {
                         hoverTargetSet.add(border.area.sides[border.side]);
                     }
-                    
-                    if (!clicking) return;
-                    Pointer.defaultMove(e);
+
+                    if (Holdable.type == "BuildAreaBorder") {
+                        let area = Holdable.object.area;
+                        Detail.set(area.building);
+                        let screenStart = area.start.getIn("screen");
+                        let screenEnd = area.end.getIn("screen");
+                        if (Holdable.object.side == "top") {
+                            screenStart = {x: screenStart.x, y: Math.min(e.clientY, screenEnd.y - 20)};
+                        } else if (Holdable.object.side == "left") {
+                            screenStart = {x: Math.min(e.clientX, screenEnd.x - 20), y: screenStart.y};
+                        } else if (Holdable.object.side == "right") {
+                            screenEnd = {x: Math.max(e.clientX, screenStart.x + 20), y: screenEnd.y};
+                        } else {
+                            screenEnd = {x: screenEnd.x, y: Math.max(e.clientY, screenStart.y + 20)};
+                        }
+                        screenStart = Editor.newCoord(screenStart.x, screenStart.y, "screen");
+                        screenEnd = Editor.newCoord(screenEnd.x, screenEnd.y, "screen");
+                        screenStart.convertTo("normal");
+                        screenEnd.convertTo("normal");
+                        area.move(screenStart, screenEnd);
+                    } else {
+                        if (!clicking) return;
+                        Pointer.defaultMove(e);
+                    }
                 }
             } else {
                 if (!clicking) return;
@@ -494,7 +540,8 @@ class Pointer {
                     if (Holdable.object) {
                         if (Holdable.type == "BuildArea") {
                             let phantom = Holdable.phantomObject;
-                            if(phantom.end && phantom.end.pos.x != phantom.start.pos.x && phantom.end.pos.y != phantom.start.pos.y) {
+                            if(phantom.end && Math.abs(phantom.end.pos.x - phantom.start.pos.x) >= 20 && Math.abs(phantom.end.pos.y - phantom.start.pos.y) >= 20) {
+                                
                                 Actions.newArea(phantom.start, phantom.end);
                             }
                             phantom.destroy();
@@ -503,6 +550,12 @@ class Pointer {
                             Actions.moveAreaBorder(Holdable);
                             Holdable.set(false);
                         }
+                    }
+                } else {
+                    if (Holdable.type == "BuildAreaBorder") {
+                        Detail.set(false);
+                        Actions.moveAreaBorder(Holdable);
+                        Holdable.set(false);
                     }
                 }
             }
@@ -713,190 +766,6 @@ class Actions {
         return false;
     }
 
-    // static toggleBanner() {
-    //     bannerTab.classList.toggle("hidden");
-    // }
-    // static createReference(x, y) {
-    //     Editor.Referencer.createReference(x, y);
-    // }
-    // static removeReference(ref) {
-    //     Editor.Referencer.removeReference(ref);
-    // }
-    // static createConnection(a, b) {
-    //     Editor.Connections.createConnection(a, b);
-    //     Actions.removeTempConnection();
-    //     Actions.beginConnection(b);
-    // }
-    // static removeConnection(conn) {
-    //     Editor.Connections.removeConnection(conn, true);
-    // }
-
-    // static addSelection(obj, x, y) {
-    //     if (obj instanceof Editor.Reference) {
-    //         Editor.Referencer.addSelection(obj, x, y);
-    //     } else if (obj instanceof Editor.Region) {
-    //         Editor.Builder.addSelection(obj, x, y);
-    //     } else if (obj instanceof Editor.Pin) {
-    //         Editor.Builder.addPinSelection(obj, x, y);
-    //     }
-    // }
-    // static removeSelection(obj) {
-    //     if (obj instanceof Editor.Reference) {
-    //         Editor.Referencer.removeSelection(obj);
-    //     } else if (obj instanceof Editor.Region) {
-    //         Editor.Builder.removeSelection(obj);
-    //     } else if (obj instanceof Editor.Pin) {
-    //         Editor.Builder.removeSelection(obj);
-    //     }
-    // }
-    // static clearSelection() {
-    //     Editor.Referencer.clearSelection();
-    //     Editor.Builder.clearSelection();
-    // }
-
-    // static addFocus(objects) {
-    //     if (focusObjects) {
-    //         for (const object of focusObjects) {
-    //             object.isFocus = false;
-    //             if (object instanceof Editor.Reference) {
-    //                 Editor.Referencer.drawMode(object);
-    //             }
-    //         }
-    //     }
-    //     if (focusObjects[0]) {
-    //         Actions.saveBanner(focusObjects[0]);
-    //     }
-    //     focusObjects = objects;
-        
-    //     for (const object of objects) {
-    //         object.isFocus = true;
-    //         if (object instanceof Editor.Reference) {
-    //             Editor.Referencer.drawMode(object);
-    //         }
-    //     }
-    //     if (focusObjects.length > 0) {
-    //         this.showBanner(focusObjects[0]);
-    //     } else {
-    //         this.hideBanner();
-    //     }
-    // }
-
-    // static saveBanner(oldObject) {
-    //     let image = tempFile;
-    //     let title = bannerTitle.value;
-    //     let description = bannerDescription.value;
-        
-    //     Editor.Banner.saveBanner(oldObject, image, title, description);
-
-    //     tempFile = null;
-    // }
-
-    // static showBanner(obj) {
-    //     expandBannerBtn.classList.remove("hidden");
-    //     let banner = obj.banner;
-    //     if (obj instanceof Editor.Pin || obj instanceof Editor.Region) {
-    //         banner = obj.construction.banner;
-    //     }
-    //     resetDisplayImage();
-    //     if (banner) {
-    //         if (banner.file) {
-    //             setDisplayImage(banner.file);
-    //         }
-    //         bannerTitle.value = banner.title;
-    //         bannerDescription.value = banner.description;
-    //     }
-    //     else {
-    //         bannerTitle.value = "";
-    //         bannerDescription.value = "";
-    //     }
-    // }
-    
-    // static hideBanner() {
-    //     expandBannerBtn.classList.add("hidden");
-    //     bannerTab.classList.add("hidden");
-    // }
-
-    // static removeTempConnection() {
-    //     if (tempConn) {
-    //         Editor.Connections.removeTempConnection(tempConn);
-    //         tempConn = null;
-    //     }
-    // }
-    // static beginConnection(ref) {
-    //     let tempGraphics = Editor.Connections.createTempConnection(ref);
-    //     tempConn = new Editor.TempConnection(ref, tempGraphics);
-    // }
-
-    // static removeTempReference() {
-    //     if (tempReference) {
-    //         Editor.Referencer.removeTempReference(tempReference);
-    //         tempReference = null;
-    //     }
-    // }
-    // static createTempReference(x, y) {
-    //     let tempGraphics = Editor.Referencer.createTempReference(x, y);
-    //     tempReference = new Editor.TempReference(tempGraphics);
-    // }
-
-    // static removeTempConstruction() {
-    //     if (tempConstruction) {
-    //         Editor.Builder.removeTempConstruction(tempConstruction);
-    //         tempConstruction = null;
-    //     }
-    // }
-    // static createTempConstruction(name) {
-    //     tempConstruction = new Editor.TempConstruction(name);
-    // }
-    // static addPin(x, y) {
-    //     let mapPos = Graficos.getNormalizedCoordinates(x, y);
-    //     tempConstruction.pin = mapPos;
-    //     tempConstruction.pin_graphics = Editor.Builder.createPin(x, y, tempConstruction.name);
-    //     this.pinMode(false);
-    // }
-
-    // static beginRegion(x, y) {
-    //     let mapPos = Graficos.getNormalizedCoordinates(x, y);
-    //     let regionGraphics = Editor.Builder.createRegion();
-    //     tempRegion = new Editor.TempRegion(regionGraphics, {x: mapPos.x, y: mapPos.y});
-    // }
-    // static removeTempRegion() {
-    //     if (tempRegion) {
-    //         Editor.Builder.removeTempRegion(tempRegion);
-    //         tempRegion = null;
-    //     }
-    // }
-    // static removeRegion(region) {
-    //     Editor.Builder.removeRegion(region);
-    // }
-    // static removeConstruction(construction) {
-    //     Editor.Builder.removeConstruction(construction);
-    // }
-    // static sendRegion() {
-    //     if (tempRegion) {
-    //         let region = Editor.Builder.createRegionObject(tempRegion);
-    //         if (region.size.x != 0 && region.size.y != 0) {
-    //             tempConstruction.regions.push(region);
-    //         }
-    //     }
-    // }
-    // static finishBuild() {
-    //     let construction = Editor.Builder.createConstruction(tempConstruction);
-    //     Editor.Builder.convertGraphical(construction, "polygon");
-    //     this.removeTempConstruction();
-    // }
-
-    // static clearProgress() {
-    //     Actions.removeTempReference();
-    //     Actions.removeTempConnection();
-    //     Actions.removeTempRegion();
-    //     Actions.removeTempConstruction();
-    //     if (holdingBuilding) {
-    //         Editor.Builder.convertGraphical(holdingBuilding, "polygon");
-    //     }
-
-    //     Actions.clearSelection();
-    // }
-
     static newReference(mouseX, mouseY) {
         const coord = Editor.newCoord(mouseX, mouseY, "screen");
         let reference = new Editor.Reference(coord);
@@ -1035,199 +904,193 @@ class Actions {
         return connection;
     }
 
-    static forceMode(mode=EditorModes.FREE) {
+    static applyMode(mode) {
+        editorMode = mode;
+        Graficos.editorFocus([
+            EditorModes.DELETION, EditorModes.CONSTRUCTION,
+            EditorModes.REFERENCE, EditorModes.CONNECTION
+        ].includes(mode));
+
         lightButton(selectionBtn, mode, EditorModes.SELECTION);
         lightButton(deleteBtn, mode, EditorModes.DELETION);
         lightButton(buildBtn, mode, EditorModes.CONSTRUCTION);
         lightButton(referenceBtn, mode, EditorModes.REFERENCE);
         lightButton(connectionBtn, mode, EditorModes.CONNECTION);
-        
-        this.pinMode(false);
-        editorMode = mode;
-
-        Graficos.editorFocus(false);
-        if ([
-            EditorModes.DELETION,
-            EditorModes.CONSTRUCTION,
-            EditorModes.REFERENCE,
-            EditorModes.CONNECTION
-            ].includes(editorMode)) {
-            Graficos.editorFocus(true);
-        }
-
-        this.resetTask();
+        this.syncTaskUI();
     }
+
+    static forceMode(mode = EditorModes.FREE) {
+        if (mode != editorMode) Task.reset();   // the action restores its own snapshot right after
+        this.applyMode(mode);
+    }
+
 
     static resetTask() {
-        if (Task.task == "build") {
-            let building = Task.data["buildObject"];
-            if (Task.taskStep == 1 && building.areas.length == 0) {
-                this.prune(-1, 1);
+        if (Task.task == "build" && Task.taskStep == 1) {
+            const building = Task.data["buildObject"];
+            if (building && !hasEnabledAreas(building)) {
+                const idx = this.findActionIndex(building._helperCreate);
+                if (idx >= 0) this.prune(idx, 1);
             }
-            if (building) {
-                building.convertTo("polygon");
-            }
-            Task.reset();
         }
+        Task.reset();
     }
 
-    static async switchMode(mode=EditorModes.FREE) {
-        if (editorMode == EditorModes.CONSTRUCTION) {
-            if (Task.taskStep == 1 && Task.data["buildObject"].areas.length == 0) {
-                let result = await confirmationCall();
-                const overlay = document.getElementById('confirm-modal-overlay');
+    static switching = false;
 
-                if (result.index == 0 || result.index == 1) {
-                    overlay.classList.remove('active');
-                    return;
-                }
-                overlay.classList.remove('active');
-                this.resetTask();
-                
-            } else {
-                this.resetTask();
+    static async switchMode(mode = EditorModes.FREE) {
+        if (this.switching) return;
+        if (editorMode == EditorModes.CONSTRUCTION) {
+            const building = Task.data["buildObject"];
+            if (Task.task == "build" && Task.taskStep == 1 && !hasEnabledAreas(building)) {
+                this.switching = true;
+                const result = await confirmationCall();
+                this.switching = false;
+                document.getElementById('confirm-modal-overlay').classList.remove('active');
+                if (result.index == 0 || result.index == 1) return;
             }
+            this.resetTask();
         }
+        if (editorMode == mode) mode = EditorModes.FREE;
+        this.applyMode(mode);
+    }
 
-        if (editorMode == mode) {
-            mode = EditorModes.FREE;
-        }
+    static finishTask() {
+        const before = Task.snapshot();
 
-        editorMode = mode;
+        let building = Task.data["buildObject"];
 
-        Graficos.editorFocus(false);
-        if ([
-            EditorModes.DELETION,
-            EditorModes.CONSTRUCTION,
-            EditorModes.REFERENCE,
-            EditorModes.CONNECTION
-            ].includes(editorMode)) {
-            Graficos.editorFocus(true);
-        }
+        building.convertTo("polygon");
+        
+        Task.reset();
+        const after = Task.snapshot();
 
-        pinBtn.classList.add("hidden");
-        if (editorMode == EditorModes.CONSTRUCTION) {
-            pinBtn.classList.remove("hidden");
-            // Actions.beginTask("build", {});
-        } else {
-            Actions.pinMode(false);
-        }
-        //     const overlay = document.getElementById('build-modal-overlay');
-        //     overlay.classList.add('active');
-        // }
+        this.newAction(
+            () => {
+                Actions.forceMode(EditorModes.CONSTRUCTION);
+                
+                building.convertTo("polygon");
+                
+                Task.restore(after);
+            },
+            () => {
+                Actions.forceMode(EditorModes.CONSTRUCTION);
+                
+                Task.restore(before);
+                
+                building.convertTo("areas");
+            }
+        );
+    }
 
-        lightButton(selectionBtn, mode, EditorModes.SELECTION);
-        lightButton(deleteBtn, mode, EditorModes.DELETION);
-        lightButton(buildBtn, mode, EditorModes.CONSTRUCTION);
-        lightButton(referenceBtn, mode, EditorModes.REFERENCE);
-        lightButton(connectionBtn, mode, EditorModes.CONNECTION);
+    static snapshotMotion() {
+        let snapshot = Object.values(Editor.Referencer.motionReport).map(([dot, b]) => ({
+            dot,
+            before: { x: b.x, y: b.y },
+            after:  { x: dot.coordinate.pos.x, y: dot.coordinate.pos.y }
+        }));
+        return snapshot;
     }
 
     static newBuilding(mouseX, mouseY) {
         const coord = Editor.newCoord(mouseX, mouseY, "screen");
-        
         let building = new Editor.Building(coord, Task.data["name"]);
-        
-        const forward = () => {
-            Actions.forceMode(EditorModes.CONSTRUCTION);
-            building.enable();
-            Task.nextStep();
-        };
-        
-        const backward = () => {
-            Actions.forceMode(EditorModes.CONSTRUCTION);
-            building.disable();
-            Task.previousStep();
-        };
 
-        const prune = () => {
-            if (building) {
-                building.destroy();
-                building = null;
-            }
-        }
-
-        Task.nextStep();
+        const before = Task.snapshot();
         building.enable();
+        Task.data["buildObject"] = building;
+        Task.nextStep();
+        const after = Task.snapshot();
+
+        const forward = () => { Actions.forceMode(EditorModes.CONSTRUCTION); building.enable();  Task.restore(after); };
+        const backward = () => { Actions.forceMode(EditorModes.CONSTRUCTION); building.disable(); Task.restore(before); };
+        const prune = () => { if (building) { building.destroy(); building = null; } };
 
         this.newAction(forward, backward, prune);
-
         building._helperCreate = this.actionStack[this.actionStack.length - 1];
-
+        building._createBefore = before;
         return building;
     }
 
     static newArea(start, end) {
         let parent = Task.data["buildObject"];
+        const isFirst = !hasEnabledAreas(parent);
 
-        pinBtn.classList.remove("hidden");
-        pinBtn.children[0].classList.remove("hidden");
-        pinBtn.children[1].classList.add("hidden");
-        pinDone = true;
+        let before = Task.snapshot();
+        let parentForwards = () => {}, parentBackwards = () => {}, parentPrune = () => {};
 
-        let parentForwards = () => {};
-        let parentBackwards = () => {};
-        let parentPrune = () => {};
-        if(parent.areas.length == 0) {
-            this.prune(this.findActionIndex(parent._helperCreate), 1, false);
-
-            parentForwards = () => {
-                parent.enable();
-                Task.nextStep();
-            };
-
-            parentBackwards = () => {
-                parent.disable();
-                Task.previousStep();
-            };
-
-            parentPrune = () => {
-                if (parent) {
-                    parent.destroy();
-                    parent = null;
-                }
-            };
+        if (isFirst) {
+            const idx = this.findActionIndex(parent._helperCreate);
+            if (idx >= 0) {
+                this.prune(idx, 1, false);
+                before = parent._createBefore;
+                parentForwards  = () => parent.enable();
+                parentBackwards = () => parent.disable();
+                parentPrune     = () => { if (parent) { parent.destroy(); parent = null; } };
+            }
         }
 
+        Editor.Referencer.beginReport();
         let area = new Editor.Area(start, end, parent);
+
+        let motionReport = this.snapshotMotion();
+        Editor.Referencer.endReport();
+        area.enable();
+        this.syncTaskUI();
+        const after = Task.snapshot();
 
         const forward = () => {
             Actions.forceMode(EditorModes.CONSTRUCTION);
             area.enable();
+            area.building.buildPolygon();
+
+            for (const { dot, after } of motionReport) {
+                dot.move(Editor.newCoord(after.x, after.y, "normal"));
+            }
+
             parentForwards();
+            Task.restore(after);                       // restore last: it counts enabled areas
         };
-        
         const backward = () => {
             Actions.forceMode(EditorModes.CONSTRUCTION);
             area.disable();
-            parentBackwards();
-        };
-        
-        const prune = () => {
-            if (area) {
-                area.destroy();
-                area = null;
-            }
-            parentPrune();
-        }
+            area.building.buildPolygon();
 
-        area.enable();
+            for (const { dot, before } of motionReport) {
+                dot.move(Editor.newCoord(before.x, before.y, "normal"));
+            }
+            
+            parentBackwards();
+            Task.restore(before);
+        };
+        const prune = () => {
+            if (area) { area.destroy(); area = null; }
+            parentPrune();
+        };
 
         this.newAction(forward, backward, prune);
     }
     static moveAreaBorder(heldObject) {
         let object = heldObject.object.area;
-        let forwardCoord = {start: object.start.getIn("normal"), end: object.end.getIn("normal")};
+        let forwardCoord = { start: object.start.getIn("normal"), end: object.end.getIn("normal") };
         let backwardCoord = heldObject.initialPos;
+        
+        let motionReport = this.snapshotMotion();
+
+        Editor.Referencer.endReport();
 
         const forward = () => {
             Actions.forceMode(EditorModes.CONSTRUCTION);
 
             let startCoord = Editor.newCoord(forwardCoord.start.x, forwardCoord.start.y, "normal");
             let endCoord = Editor.newCoord(forwardCoord.end.x, forwardCoord.end.y, "normal");
-            object.start = startCoord;
-            object.end = endCoord;
-            object.updateGraphics();
+            object.move(startCoord, endCoord);
+
+            for (const { dot, after } of motionReport) {
+                dot.move(Editor.newCoord(after.x, after.y, "normal"));
+            }
+
+            object.building.buildPolygon();
         };
         
         const backward = () => {
@@ -1235,48 +1098,49 @@ class Actions {
             
             let startCoord = Editor.newCoord(backwardCoord.start.x, backwardCoord.start.y, "normal");
             let endCoord = Editor.newCoord(backwardCoord.end.x, backwardCoord.end.y, "normal");
-            object.start = startCoord;
-            object.end = endCoord;
-            object.updateGraphics();
+            object.move(startCoord, endCoord);
+
+            for (const { dot, before } of motionReport) {
+                dot.move(Editor.newCoord(before.x, before.y, "normal"));
+            }
+
+            object.building.buildPolygon();
         };
 
         this.newAction(forward, backward);
     }
 
     static destroyArea(area) {
-
-        let parentForwards = () => {};
-        let parentBackwards = () => {};
-        let parentOverflow = () => {};
-
-        let goneConnections = [...area.building.areas].filter(item => item.enabled);
+        const building = area.building;
+        const onlyOne = [...building.areas].filter(a => a.enabled).length == 1;
         
-        if(goneConnections.length == 1) {
-            parentForwards = () => {
-                area.building.disable();
-            };
-            
-            parentBackwards = () => {
-                area.building.enable();
-            };
+        const parentForwards = onlyOne ? () => building.disable() : () => {};
+        const parentBackwards = onlyOne ? () => building.enable() : () => {};
+        const parentOverflow = onlyOne ? () => building.destroy() : () => {};
 
-            parentOverflow = () => {
-                if (area.building) {
-                    area.building.destroy();
-                    area.building = null;
-                }
-            };
-        }
+        const entrances = [...building.entrances].filter(a => a.enabled);
 
         const forward = () => {
             Actions.forceMode(EditorModes.DELETION);
             area.disable();
+            area.building.buildPolygon();
+
+            for (const ref of entrances) {
+                ref.validatePos();
+            }
+
             parentForwards();
         };
         
         const backward = () => {
             Actions.forceMode(EditorModes.DELETION);
             area.enable();
+            area.building.buildPolygon();
+
+            for (const ref of entrances) {
+                ref.validatePos();
+            }
+
             parentBackwards();
         };
 
@@ -1291,45 +1155,45 @@ class Actions {
         area.disable();
         parentForwards();
 
+        for (const ref of entrances) {
+            ref.validatePos();
+        }
+
         this.newAction(forward, backward, undefined, overflow);
 
         return area;
     }
 
-    // static save() {
-    //     let refs = Editor.Referencer.toJson();
-    //     let builds = Editor.Builder.toJson();
-    //     let conn = Editor.Connections.toJson();
-
-    //     let formData = Editor.Banner.toJson();
-
-    //     let mapData = {
-    //         "references": refs,
-    //         "buildings": builds,
-    //         "connections": conn,
-    //         "banners": Editor.Banner.bannerJson()
-    //     };
-
-    //     formData.append("data", JSON.stringify(mapData));
-
-    //     saveMapState(formData);
-    // }
-
-    // static OpenModal() {
-    //     const overlay = document.getElementById('build-modal-overlay');
-    //     overlay.classList.add('active');
-    // }
-    static pinMode(bool) {
-        if (bool) {
-            map.classList.add("custom-cursor");
+    static pinDoneMode(mode) {
+        if(mode) {
+            pinBtn.children[0].classList.remove("hidden");
+            pinBtn.children[1].classList.add("hidden");
         } else {
-            map.classList.remove("custom-cursor");
+            pinBtn.children[1].classList.remove("hidden");
+            pinBtn.children[0].classList.add("hidden");
         }
+        pinDone = mode;
     }
+
+    static pinMode(bool) {
+        mapObj.classList.toggle("custom-cursor", bool);
+    }
+    
     static beginTask(name, data) {
         if (name == "build") {
             Task.setTask(name, data)
         }
+    }
+
+    static syncTaskUI() {
+        if (!pinBtn) return;
+        const inBuild = Task.task === "build";
+        const hasAreas = inBuild && Task.taskStep === 1 && hasEnabledAreas(Task.data["buildObject"]);
+
+        this.pinMode(inBuild && Task.taskStep === 0);
+        const show = editorMode === EditorModes.CONSTRUCTION && (!inBuild || hasAreas);
+        pinBtn.classList.toggle("hidden", !show);
+        this.pinDoneMode(hasAreas);
     }
 }
 
@@ -1349,20 +1213,12 @@ async function confirmationCall() {
 
 function handleBuildSubmit(event) {
     event.preventDefault();
-
-    let buildName = document.getElementById('build-name').value;
-
-    if (buildName == "") {
-        return;
-    }
-
+    const buildName = document.getElementById('build-name').value.trim();
+    if (!buildName) return;
     document.getElementById('build-modal-overlay').classList.remove('active');
     document.getElementById('buildForm').reset();
-
     Task.data["name"] = buildName;
-    let build = Actions.newBuilding(clickX, clickY);
-    Task.data["buildObject"] = build;
-
+    Actions.newBuilding(clickX, clickY);   // newBuilding sets buildObject itself now
 }
 
 // function handleConfirm(event) {
@@ -1474,6 +1330,9 @@ export function addListeners(map) {
         const confirmationCloseBtn = document.getElementById("close-confirm-modal");
 
         document.addEventListener("keydown", (e) => {
+            if (e.target.closest?.("input, textarea, [contenteditable]")) return; // Ctrl+Z in the name field was undoing the map
+            if (clicking || Holdable.object) return;
+
             const isModifierPressed = e.ctrlKey || e.metaKey;
 
             if (!isModifierPressed) return;
@@ -1511,17 +1370,8 @@ export function addListeners(map) {
         selectionBtn.addEventListener("click", () => Actions.switchMode(EditorModes.SELECTION));
         deleteBtn.addEventListener("click", () => Actions.switchMode(EditorModes.DELETION));
         pinBtn.addEventListener("click", () => {
-            if (!pinDone) {
-                Actions.beginTask("build", {});
-                Actions.pinMode(true);
-                pinBtn.classList.add("hidden");
-            } else {
-                Actions.resetTask();
-                pinBtn.children[0].classList.add("hidden");
-                pinBtn.children[1].classList.remove("hidden");
-
-                pinDone = false;
-            }
+            if (!pinDone) Actions.beginTask("build", {});
+            else Actions.finishTask();
         });
 
         hoverLoop = () => {

@@ -216,7 +216,7 @@ export class PhantomConnection {
 export class PhantomArea {
     constructor(startX, startY) {
         let coord = newCoord(startX, startY, "screen");
-        
+        coord.convertTo("normal");
         this.start = coord;
         this.alpha = .6;
         this.colorOut = {
@@ -227,15 +227,49 @@ export class PhantomArea {
         };
         this.colorIn = 0xa4d1f5;
         
-        this.borderRadius = 15;
+        this.radius = 5;
         this.borderSize = 10;
         
         this.graphics = Graficos.createArea();
+
+        this.phantomDots = {};
     }
 
     setEndPoint(end) {
         this.end = end;
+        this.end.convertTo("normal");
         this.updateGraphics();
+        
+        let areaPhantom = { ...Buildings.areas };
+        areaPhantom[-1] = this;
+
+        for(const ref of Object.values(Referencer.references)) {
+            let validCoord = Referencer.getValidDot(ref.coordinate, areaPhantom);
+
+            if (!validCoord.isInside) {
+                if (this.phantomDots[ref.id]) {
+                    Graficos.destroyReference(this.phantomDots[ref.id].gfx);
+                    delete this.phantomDots[ref.id];
+                }
+                continue;
+            }
+            if (!this.phantomDots[ref.id]) {
+                this.phantomDots[ref.id] = { ref: ref, gfx: Graficos.createReference(), validPos: validCoord.coord };
+            }
+
+            this.phantomDots[ref.id].validPos = validCoord.coord;
+            let data = {
+                coordinate: this.phantomDots[ref.id].validPos,
+                colorOut: 0x3d97e0,
+                colorIn: 0xa4d1f5,
+                size: 10,
+                alpha: 1,
+                isEntrance: true
+            }
+            Graficos.renderReference(this.phantomDots[ref.id].gfx, data);
+
+        }
+        
     }
 
     buildData() {
@@ -246,7 +280,7 @@ export class PhantomArea {
             colorIn: this.colorIn,
             alpha: this.alpha,
             borderSize: this.borderSize,
-            borderRadius: this.borderRadius,
+            radius: this.radius,
             start: start,
             end: end,
         }
@@ -258,6 +292,10 @@ export class PhantomArea {
 
     destroy() {
         Graficos.destroyArea(this.graphics);
+        for(const key of Object.keys(this.phantomDots)) {
+            Graficos.destroyReference(this.phantomDots[key].gfx);
+            delete this.phantomDots[key];
+        }
     }
 }
 
@@ -276,21 +314,6 @@ function addObj(list, item) {
         return list;
     }
     return list;
-}
-
-function polygonUnion(squares) {
-    let boxes = [];
-    for (let i=0; i<squares.length;i++) {
-        let minMaxArea = [
-            squares[i].pos.x,
-            squares[i].pos.y,
-            squares[i].pos.x + squares[i].size.x,
-            squares[i].pos.y + squares[i].size.y,
-        ]
-        boxes.push(minMaxArea);
-    }
-    let polygons = Geometria.getUnionPolygonVertices(boxes);
-    return polygons;
 }
 
 export class Connections {
@@ -463,7 +486,17 @@ export class Referencer {
     static hashMap = {};
     static hashSize = 100;
     static radius = 15;
-    
+    static motionReport = {};
+
+    static beginReport() {
+        this.reporting = true;
+        this.motionReport = {};
+    }
+    static endReport() {
+        this.reporting = false;
+        this.motionReport = {};
+    }
+
     static track(reference) {
         if (!(reference.id === -1)) {
             return;
@@ -563,6 +596,88 @@ export class Referencer {
         }
         return allList;
     }
+
+    static getValidDot(coordinate, areas = null, tol = 1e-9) {
+        let x, y, space = "normal";
+
+        if (typeof coordinate === "object" && coordinate !== null) {
+            if (typeof coordinate.getIn === "function") {
+                const pos = coordinate.getIn("normal");
+                x = pos.x;
+                y = pos.y;
+            } else if (coordinate.pos) {
+                x = coordinate.pos.x;
+                y = coordinate.pos.y;
+                space = coordinate.space || "normal";
+            } else {
+                x = coordinate.x;
+                y = coordinate.y;
+            }
+        }
+
+        const areaSource = areas !== null ? areas : (Buildings.areas || {});
+        const areaList = Array.isArray(areaSource) ? areaSource : Object.values(areaSource);
+
+        const areaListNormal = areaList.map(area => ({box: area, start: area.start.getIn("normal"), end: area.end.getIn("normal")}));
+
+        const boxes = areaListNormal.map(area => ({
+            minX: Math.min(area.start.x, area.end.x),
+            maxX: Math.max(area.start.x, area.end.x),
+            minY: Math.min(area.start.y, area.end.y),
+            maxY: Math.max(area.start.y, area.end.y),
+            box: area.box
+        }));
+        
+        // closed set: the border counts as inside
+        const inClosed = (px, py) => boxes.some(b =>
+            px >= b.minX - tol && px <= b.maxX + tol &&
+            py >= b.minY - tol && py <= b.maxY + tol);
+
+        // open interior: strictly inside a box, so NOT on the union's boundary
+        const inOpen = (px, py) => boxes.some(b =>
+            px > b.minX + tol && px < b.maxX - tol &&
+            py > b.minY + tol && py < b.maxY - tol);
+
+        if (!inClosed(x, y)) {
+            return { isInside: false, coord: newCoord(x, y, space) };
+        }
+
+        const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+        const allXs = boxes.flatMap(b => [b.minX, b.maxX]);
+        const allYs = boxes.flatMap(b => [b.minY, b.maxY]);
+
+        const candidates = [];
+
+        for (const b of boxes) {
+            // horizontal edges (y fixed), x ranges over [minX, maxX]
+            const xs = [clamp(x, b.minX, b.maxX), b.minX, b.maxX,
+                        ...allXs.map(v => clamp(v, b.minX, b.maxX))];
+            for (const edgeY of [b.minY, b.maxY]) {
+                for (const cx of xs) candidates.push({ x: cx, y: edgeY, box: b.box });
+            }
+
+            // vertical edges (x fixed), y ranges over [minY, maxY]
+            const ys = [clamp(y, b.minY, b.maxY), b.minY, b.maxY,
+                        ...allYs.map(v => clamp(v, b.minY, b.maxY))];
+            for (const edgeX of [b.minX, b.maxX]) {
+                for (const cy of ys) candidates.push({ x: edgeX, y: cy, box: b.box });
+            }
+        }
+
+        let best = null;
+        let minDistSq = Infinity;
+        for (const c of candidates) {
+            if (inOpen(c.x, c.y)) continue;          // buried inside the union
+            const d = (c.x - x) ** 2 + (c.y - y) ** 2;
+            if (d < minDistSq) {
+                minDistSq = d;
+                best = c;
+            }
+        }
+
+        const finalPoint = best || { x, y };
+        return { isInside: best.box, coord: newCoord(finalPoint.x, finalPoint.y, space) };
+    }
 }
 
 export class Buildings {
@@ -610,15 +725,17 @@ export class Buildings {
         }
     }
 
-    static setRelated(area, state) {
-        this.setRelation(area, area.building, state);
+    static setRelated(obj, state) {
+        this.setRelation(obj, obj.building, state);
     }
     
-    static setRelation(area, building, state) {
+    static setRelation(obj, building, state) {
+        let iterator = obj instanceof Reference ? building.entrances : building.areas;
+
         if (state) {
-            building.areas = addObj(building.areas, area);
+            iterator = addObj(iterator, obj);
         } else {
-            building.areas = removeObj(building.areas, area);
+            iterator = removeObj(iterator, obj);
         }
     }
     
@@ -629,10 +746,10 @@ export class Buildings {
         const areas = Object.values(this.areas).toReversed();
 
         for (const area of areas) {
-            const minX = Math.min(area.start.pos.x, area.end.pos.x);
-            const maxX = Math.max(area.start.pos.x, area.end.pos.x);
-            const minY = Math.min(area.start.pos.y, area.end.pos.y);
-            const maxY = Math.max(area.start.pos.y, area.end.pos.y);
+            const minX = Math.min(area.start.pos.x, area.end.pos.x) - area.borderSize / 2;
+            const maxX = Math.max(area.start.pos.x, area.end.pos.x) + area.borderSize / 2;
+            const minY = Math.min(area.start.pos.y, area.end.pos.y) - area.borderSize / 2;
+            const maxY = Math.max(area.start.pos.y, area.end.pos.y) + area.borderSize / 2;
 
             if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
                 if (!all) {
@@ -653,7 +770,7 @@ export class Buildings {
         let allList = [];
 
         const zoom = (typeof Graficos !== "undefined" && Graficos.zoom) ? Graficos.zoom : 1;
-        const thickness = 15 / zoom;
+        const thickness = 15;
         const halfThick = thickness / 2;
 
         const areas = Object.values(this.areas).toReversed();
@@ -730,6 +847,8 @@ export class Reference {
         this.colorIn = 0xa4d1f5;
         this.enabled = true;
         this.size = 10;
+        this.isEntrance = false;
+        this.building = false;
 
         this.id = -1;
         this.connections = [];
@@ -778,6 +897,7 @@ export class Reference {
             colorIn: this.colorIn,
             size: this.size,
             alpha: this.alpha,
+            isEntrance: this.isEntrance
         }
     }
 
@@ -789,7 +909,7 @@ export class Reference {
                 connection.updateGraphics();
             }
         } else {
-            this.graphics.clear();
+            Graficos.clearReference(this.graphics);
         }
     }
 
@@ -799,7 +919,35 @@ export class Reference {
         Graficos.BringToFrontReference(this.graphics);
     }
     
-    move(coordinate, create=false) {
+    validatePos() {
+        return this.move(this.coordinate);
+    }
+
+    move(coord, create=false) {
+        let validCoord = Referencer.getValidDot(coord);
+        let report = false;
+        if (this.coordinate) {
+            if (validCoord.isInside) {
+                report = [this, this.coordinate.getIn("normal"), validCoord.coord.getIn("normal")];
+            }
+            if (!validCoord.isInside && this.isEntrance) {
+                report = [this, this.coordinate.getIn("normal"), validCoord.coord.getIn("normal")];
+            }
+        }
+        this.isEntrance = validCoord.isInside != false;
+
+        if (this.isEntrance) {
+            this.building = validCoord.isInside.building;
+            Buildings.setRelated(this, this.isEntrance);
+        } else {
+            if (this.building) {
+                Buildings.setRelated(this, this.isEntrance);
+            }
+            this.building = validCoord.isInside.building;
+        }
+
+        
+        let coordinate = validCoord.coord;
         if (!create) {
             Referencer.removePositionTrack(this);
             
@@ -811,13 +959,15 @@ export class Reference {
             this.updateGraphics();
             this.bringToFront();
 
-            return;
+            return report;
         }
         
         this.coordinate = coordinate;
         this.coordinate.convertTo("normal");
         
         Referencer.addPositionTrack(this);
+
+        return report;
     }
     
     enable() {
@@ -914,7 +1064,7 @@ export class Connection {
         if (this.enabled && this.end.enabled && this.start.enabled) {
             Graficos.renderConnection(this.graphics, this.buildData());
         } else {
-            this.graphics.clear();
+            Graficos.clearConnection(this.graphics);
         }
     }
 
@@ -945,6 +1095,7 @@ export class Building {
         this.id = -1;
         this.visual = "areas";
         this.areas = [];
+        this.entrances = [];
         this.hover = 0;
         this.hoverTime = .2;
         Buildings.track(this);
@@ -968,13 +1119,37 @@ export class Building {
     getBoxes() {
         let boxes = [];
         for(const area of this.areas) {
+            if(area.enabled == false) {
+                continue;
+            }
             let box = area.getBox();
             boxes.push(box);
         }
         return boxes;
     }
 
+    buildPolygon() {
+        let boxes = this.getBoxes();
+        let polygons = Geometria.getUnionPolygonVertices(boxes);
+        let coordPolygon = [];
+        for(const polygon of polygons) {
+            let coordPoints = [];
+            for(const point of polygon) {
+                let coord = newCoord(point[0], point[1], "normal");
+                coordPoints.push(coord);
+            }
+            coordPolygon.push(coordPoints);
+        }
+        this.points = coordPolygon;
+
+        this.updateGraphics();
+    }
+
     convertTo(mode) {
+        if (this.visual == mode) {
+            return;
+        }
+
         this.visual = mode;
 
         if (mode == "polygon") {
@@ -983,18 +1158,8 @@ export class Building {
                 area.updateGraphics();
             }
             
-            let boxes = this.getBoxes();
-            let polygons = Geometria.getUnionPolygonVertices(boxes);
-            let coordPolygon = [];
-            for(const polygon of polygons) {
-                let coordPoints = [];
-                for(const point of polygon) {
-                    let coord = newCoord(point[0], point[1], "normal");
-                    coordPoints.push(coord);
-                }
-                coordPolygon.push(coordPoints);
-            }
-            this.points = coordPolygon;
+            this.buildPolygon();
+
         } else {
             for(const area of this.areas) {
                 area.areaMode = true;
@@ -1025,17 +1190,16 @@ export class Building {
     
     updateGraphics() {
         if (this.enabled) {
-            this.graphics.pin.visible = true;
-            this.graphics.label.visible = true;
             Graficos.renderPin(this.graphics, this.buildData());
 
             if (this.visual == "polygon") {
                 Graficos.renderPoly(this.polygonGraphics, this.buildDataPoly());
+            } else {
+                Graficos.clearPoly(this.polygonGraphics);
             }
         } else {
-            this.graphics.pin.visible = false;
-            this.graphics.label.visible = false;
-            this.polygonGraphics.clear();
+            Graficos.clearPin(this.graphics);
+            Graficos.clearPoly(this.polygonGraphics);
         }
     }
 
@@ -1127,7 +1291,7 @@ export class Area {
         this.colorIn = 0xa4d1f5;
         this.colorInBase = 0xa4d1f5;
         this.colorInHover = 0xd4f1ff;
-        this.borderRadius = 5;
+        this.radius = 5;
         this.borderSize = 10;
         
         this.enabled = true;
@@ -1136,10 +1300,10 @@ export class Area {
         this.hover = 0;
         this.hoverTime = .2;
         
-        this.start = start;
-        this.end = end;
-        this.start.convertTo("normal");
-        this.end.convertTo("normal");
+        let minStart = newCoord(Math.min(start.pos.x, end.pos.x), Math.min(start.pos.y, end.pos.y), start.space);
+        let maxEnd = newCoord(Math.max(start.pos.x, end.pos.x), Math.max(start.pos.y, end.pos.y), end.space);
+        minStart.convertTo("normal");
+        maxEnd.convertTo("normal");
 
         this.id = -1;
         Buildings.trackArea(this);
@@ -1148,7 +1312,33 @@ export class Area {
 
         this.graphics = Graficos.createArea();
         
+        this.move(minStart, maxEnd);
+
         this.updateGraphics();
+    }
+
+    motionReport() {
+        if(!Referencer.reporting) {
+            return;
+        }
+        for(const ref of Object.values(Referencer.references)) {
+            let refReport = ref.validatePos();
+            if (refReport === false) {
+                continue;
+            }
+            if(!Referencer.motionReport[ref.id]) {
+                Referencer.motionReport[ref.id] = refReport;
+            }
+            Referencer.motionReport[ref.id][2] = refReport[2];
+        }
+    }
+
+    move(start, end) {
+        this.start = start;
+        this.end = end;
+        this.updateGraphics();
+
+        this.motionReport();
     }
 
     getBox() {
@@ -1170,7 +1360,7 @@ export class Area {
             colorIn: this.colorIn,
             alpha: this.alpha,
             borderSize: this.borderSize,
-            borderRadius: this.borderRadius,
+            radius: this.radius,
             start: start,
             end: end,
         }
@@ -1205,7 +1395,7 @@ export class Area {
         if (this.enabled && this.areaMode) {
             Graficos.renderArea(this.graphics, this.buildData());
         } else {
-            this.graphics.clear();
+            Graficos.clearArea(this.graphics);
         }
     }
 
@@ -1222,73 +1412,7 @@ export class Area {
 
     destroy() {
         Graficos.destroyArea(this.graphics);
-        Buildings.setRelated(this, this.building, false);
+        Buildings.setRelated(this, false);
         Buildings.untrackArea(this);
-    }
-}
-
-export class Banner {
-    static banners = []
-
-    static saveBanner(focus, image, title, description) {
-        if (focus instanceof Pin) {
-            focus = focus.construction;
-        }
-        if (focus.banner) {
-            if (image) {
-                focus.banner.file = image;
-            }
-            focus.banner.title = title;
-            focus.banner.description = description;
-            return;
-        }
-        if (!image && !title && !description) {return};
-        let newBanner = new BannerObject(focus, image, title, description);
-        focus.banner = newBanner;
-        this.banners.push(newBanner);
-    }
-
-    static bannerJson() {
-        let data = {};
-
-        for (const banner of this.banners) {
-            let parent = banner.owner;
-            let key = (parent instanceof Reference) ? parent.id : parent.name;
-
-            data[key] = {
-                "fileName": banner.file ? banner.file.name : null,
-                "title": banner.title,
-                "description": banner.description,
-                "isRef": (parent instanceof Reference)
-            };
-        }
-        return data;
-    }
-
-    static toJson() {
-        const formData = new FormData();
-
-        const jsonData = this.bannerJson();
-        formData.append("metadata", JSON.stringify(jsonData));
-
-        for (const banner of this.banners) {
-            if (banner.file instanceof File) {
-                let parent = banner.owner;
-                let key = (parent instanceof Reference) ? parent.id : parent.name;
-
-                formData.append(`file_${key}`, banner.file, banner.file.name);
-            }
-        }
-
-        return formData;
-    }
-}
-
-export class BannerObject {
-    constructor(owner, file, title, description) {
-        this.owner = owner;
-        this.file = file;
-        this.title = title;
-        this.description = description;
     }
 }

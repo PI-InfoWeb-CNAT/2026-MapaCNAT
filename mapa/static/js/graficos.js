@@ -19,6 +19,9 @@ let color;
 let textColor;
 let mapImagePath;
 let pinImagePath;
+let entranceImagePath;
+
+let entranceTexture;
 
 let pinoSprite;
 let mapSprite;
@@ -61,7 +64,13 @@ export function createReference() {
     point.position.set(0, 0);
     referenceContainer.addChild(point);
 
-    return point;
+    let referenceImg = PIXI.Sprite.from(entranceTexture);
+    referenceImg.anchor.set(0.5, 0.5);
+    let initialSize = referenceImg.width;
+    referenceImg.scale.set(15 / initialSize / zoom);
+    referenceContainer.addChild(referenceImg);
+
+    return {point: point, door: referenceImg, initialSize: initialSize};
 }
 
 export function renderReference(graphics, data) {
@@ -71,23 +80,45 @@ export function renderReference(graphics, data) {
     let size = data.size;
     let pos = data.coordinate.getIn("normal");
     
-    graphics
+    graphics.point
     .clear()
     .circle(pos.x, pos.y, size / zoom)
     .fill({ color: colorIn, alpha: alpha})
     .stroke({ width: 4 / zoom, color: colorOut });
+
+    if (data.isEntrance) {
+        graphics.door.visible = true;
+        graphics.door.scale.set(size * 2 / graphics.initialSize / zoom);
+        graphics.door.tint = colorOut;
+        graphics.door.x = pos.x;
+        graphics.door.y = pos.y;
+    } else {
+        graphics.door.visible = false;
+    }
 }
 
 export function BringToFrontReference(graphics) {
     if (graphics && graphics.parent === referenceContainer) {
-        referenceContainer.addChild(graphics);
+        referenceContainer.addChild(graphics.point);
+        referenceContainer.addChild(graphics.door);
     }
 }
 
+export function clearReference(graphics) {
+    graphics.point.clear();
+    graphics.door.visible = false;
+}
+
 export function destroyReference(graphics) {    
-    referenceContainer.removeChild(graphics);
-    
-    graphics.destroy({
+    referenceContainer.removeChild(graphics.point);
+    referenceContainer.removeChild(graphics.door);
+
+    graphics.point.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+    graphics.door.destroy({
         children: true,
         texture: true,
         baseTexture: true
@@ -152,6 +183,9 @@ export function renderConnection(graphics, data) {
         join: 'round'
     });
 }
+export function clearConnection(graphics) {
+    graphics.clear();
+}
 
 export function destroyConnection(graphics) {    
     connectionContainer.removeChild(graphics);
@@ -192,10 +226,16 @@ export function createPin(name) {
 
 export function renderPin(graphics, data) {
     let pos = data.coordinate.getIn("normal");
+    graphics.pin.visible = true;
+    graphics.label.visible = true;
     graphics.pin.x = pos.x;
     graphics.pin.y = pos.y;
     graphics.label.x = pos.x;
     graphics.label.y = pos.y;
+}
+export function clearPin(graphics) {
+    graphics.pin.visible = false;
+    graphics.label.visible = false;
 }
 
 export function destroyPin(graphics) {
@@ -303,6 +343,10 @@ export function renderArea(graphics, data) {
     }
 }
 
+export function clearArea(graphics) {
+    graphics.clear();
+}
+
 export function destroyArea(graphics) {
     if (!graphics) return;
     areasContainer.removeChild(graphics);
@@ -380,6 +424,10 @@ export function renderPoly(graphics, data) {
     });
 }
 
+export function clearPoly(graphics) {
+    graphics.clear();
+}
+
 export function destroyPoly(graphics) {
     if (!graphics) return;
     areasContainer.removeChild(graphics);
@@ -402,6 +450,7 @@ export function setContext(context) {
 
     mapImagePath = mapImage;
     pinImagePath = pinImage;
+    entranceImagePath = entranceImage;
 }
 
 export async function main() {
@@ -444,6 +493,8 @@ export async function main() {
     pinoSprite.y = 0;
     pinoSprite.scale.set(1 / zoom / 7.5);
     mapContainer.addChild(pinoSprite);
+
+    entranceTexture = await PIXI.Assets.load(entranceImagePath);
     
     textContainer = new PIXI.Container();
     mapContainer.addChild(textContainer);
