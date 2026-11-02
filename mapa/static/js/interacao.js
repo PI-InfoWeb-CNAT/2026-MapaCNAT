@@ -8,12 +8,10 @@ let buildBtn;
 let referenceBtn;
 let connectionBtn;
 let saveBtn;
+let bannerBtn;
 let expandBannerBtn;
 let pinBtn;
 let pinDone = false;
-
-let modalConfirmBtn;
-let modalDeclineBtn;
 
 let bannerTab;
 let imageInput;
@@ -67,7 +65,8 @@ const EditorModes = Object.freeze({
     DELETION: 'DELETION',
     CONSTRUCTION: 'CONSTRUCTION',
     REFERENCE: 'REFERENCE',
-    CONNECTION: 'CONNECTION'
+    CONNECTION: 'CONNECTION',
+    BANNER: 'BANNER'
 });
 
 let editorMode = EditorModes.FREE;
@@ -908,14 +907,21 @@ class Actions {
         editorMode = mode;
         Graficos.editorFocus([
             EditorModes.DELETION, EditorModes.CONSTRUCTION,
-            EditorModes.REFERENCE, EditorModes.CONNECTION
+            EditorModes.REFERENCE, EditorModes.CONNECTION, EditorModes.BANNER
         ].includes(mode));
+
+        if (mode == EditorModes.BANNER) {
+            this.bannerFocus(true);
+        } else {
+            this.bannerFocus(false);
+        }
 
         lightButton(selectionBtn, mode, EditorModes.SELECTION);
         lightButton(deleteBtn, mode, EditorModes.DELETION);
         lightButton(buildBtn, mode, EditorModes.CONSTRUCTION);
         lightButton(referenceBtn, mode, EditorModes.REFERENCE);
         lightButton(connectionBtn, mode, EditorModes.CONNECTION);
+        lightButton(bannerBtn, mode, EditorModes.BANNER);
         this.syncTaskUI();
     }
 
@@ -1307,7 +1313,8 @@ export function addListeners(map) {
     } else if (page == "editor") {
         buildBtn = document.getElementById("build");
         referenceBtn = document.getElementById("reference");
-        connectionBtn = document.getElementById("conection");
+        connectionBtn = document.getElementById("connection");
+        bannerBtn = document.getElementById("banner-btn");
         saveBtn = document.getElementById("save");
         pinBtn = document.getElementById("pin-mode");
 
@@ -1367,6 +1374,7 @@ export function addListeners(map) {
         buildBtn.addEventListener("click", () => Actions.switchMode(EditorModes.CONSTRUCTION));
         referenceBtn.addEventListener("click", () => Actions.switchMode(EditorModes.REFERENCE));
         connectionBtn.addEventListener("click", () => Actions.switchMode(EditorModes.CONNECTION));
+        bannerBtn.addEventListener("click", () => Actions.switchMode(EditorModes.BANNER));
         selectionBtn.addEventListener("click", () => Actions.switchMode(EditorModes.SELECTION));
         deleteBtn.addEventListener("click", () => Actions.switchMode(EditorModes.DELETION));
         pinBtn.addEventListener("click", () => {
