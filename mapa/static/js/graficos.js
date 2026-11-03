@@ -38,6 +38,8 @@ export let scaleFactor = 1;
 
 export let imageSize;
 
+export let groups;
+
 export function getNormalizedCoordinates(pos) {
     const localPoint = mapContainer.toLocal(pos);
 
@@ -167,7 +169,7 @@ export function renderConnection(graphics, data) {
 
     buildPath(graphics);
     graphics.stroke({
-        width: size + 2,
+        width: (size + 6) / zoom,
         color: colorOut,
         alpha: alpha,
         cap: 'round',
@@ -176,7 +178,7 @@ export function renderConnection(graphics, data) {
 
     buildPath(graphics);
     graphics.stroke({
-        width: size - 2,
+        width: (size) / zoom,
         color: colorIn,
         alpha: alpha,
         cap: 'round',
@@ -202,10 +204,8 @@ export function destroyConnection(graphics) {
 export function createPin(name) {
     let buildPino = PIXI.Sprite.from(pinImagePath);
     buildPino.anchor.set(0.5, 1);
-    buildPino.scale.set(1 / zoom / 7.5);
+    buildPino.scale.set(1 / 7.5);
     
-    pinContainer.addChild(buildPino);
-
     const nodeLabel = new PIXI.Text({
         text: name,
         style: {
@@ -216,42 +216,47 @@ export function createPin(name) {
             stroke: { color: "white", width: 3 }
         }
     });
-    nodeLabel.anchor.set(-0.2, 1);
-    nodeLabel.scale.set(1 / zoom / 2);
+    nodeLabel.anchor.set(0, 1);
+    nodeLabel.scale.set(1 / 2);
+    nodeLabel.x = buildPino.width / 2;
 
-    pinContainer.addChild(nodeLabel);
+    let pinGfx = new PIXI.Container();
+    
+    pinGfx.addChild(nodeLabel);
+    pinGfx.addChild(buildPino);
 
-    return {pin: buildPino, label: nodeLabel};
+    pinContainer.addChild(pinGfx);
+
+    return pinGfx;
 }
 
 export function renderPin(graphics, data) {
     let pos = data.coordinate.getIn("normal");
-    graphics.pin.visible = true;
-    graphics.label.visible = true;
-    graphics.pin.x = pos.x;
-    graphics.pin.y = pos.y;
-    graphics.label.x = pos.x;
-    graphics.label.y = pos.y;
+    let size = data.size;
+    graphics.visible = true;
+    graphics.x = pos.x;
+    graphics.y = pos.y;
+    graphics.scale.set(size / zoom);
+    // graphics.label.x = pos.x + graphics.pin.width / 2 / zoom;
+    // graphics.label.y = pos.y;
 }
 export function clearPin(graphics) {
     graphics.pin.visible = false;
-    graphics.label.visible = false;
+    // graphics.label.visible = false;
 }
 
 export function destroyPin(graphics) {
-    pinContainer.removeChild(graphics.pin);
-    pinContainer.removeChild(graphics.label);
+    pinContainer.removeChild(graphics);
     
-    graphics.pin.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-    graphics.label.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
+    for (const child of graphics.children) {
+        child.destroy({
+            children: true,
+            texture: true,
+            baseTexture: true
+        });
+    }
+
+    graphics.destroy({ children: true });
 }
 
 /////////////////// Areas
@@ -280,7 +285,7 @@ export function renderArea(graphics, data) {
     let alpha = data.alpha;
     let colorOut = data.colorOut;
     let colorIn = data.colorIn;
-    let size = data.borderSize;
+    let size = data.borderSize / zoom;
     let radius = data.radius !== undefined ? data.radius : 12;
 
     let start = data.start.getIn("normal");
@@ -382,7 +387,7 @@ export function renderPoly(graphics, data) {
     let alpha = data.alpha;
     let colorOut = data.colorOut;
     let colorIn = data.colorIn;
-    let size = data.borderSize;
+    let size = data.borderSize / zoom;
     let radius = data.radius !== undefined ? data.radius : 12;
 
     const getPos = (p) => {
@@ -510,6 +515,13 @@ export async function main() {
 
     pinContainer = new PIXI.Container();
     mapContainer.addChild(pinContainer);
+
+    groups = {
+        AREAS: areasContainer,
+        CONNECTIONS: connectionContainer,
+        REFERENCES: referenceContainer,
+        PINS: pinContainer,
+    }
 }
 
 export function nodeText(text, configuration) {
@@ -606,18 +618,28 @@ function Zoom(z) {
     pinoSprite.scale.set(1 / zoom / 7.5);
     for (const child of pinContainer.children) {
         if (child instanceof PIXI.Text) {
-            child.scale.set(1 / zoom / 2);
+            child.scale.set(1 / zoom);
         } else {
-            child.scale.set(1 / zoom / 7.5);
+            child.scale.set(1 / zoom);
         }
     }
     for (const child of textContainer.children) {
         child.scale.set(1 / zoom / 2);
     }
+    
     let references = Editor.Referencer.references;
-
     for (const ref of Object.values(references)) {
         ref.updateGraphics();
+    };
+    
+    let areas = Editor.Buildings.areas;
+    for (const area of Object.values(areas)) {
+        area.updateGraphics();
+    };
+
+    let buildings = Editor.Buildings.buildings;
+    for (const building of Object.values(buildings)) {
+        building.updateGraphics();
     };
 
     clampPos();
@@ -647,6 +669,20 @@ export function editorFocus(value) {
     mapSprite.alpha = 1;
     if (value) {
         mapSprite.alpha = 0.5;
+    }
+}
+export function highlight(activeGroups) {
+    if(activeGroups === true) {
+        for(const group of Object.values(groups)) {
+            group.alpha = 1;
+        }
+        return;
+    }
+    for(const group of Object.values(groups)) {
+        group.alpha = 0.25;
+    }
+    for(const group of activeGroups) {
+        group.alpha = 1;
     }
 }
 

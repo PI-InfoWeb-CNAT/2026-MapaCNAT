@@ -298,6 +298,17 @@ class Pointer {
                         Editor.Referencer.beginReport();
                     }
                 }
+            } else if (editorMode == EditorModes.BANNER) {
+                let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+                let overlapDots = Editor.Referencer.getOverlappingDots(coord);
+                let overlapPins = Editor.Buildings.getOverlappingPins(coord);
+                if (overlapDots) {
+                    Actions.openBanner(overlapDots);
+                } else if (overlapPins) {
+                    Actions.openBanner(overlapPins);   
+                } else {
+                    Actions.closeBanner();
+                }
             }
         }
     }
@@ -472,6 +483,15 @@ class Pointer {
                         Pointer.defaultMove(e);
                     }
                 }
+            } else if (editorMode == EditorModes.BANNER) {
+                let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+                let overlapDots = Editor.Referencer.getOverlappingDots(coord);
+                let overlapPins = Editor.Buildings.getOverlappingPins(coord);
+                if (overlapDots) {
+                    hoverTargetSet.add(overlapDots);
+                } else if (overlapPins) {
+                    hoverTargetSet.add(overlapPins);
+                }
             } else {
                 if (!clicking) return;
                 Pointer.defaultMove(e);
@@ -484,44 +504,6 @@ class Pointer {
         if (page == "main") {
             if (moved) {
                 return;
-            }
-            let colPin = Editor.Builder.getCollisionPin(pinMap, e.clientX, e.clientY);
-            let colConstruction = Editor.Builder.getCollisionMapArea(e.clientX, e.clientY, constructionMap);
-            let resultBanner = colPin.id || colConstruction.text;
-            let resultObj = colPin || colConstruction;
-
-            if (resultBanner) {
-                if (resultObj != lastBannerObj && lastBannerObj) {
-                    let startKey = Editor.Referencer.extractReference(resultObj, refMap, e.clientX, e.clientY);
-                    let endKey = Editor.Referencer.extractReference(lastBannerObj, refMap, e.clientX, e.clientY);
-
-                    let connKeys = Rota.getShortestPath(connMap, refMap, startKey, endKey);
-                    let points = [];
-                    for(const connKey of connKeys) {
-                        points.push(refMap[connKey].pos);
-                    }
-                    
-                    if (routeDraw) {
-                        Editor.Connections.removeDrawRoute(routeDraw);
-                    }
-                    routeDraw = Editor.Connections.drawRoute(points);
-                }
-                lastBannerObj = resultObj;
-                mapInterface.classList.remove("hidden");
-                
-                let banner = bannerMap[resultBanner];
-
-                imageLabel.classList.remove("hidden");
-                if (banner.image) {
-                    imageLabel.src = banner.image;
-                } else {
-                    imageLabel.classList.add("hidden");
-                }
-                bannerTitle.innerHTML = banner.title;
-                bannerDescription.innerHTML = banner.description;
-            } else {
-                mapInterface.classList.add("hidden");
-                lastBannerObj = null;
             }
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
@@ -578,6 +560,9 @@ class Pointer {
         
         zoom = nextZoom;
         Graficos.setZoom(zoom);
+        if (Holdable.phantomObject) {
+            Holdable.phantomObject.updateGraphics();
+        }
         Graficos.updateMap();
     }
 }
@@ -904,6 +889,7 @@ class Actions {
     }
 
     static applyMode(mode) {
+        Detail.set();
         editorMode = mode;
         Graficos.editorFocus([
             EditorModes.DELETION, EditorModes.CONSTRUCTION,
@@ -911,10 +897,12 @@ class Actions {
         ].includes(mode));
 
         if (mode == EditorModes.BANNER) {
-            this.bannerFocus(true);
+            Graficos.highlight([Graficos.groups.PINS, Graficos.groups.REFERENCES]);
         } else {
-            this.bannerFocus(false);
+            Graficos.highlight(true);
         }
+
+        this.closeBanner();
 
         lightButton(selectionBtn, mode, EditorModes.SELECTION);
         lightButton(deleteBtn, mode, EditorModes.DELETION);
@@ -1201,6 +1189,61 @@ class Actions {
         pinBtn.classList.toggle("hidden", !show);
         this.pinDoneMode(hasAreas);
     }
+
+    static openBanner(obj) {
+        this.saveBanner();
+
+        resetDisplayImage();
+        bannerTitle.value = "";
+        bannerDescription.value = "";
+
+        Holdable.set(obj, "banner", {img: false});
+
+        this.restoreBanner(obj);
+        bannerTab.classList.remove("hidden");
+    }
+    static closeBanner() {
+        bannerTab.classList.add("hidden");
+        
+        this.saveBanner();
+        
+        Holdable.set(false);
+    }
+    static saveBanner() {
+        if (!Holdable.object) {
+            return;
+        }
+        let edited = false;
+
+        let image = Holdable.initialPos["img"];
+        if (image) {
+            edited = true;
+        }
+        let title = bannerTitle.value;
+        if (bannerTitle.value) {
+            edited = true;
+        }
+        let description = bannerDescription.value;
+        if (bannerDescription.value) {
+            edited = true;
+        }
+        let banner = Holdable.object.banner;
+        banner.detailed = edited;
+        banner.image = image;
+        banner.title = title;
+        banner.description = description;
+    }
+    static restoreBanner(obj) {
+        if (obj.banner.image) {
+            setDisplayImage(obj.banner.image);
+        }
+        if (obj.banner.title) {
+            bannerTitle.value = obj.banner.title;
+        }
+        if (obj.banner.description) {
+            bannerDescription.value = obj.banner.description;
+        }
+    }
 }
 
 async function confirmationCall() {
@@ -1243,35 +1286,36 @@ function handleBuildSubmit(event) {
 //     connMap = data.connMap;
 // }
 
-// function setDisplayImage(file) {
-//     const reader = new FileReader();
+function setDisplayImage(file) {
+    const reader = new FileReader();
         
-//     reader.onload = function (event) {
-//         imageWrapper.style.backgroundImage = `url('${event.target.result}')`;
-//         imageWrapper.style.borderStyle = 'solid';
+    reader.onload = function (event) {
+        imageWrapper.style.backgroundImage = `url('${event.target.result}')`;
+        imageWrapper.style.borderStyle = 'solid';
         
-//         imageLabel.textContent = 'substituir imagem';
-//     };
+        imageLabel.textContent = 'substituir imagem';
 
-//     reader.readAsDataURL(file);
-// }
+        Holdable.initialPos["img"] = file;
+    };
 
-// function resetDisplayImage() {
-//     imageInput.value = '';
+    reader.readAsDataURL(file);
+}
 
-//     imageWrapper.style.backgroundImage = 'none';
-//     imageWrapper.style.borderStyle = '';
+function resetDisplayImage() {
+    imageInput.value = '';
 
-//     imageLabel.textContent = 'adicionar imagem +';
-// }
+    imageWrapper.style.backgroundImage = 'none';
+    imageWrapper.style.borderStyle = '';
 
-// function updateImageDisplay(e) {
-//     const file = e.target.files[0];
-//     if (file) {
-//         setDisplayImage(file);
-//     }
-//     tempFile = file;
-// }
+    imageLabel.textContent = 'adicionar imagem +';
+}
+
+function updateImageDisplay(e) {
+    const file = e.target.files[0];
+    if (file) {
+        setDisplayImage(file);
+    }
+}
 
 export function addListeners(map) {
     mapObj = map;
@@ -1334,7 +1378,11 @@ export function addListeners(map) {
         const buildOverlay = document.getElementById("build-modal-overlay");
         const buildCloseBtn = document.getElementById("close-build-modal");
 
-        const confirmationCloseBtn = document.getElementById("close-confirm-modal");
+        let bannerForm = document.getElementById("bannerForm");
+
+        bannerForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+        });
 
         document.addEventListener("keydown", (e) => {
             if (e.target.closest?.("input, textarea, [contenteditable]")) return; // Ctrl+Z in the name field was undoing the map
@@ -1408,8 +1456,7 @@ export function addListeners(map) {
         // saveBtn.addEventListener("click", Actions.save);
         // confirmBtn.addEventListener("click", handleConfirm);
 
-        // expandBannerBtn.addEventListener("click", Actions.toggleBanner);
-        // imageInput.addEventListener("change", e => updateImageDisplay(e));
+        imageInput.addEventListener("change", e => updateImageDisplay(e));
 
         // Editor.load();
 

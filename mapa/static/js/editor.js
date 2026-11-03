@@ -182,7 +182,7 @@ export class PhantomConnection {
         this.colorOut = 0x3d97e0;
         this.colorIn = 0xa4d1f5;
 
-        this.size = 10;
+        this.size = 6;
 
         this.graphics = Graficos.createConnection();
     }
@@ -228,7 +228,7 @@ export class PhantomArea {
         this.colorIn = 0xa4d1f5;
         
         this.radius = 5;
-        this.borderSize = 10;
+        this.borderSize = 8;
         
         this.graphics = Graficos.createArea();
 
@@ -739,6 +739,36 @@ export class Buildings {
         }
     }
     
+    static getOverlappingPins(coordinate, all) {
+        let pos = coordinate.getIn("normal");
+        let allList = [];
+
+        const buildings = Object.values(this.buildings).toReversed();
+
+        for (const building of buildings) {
+            // let pin = building.coordinate;
+            let textSize = building.graphics;
+
+            const minX = textSize.x - textSize.children[1].width * textSize.scale.x / 2;//- textSize.width;
+            const maxX = textSize.x - textSize.children[1].width * textSize.scale.x / 2 + textSize.width;
+            const minY = textSize.y - textSize.children[1].height * textSize.scale.y;// - textSize.height;
+            const maxY = textSize.y;
+
+
+            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+                if (!all) {
+                    return building;
+                }
+                allList.push(building);
+            }
+        }
+
+        if (allList.length === 0) {
+            return false;
+        }
+        return allList;
+    }
+
     static getOverlappingAreas(coordinate, all) {
         let pos = coordinate.getIn("normal");
         let allList = [];
@@ -861,6 +891,8 @@ export class Reference {
         this.move(coordinate, true);
         
         this.graphics = Graficos.createReference();
+
+        this.banner = new Banner();
 
         this.updateGraphics();
     }
@@ -1005,7 +1037,7 @@ export class Connection {
         this.colorOut = 0x3d97e0;
         this.colorIn = 0xa4d1f5;
         this.enabled = true;
-        this.size = 10;
+        this.size = 4;
 
         this.start = start;
         this.end = end;
@@ -1089,7 +1121,7 @@ export class Connection {
 export class Building {
     constructor(coordinate, name) {
         this.enabled = true;
-        this.size = 10;
+        this.pinSize = 1;
         this._helperCreate = null;
 
         this.id = -1;
@@ -1108,11 +1140,38 @@ export class Building {
         this.alpha = 1;
         this.colorOut = 0x3d97e0
         this.colorIn = 0xa4d1f5;
-        this.borderSize = 10;
+        this.borderSize = 8;
         this.radius = 5;
 
         this.polygonGraphics = Graficos.createPoly();
+
+        this.banner = new Banner();
         
+        this.updateGraphics();
+    }
+
+    hoverAdd() {
+        this.hover += 1;
+        let cap = this.hoverTime * 30;
+
+        if (this.hover >= cap) {
+            this.hover = cap;
+        }
+        this.hoverUpdate();
+    }
+    hoverDec() {
+        this.hover -= 1;
+        if (this.hover <= 0) {
+            this.hover = 0;
+        }
+
+        this.hoverUpdate();
+    }
+    hoverUpdate() {
+        let ms = this.hoverTime * 1000;
+        let t = this.hover * (1000 / 30) / ms;
+        t = ease(t);
+        this.pinSize = 1 + t * .2;
         this.updateGraphics();
     }
 
@@ -1172,7 +1231,7 @@ export class Building {
 
     buildData() {
         return {
-            size: this.size,
+            size: this.pinSize,
             coordinate: this.coordinate
         }
     }
@@ -1292,7 +1351,7 @@ export class Area {
         this.colorInBase = 0xa4d1f5;
         this.colorInHover = 0xd4f1ff;
         this.radius = 5;
-        this.borderSize = 10;
+        this.borderSize = 8;
         
         this.enabled = true;
         this.areaMode = true;
@@ -1414,5 +1473,14 @@ export class Area {
         Graficos.destroyArea(this.graphics);
         Buildings.setRelated(this, false);
         Buildings.untrackArea(this);
+    }
+}
+
+export class Banner {
+    constructor() {
+        this.detailed = false;
+        this.title = "";
+        this.description = "";
+        this.image = false;
     }
 }
