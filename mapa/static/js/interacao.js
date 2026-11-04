@@ -1,7 +1,6 @@
 import * as Transformacao from "./transformacao.js";
 import * as Graficos from "./graficos.js";
 import * as Editor from "./editor.js";
-import * as Rota from "./rota.js";
 
 let mapObj;
 let buildBtn;
@@ -9,9 +8,9 @@ let referenceBtn;
 let connectionBtn;
 let saveBtn;
 let bannerBtn;
-let expandBannerBtn;
 let pinBtn;
 let pinDone = false;
+let mapInterface;
 
 let bannerTab;
 let imageInput;
@@ -19,22 +18,13 @@ let imageWrapper;
 let imageLabel;
 let bannerTitle;
 let bannerDescription;
-let tempFile;
 let pinMap;
-let bannerMap;
-let refMap;
-let connMap;
 let constructionMap;
 let previousTitle;
-let mapInterface;
-let lastBannerObj;
-let routeDraw;
 let moved;
 
 let selectionBtn;
 let deleteBtn;
-let confirmBtn;
-
 
 let page;
 
@@ -52,8 +42,6 @@ let startMidX, startMidY;
 let startDistance, startAngle;
 let startZoom, startRotation;
 let startOffsetX, startOffsetY;
-
-let tempConstruction;
 
 let hoverSet = new Set();
 let hoverTargetSet = new Set();
@@ -146,8 +134,6 @@ class Task {
         Actions.syncTaskUI();
     }
 }
-
-
 
 const hasEnabledAreas = (b) => !!b && b.areas.some(a => a.enabled);
 
@@ -491,6 +477,9 @@ class Pointer {
                     hoverTargetSet.add(overlapDots);
                 } else if (overlapPins) {
                     hoverTargetSet.add(overlapPins);
+                } else {
+                    if (!clicking) return;
+                    Pointer.defaultMove(e);
                 }
             } else {
                 if (!clicking) return;
@@ -1245,6 +1234,68 @@ class Actions {
         }
     }
 }
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+async function saveMapState(formData) {
+    const url = URLSaveMap;
+    const token = sessionStorage.getItem('authToken'); 
+
+    try {
+        const req = {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: formData
+        };
+        
+        const response = await fetch(url, req);
+
+        if (response.status === 401) {
+            console.error('Usuário não autorizado.');
+            return;
+        }
+
+        return response;
+    } catch (error) {
+        console.error('Erro de rede:', error);
+    }
+}
+
+export async function save() {
+    const { payload, files } = Editor.buildPayload();
+
+    const formData = new FormData();
+
+    // 1. Envia a estrutura do mapa como JSON na chave 'data'
+    formData.append("data", JSON.stringify(payload));
+
+    // 2. Anexa cada arquivo do objeto files no FormData usando a chave 'file_<bannerId>'
+    if (files && typeof files === 'object') {
+        for (const [bannerId, file] of Object.entries(files)) {
+            if (file instanceof File) {
+                formData.append(`file_${bannerId}`, file, file.name);
+            }
+        }
+    }
+
+    // 3. Envia o FormData para a requisição
+    await saveMapState(formData);
+}
 
 async function confirmationCall() {
     const overlay = document.getElementById('confirm-modal-overlay');
@@ -1267,24 +1318,8 @@ function handleBuildSubmit(event) {
     document.getElementById('build-modal-overlay').classList.remove('active');
     document.getElementById('buildForm').reset();
     Task.data["name"] = buildName;
-    Actions.newBuilding(clickX, clickY);   // newBuilding sets buildObject itself now
+    Actions.newBuilding(clickX, clickY);
 }
-
-// function handleConfirm(event) {
-//     Actions.finishBuild();
-
-//     Actions.switchMode();
-
-//     confirmBtn.classList.add("hidden");
-// }
-
-// export async function setMaps(data) {
-//     pinMap = data.pinMap;
-//     bannerMap = data.bannerMap;
-//     constructionMap = data.constructionMap;
-//     refMap = data.refMap;
-//     connMap = data.connMap;
-// }
 
 function setDisplayImage(file) {
     const reader = new FileReader();
@@ -1353,6 +1388,8 @@ export function addListeners(map) {
         optionsBtn.addEventListener('click', () => activateList([sidebar, backdrop]));
         closeBtn.addEventListener('click', closeMenu);
         backdrop.addEventListener('click', closeMenu);
+
+        Editor.load();
     
     } else if (page == "editor") {
         buildBtn = document.getElementById("build");
@@ -1362,7 +1399,6 @@ export function addListeners(map) {
         saveBtn = document.getElementById("save");
         pinBtn = document.getElementById("pin-mode");
 
-        expandBannerBtn = document.getElementById("expand-banner");
         imageInput = document.getElementById("banner-image-input");
         imageWrapper = document.getElementById("image-upload-wrapper");
         imageLabel = document.getElementById("image-upload-label");
@@ -1371,8 +1407,6 @@ export function addListeners(map) {
 
         selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
-
-        confirmBtn = document.getElementById("submit");
         
         const buildModalBtn = document.getElementById("build-form-submit");
         const buildOverlay = document.getElementById("build-modal-overlay");
@@ -1453,12 +1487,11 @@ export function addListeners(map) {
         setInterval(hoverLoop, 1000 / 30);
 
         buildModalBtn.addEventListener("click", handleBuildSubmit);
-        // saveBtn.addEventListener("click", Actions.save);
-        // confirmBtn.addEventListener("click", handleConfirm);
+        saveBtn.addEventListener("click", save);
 
         imageInput.addEventListener("change", e => updateImageDisplay(e));
 
-        // Editor.load();
+        Editor.load();
 
         // let k = 100;
         // let r = 100;

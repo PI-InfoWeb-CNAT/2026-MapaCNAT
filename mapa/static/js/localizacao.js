@@ -9,8 +9,8 @@ function success(position) {
     const accuracy = position.coords.accuracy;
     let point = coordinateTransform.transform([latitude, longitude]);
     
-    Graficos.setPinPosition(point[0], point[1]);
-    Graficos.showPin(true);
+    // Graficos.setPinPosition(point[0], point[1]);
+    // Graficos.showPin(true);
 }
 
 function error(err) {

@@ -24,6 +24,84 @@ function interpCol(start, end, t) {
     return rgbToHex(final[0], final[1], final[2]);
 }
 
+function normalPos(coord) {
+    const p = coord.getIn("normal");
+    return { x: p.x, y: p.y };
+}
+
+function hasBannerContent(banner) {
+    return banner.detailed
+}
+
+export function buildPayload() {
+    const payload = {
+        buildings: {},
+        references: {},
+        banners: {},
+        areas: {},
+        connections: {},
+        files: {},
+    };
+    const files = {};
+
+    let bannerCounter = 0;
+
+    function registerBanner(banner) {
+        if (!hasBannerContent(banner)) return null;
+
+        const id = bannerCounter++;
+        const hasFile = banner.image instanceof File;
+
+        payload.banners[id] = {
+            image: hasFile ? banner.image.name : null,
+            title: banner.title,
+            description: banner.description,
+        };
+        if (hasFile) files[id] = banner.image;
+
+        return id;
+    }
+
+    for (const [id, area] of Object.entries(Buildings.areas)) {
+        const s = area.start.getIn("normal");
+        const e = area.end.getIn("normal");
+        payload.areas[id] = {
+            min: { x: Math.min(s.x, e.x), y: Math.min(s.y, e.y) },
+            max: { x: Math.max(s.x, e.x), y: Math.max(s.y, e.y) },
+        };
+    }
+
+    for (const [id, building] of Object.entries(Buildings.buildings)) {
+        payload.buildings[id] = {
+            name: building.name,
+            pin: normalPos(building.coordinate),
+            areas: building.areas
+                .filter(a => a.id !== -1)
+                .map(a => a.id),
+            entrances: building.entrances
+                .filter(r => r.id !== -1)
+                .map(r => r.id),
+            banner: registerBanner(building.banner),
+        };
+    }
+
+    for (const [id, ref] of Object.entries(Referencer.references)) {
+        payload.references[id] = {
+            pos: normalPos(ref.coordinate),
+            banner: registerBanner(ref.banner),
+        };
+    }
+
+    for (const [key, conn] of Object.entries(Connections.connections)) {
+        payload.connections[key] = {
+            a: conn.start.id,
+            b: conn.end.id,
+        };
+    }
+
+    return { payload, files };
+}
+
 async function urlToFile(url, filename = 'banner.png') {
     if (!url) return null;
     const response = await fetch(url);
@@ -40,76 +118,75 @@ export async function load() {
         const data = await response.json();
         
         let refMap = {};
-        let buildMap = {};
+        let areaMap = {};
 
         if (data.buildings) {
             for (const key of Object.keys(data.buildings)) {
                 let build = data.buildings[key];
-                let regions = [];
-
-                for (const area of build.areas) {
-                    let end = {
-                        x: area.pos.x + area.size.x,
-                        y: area.pos.y + area.size.y,
-                    };
-                    let reg = Builder.createRegionObject({ start: area.pos, end: end });
-                    regions.push(reg);
+                
+                let buildCoord = newCoord(build.pin.x, build.pin.y, "normal");
+                
+                let building = new Building(buildCoord, build.name);
+                let bannerKey = build.banner;
+                let banner = data.banners[bannerKey];
+                if (banner.title) {
+                    building.banner.title = banner.title;
+                }
+                if (banner.description) {
+                    building.banner.description = banner.description;
+                }
+                if (banner.image) {
+                    const fileName = banner.image ? banner.image.split('/').pop() : `banner_${key}.png`;
+                    const imageFile = banner.image 
+                        ? await urlToFile(banner.image, fileName) 
+                        : null;
+                    building.banner.image = imageFile;
                 }
 
-                let building = Builder.createConstruction({
-                    name: build.name,
-                    pin: build.pin_pos,
-                    regions: regions
-                });
-
-                Builder.convertGraphical(building, "polygon");
-                
-                buildMap[key] = building;
-            }
+                for (const areaKey of build.areas) {
+                    let area = data.areas[areaKey];
+                    let start = newCoord(area.min.x, area.min.y, "normal");
+                    let end = newCoord(area.max.x, area.max.y, "normal");
+                    
+                    if (!areaMap[areaKey]) {
+                        let areaObject = new Area(start, end, building);
+                        areaMap[key] = areaObject;
+                    }
+                }
+            }   
         }
-
         if (data.references) {
             for (const key of Object.keys(data.references)) {
-                let ref = data.references[key];
-                let building = buildMap[ref.build];
-
-                let objRef = Referencer.createReference(ref.pos.x, ref.pos.y, false, building);
-                refMap[key] = objRef;
-            }
-        }
-
-        if (data.connections) {
-            for (const conn of data.connections) {
-                let startObj = refMap[conn[0]];
-                let endObj = refMap[conn[1]];
-                if (startObj) {
-                    Connections.createConnection(startObj, endObj);
+                let reference = data.references[key];
+                let coord = newCoord(reference.pos.x, reference.pos.y, "normal");
+                let refObject = new Reference(coord);
+                refMap[key] = refObject;
+                let bannerKey = reference.banner;
+                if (bannerKey == null) {
+                    continue;
                 }
-            }
-        }
-
-        if (data.banners) {
-            for (const key of Object.keys(data.banners)) {
-                let banner = data.banners[key];
-                
-                let parentObj = banner.isRef ? refMap[key] : buildMap[key];
-
-                if (parentObj) {
-                    const fileName = banner.imageUrl ? banner.imageUrl.split('/').pop() : `banner_${key}.png`;
-                    
-                    const imageFile = banner.imageUrl 
-                        ? await urlToFile(banner.imageUrl, fileName) 
+                let banner = data.banners[bannerKey];
+                if (banner.title) {
+                    refObject.banner.title = banner.title;
+                }
+                if (banner.description) {
+                    refObject.banner.description = banner.description;
+                }
+                if (banner.image) {
+                    const fileName = banner.image ? banner.image.split('/').pop() : `banner_${key}.png`;
+                    const imageFile = banner.image 
+                        ? await urlToFile(banner.image, fileName) 
                         : null;
-
-                    Banner.saveBanner(
-                        parentObj,
-                        imageFile,
-                        banner.title,
-                        banner.description
-                    );
-                } else {
-                    console.warn(`Parent object for banner key '${key}' not found.`);
+                    refObject.banner.image = imageFile;
                 }
+            }
+        }
+        if (data.connections) {
+            for (const key of Object.keys(data.connections)) {
+                let connection = data.connections[key];
+                let refStart = refMap[connection.a];
+                let refEnd = refMap[connection.b];
+                new Connection(refStart, refEnd);
             }
         }
 
@@ -1123,6 +1200,7 @@ export class Building {
         this.enabled = true;
         this.pinSize = 1;
         this._helperCreate = null;
+        this.name = name;
 
         this.id = -1;
         this.visual = "areas";

@@ -189,7 +189,7 @@ export function clearConnection(graphics) {
     graphics.clear();
 }
 
-export function destroyConnection(graphics) {    
+export function destroyConnection(graphics) {
     connectionContainer.removeChild(graphics);
     
     graphics.destroy({

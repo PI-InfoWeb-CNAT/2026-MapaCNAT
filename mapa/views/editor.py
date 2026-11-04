@@ -4,6 +4,7 @@ from django.db import transaction
 from django.template import loader
 from typing import Any
 import json
+from collections import defaultdict
 from ..models import *
 from django.contrib.auth.decorators import login_required
 import os
@@ -18,7 +19,6 @@ def mapa_editor(request: Any):
 @login_required
 @ensure_csrf_cookie
 def mapa_editor_data(request: Any):
-    
     if request.method == 'POST':
         try:
             raw_data = request.POST.get('data')
@@ -32,175 +32,188 @@ def mapa_editor_data(request: Any):
             if os.path.exists(banners_dir):
                 for filename in os.listdir(banners_dir):
                     path = os.path.join(banners_dir, filename)
-
                     if os.path.isdir(path):
                         shutil.rmtree(path)
                     else:
                         os.remove(path)
 
             with transaction.atomic():
-                            
                 Rota.objects.all().delete()
                 Referencia.objects.all().delete()
-                Construcao.objects.all().delete()
                 ConstrucaoRegiao.objects.all().delete()
+                Construcao.objects.all().delete()
                 Banner.objects.all().delete()
 
-                id_to_db = {}
-                ref_obj_map = {}
-                build_obj_map = {}
-
-
-                buildings_data = data.get("buildings", {})
-                build_items = buildings_data.values() if isinstance(buildings_data, dict) else buildings_data
-
-                for build in build_items:
-                    build_name = build.get("name", "")
-
-                    construcao = Construcao.objects.create(
-                        nome=build_name,
-                        localizacao_pino=build.get("pin_pos", {"x": 0, "y": 0}),
-                    )
-                    
-                    if build_name:
-                        build_obj_map[build_name] = construcao
-
-                    areas = build.get("areas", [])
-                    for area in areas:
-                        ConstrucaoRegiao.objects.create(
-                            posicao=area.get("pos"),
-                            tamanho=area.get("size"),
-                            construcao=construcao
-                        )
-
-
-                references_data = data.get("references", {})
-                ref_items = references_data.items() if isinstance(references_data, dict) else references_data
+                ref_db_map = {}        # Maps frontend ref_id -> Referencia instance
+                build_db_map = {}      # Maps frontend build_id -> Construcao instance
                 
-                for frontend_id, ref in ref_items:
-                    build_name = ref.get("build")
-                    linked_build = build_obj_map.get(build_name) if build_name else None
+                buildings_data = data.get("buildings", {})
+                references_data = data.get("references", {})
+                banners_data = data.get("banners", {})
+                areas_catalog = data.get("areas", {})
+                connections_data = data.get("connections", {})
+
+                # 1. Map entrance reference IDs to building IDs
+                ref_to_build_id = {}
+                for b_id, b_info in buildings_data.items():
+                    for entrance_ref_id in b_info.get("entrances", []):
+                        ref_to_build_id[str(entrance_ref_id)] = str(b_id)
+
+                # 2. Save Buildings and their Regions (Areas)
+                for b_id, b_info in buildings_data.items():
+                    construcao = Construcao.objects.create(
+                        nome=b_info.get("name", ""),
+                        localizacao_pino=b_info.get("pin", {"x": 0, "y": 0}),
+                    )
+                    build_db_map[str(b_id)] = construcao
+
+                    area_ids = b_info.get("areas", [])
+                    for area_id in area_ids:
+                        area_info = areas_catalog.get(str(area_id), {})
+                        if area_info:
+                            ConstrucaoRegiao.objects.create(
+                                min=area_info.get("min"),
+                                max=area_info.get("max"),
+                                construcao=construcao
+                            )
+
+                # 3. Save References linking single building parent via FK
+                for ref_id, ref_info in references_data.items():
+                    linked_build_id = ref_to_build_id.get(str(ref_id))
+                    linked_build = build_db_map.get(linked_build_id) if linked_build_id else None
 
                     ref_obj = Referencia.objects.create(
-                        localizacao=ref.get("pos"),
+                        localizacao=ref_info.get("pos"),
                         construcao=linked_build
                     )
-                    
-                    if frontend_id is not None:
-                        id_to_db[str(frontend_id)] = ref_obj.id
-                        ref_obj_map[str(frontend_id)] = ref_obj
+                    ref_db_map[str(ref_id)] = ref_obj
 
-
-                connections_data = data.get("connections", [])
-                for conn in connections_data:
-                    start_frontend_id = str(conn[0])
-                    end_frontend_id = str(conn[1])
-
-                    start_db_id = id_to_db.get(start_frontend_id)
-                    end_db_id = id_to_db.get(end_frontend_id) if end_frontend_id else None
-
-                    if start_db_id:
-                        Rota.objects.create(
-                            local_inicio=Referencia.objects.get(pk=start_db_id),
-                            local_fim=Referencia.objects.get(pk=end_db_id) if end_db_id else None,
-                        )
-
-
-                banners_data = data.get("banners", {})
-                for key, banner_info in banners_data.items():
+                # 4. Save Banners and map uploaded files
+                for banner_id, banner_info in banners_data.items():
                     title = banner_info.get("title", "")
                     description = banner_info.get("description", "")
-                    is_ref = banner_info.get("isRef", False)
-                    
-                    uploaded_file = request.FILES.get(f"file_{key}")
-
-                    parent_ref = ref_obj_map.get(str(key)) if is_ref else None
-                    parent_build = build_obj_map.get(str(key)) if not is_ref else None
+                    uploaded_file = request.FILES.get(f"file_{banner_id}")
 
                     if uploaded_file is None and not title and not description:
                         continue
+
+                    linked_build = None
+                    linked_ref = None
+
+                    for b_id, b_info in buildings_data.items():
+                        if b_info.get("banner") is not None and str(b_info.get("banner")) == str(banner_id):
+                            linked_build = build_db_map.get(str(b_id))
+                            break
+
+                    if not linked_build:
+                        for ref_id, ref_info in references_data.items():
+                            if ref_info.get("banner") is not None and str(ref_info.get("banner")) == str(banner_id):
+                                linked_ref = ref_db_map.get(str(ref_id))
+                                break
 
                     Banner.objects.create(
                         titulo=title,
                         descricao=description,
                         imagem=uploaded_file,
-                        referencia=parent_ref,
-                        construcao=parent_build
+                        construcao=linked_build,
+                        referencia=linked_ref
                     )
+
+                # 5. Save Connections (Routes)
+                conn_items = connections_data.values() if isinstance(connections_data, dict) else connections_data
+                for conn in conn_items:
+                    start_ref_id = str(conn.get("a"))
+                    end_ref_id = str(conn.get("b"))
+
+                    start_ref = ref_db_map.get(start_ref_id)
+                    end_ref = ref_db_map.get(end_ref_id)
+
+                    if start_ref and end_ref:
+                        Rota.objects.create(
+                            local_inicio=start_ref,
+                            local_fim=end_ref
+                        )
 
             return JsonResponse({"status": "success"})
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
-
     elif request.method == "GET":
-        return JsonResponse(export_db_to_json(request=request), status=200)
+            return JsonResponse(export_db_to_json(request=request), status=200)
 
-    return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
+def export_db_to_json(request=None):
+    banners_dict = {}
+    build_banner_map = {}
+    ref_banner_map = {}
 
-def export_db_to_json(request):
-    references = {}
-    db_to_frontend_id = {}
-    
-    for index, ref in enumerate(Referencia.objects.all()):
-        frontend_id = str(index + 1)
-        db_to_frontend_id[ref.id] = frontend_id
-        
-        references[frontend_id] = {
+    for banner in Banner.objects.all():
+        banner_id_str = str(banner.id)
+        image_name = os.path.basename(banner.imagem.name) if banner.imagem else None
+        image_url = "/media/banners/" + image_name
+
+        banners_dict[banner_id_str] = {
+            "image": image_url,
+            "title": banner.titulo or "",
+            "description": banner.descricao or ""
+        }
+
+        if banner.construcao_id is not None:
+            build_banner_map[banner.construcao_id] = banner.id
+        if banner.referencia_id is not None:
+            ref_banner_map[banner.referencia_id] = banner.id
+
+    # 2. Areas catalog & building mapping
+    areas_dict = {}
+    build_areas_map = defaultdict(list)
+    for area in ConstrucaoRegiao.objects.all():
+        area_id_str = str(area.id)
+        areas_dict[area_id_str] = {
+            "min": area.min,
+            "max": area.max
+        }
+        if area.construcao_id is not None:
+            build_areas_map[area.construcao_id].append(area.id)
+
+    # 3. References catalog & entrance mapping
+    references_dict = {}
+    build_entrances_map = defaultdict(list)
+    for ref in Referencia.objects.all():
+        ref_id_str = str(ref.id)
+        references_dict[ref_id_str] = {
             "pos": ref.localizacao,
-            "build": ref.construcao.nome if ref.construcao else None
+            "banner": ref_banner_map.get(ref.id)
+        }
+        if ref.construcao_id is not None:
+            build_entrances_map[ref.construcao_id].append(ref.id)
+
+    # 4. Buildings catalog
+    buildings_dict = {}
+    for build in Construcao.objects.all():
+        build_id_str = str(build.id)
+        buildings_dict[build_id_str] = {
+            "name": build.nome or "",
+            "pin": build.localizacao_pino,
+            "areas": build_areas_map.get(build.id, []),
+            "entrances": build_entrances_map.get(build.id, []),
+            "banner": build_banner_map.get(build.id)
         }
 
-    connections = []
-    for rota in Rota.objects.all():
-        start_id = db_to_frontend_id.get(rota.local_inicio_id)
-        end_id = db_to_frontend_id.get(rota.local_fim_id) if rota.local_fim_id else None
-        
-        if start_id:
-            connections.append([start_id, end_id])
-
-    buildings = {}
-    for build in Construcao.objects.prefetch_related('regiao').all():
-        areas_data = []
-        for area in build.regiao.all():
-            areas_data.append({
-                "pos": area.posicao,
-                "size": area.tamanho
-            })
-            
-        buildings[build.nome] = {
-            "name": build.nome,
-            "pin_pos": build.localizacao_pino,
-            "areas": areas_data
-        }
-
-    banners = {}
-    for banner in Banner.objects.select_related('referencia', 'construcao').all():
-        key = None
-        is_ref = False
-
-        if banner.referencia_id:
-            key = db_to_frontend_id.get(banner.referencia_id)
-            is_ref = True
-        elif banner.construcao:
-            key = banner.construcao.nome
-            is_ref = False
-
-        if key:
-            if banner.imagem:
-                image_url = request.build_absolute_uri(banner.imagem.url) if request else banner.imagem.url
-            else:
-                image_url = None
-
-            banners[key] = {
-                "title": banner.titulo,
-                "description": banner.descricao,
-                "imageUrl": image_url,
-                "isRef": is_ref
+    # 5. Connections (Routes) catalog
+    connections_dict = {}
+    for route in Rota.objects.all():
+        start_id = route.local_inicio_id
+        end_id = route.local_fim_id
+        if start_id is not None and end_id is not None:
+            conn_key = f"{start_id},{end_id}"
+            connections_dict[conn_key] = {
+                "a": start_id,
+                "b": end_id
             }
 
     return {
-        "references": references,
-        "connections": connections,
-        "buildings": buildings,
-        "banners": banners
+        "buildings": buildings_dict,
+        "references": references_dict,
+        "banners": banners_dict,
+        "areas": areas_dict,
+        "connections": connections_dict,
+        "files": {}
     }
