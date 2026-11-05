@@ -148,7 +148,9 @@ def export_db_to_json(request=None):
     for banner in Banner.objects.all():
         banner_id_str = str(banner.id)
         image_name = os.path.basename(banner.imagem.name) if banner.imagem else None
-        image_url = "/media/banners/" + image_name
+        image_url = ""
+        if image_name:
+            image_url = "/media/banners/" + image_name
 
         banners_dict[banner_id_str] = {
             "image": image_url,

@@ -12,6 +12,11 @@ let pinBtn;
 let pinDone = false;
 let mapInterface;
 let hoverMap;
+let defaultImageFile;
+
+let searchField;
+let searchExpansion;
+let searchList;
 
 let bannerTab;
 let imageInput;
@@ -234,6 +239,9 @@ class Pointer {
             let border = Editor.Referencer.getOverlappingDotPins(coord);
             if(!border) {
                 border = Editor.Buildings.getOverlappingAreas(coord).building;
+                if(!border) {
+                    border = Editor.Buildings.getOverlappingPins(coord);
+                }
             }
             if(border) {
                 Actions.openBanner(border);
@@ -324,6 +332,9 @@ class Pointer {
             let border = Editor.Referencer.getOverlappingDotPins(coord);
             if(!border) {
                 border = Editor.Buildings.getOverlappingAreas(coord).building;
+                if(!border) {
+                    border = Editor.Buildings.getOverlappingPins(coord);
+                }
             }
             if(hoverMap) {
                 hoverMap.setColor(0x000000);
@@ -332,7 +343,10 @@ class Pointer {
             if(border) {
                 hoverMap = border;
                 border.setColor(0x0080ff);
+                mapObj.style.cursor = "pointer";
             } else {
+                mapObj.style.cursor = "default";
+
                 if (!clicking) return;
                 Pointer.defaultMove(e);
             }
@@ -485,7 +499,9 @@ class Pointer {
 
     static up(e) {
         clicking = false;
+        
         if (page == "main") {
+            searchExpansion.classList.add("hidden");
             if (moved) {
                 return;
             }
@@ -898,7 +914,7 @@ class Actions {
     }
 
     static forceMode(mode = EditorModes.FREE) {
-        if (mode != editorMode) Task.reset();   // the action restores its own snapshot right after
+        if (mode != editorMode) Task.reset();
         this.applyMode(mode);
     }
 
@@ -1027,7 +1043,7 @@ class Actions {
             }
 
             parentForwards();
-            Task.restore(after);                       // restore last: it counts enabled areas
+            Task.restore(after);
         };
         const backward = () => {
             Actions.forceMode(EditorModes.CONSTRUCTION);
@@ -1218,9 +1234,8 @@ class Actions {
         banner.description = description;
     }
     static restoreBanner(obj) {
-        if (obj.banner.image) {
-            setDisplayImage(obj.banner.image);
-        }
+        setDisplayImage(obj.banner.image ? obj.banner.image : defaultImageFile);
+
         if (obj.banner.title) {
             bannerTitle.value = obj.banner.title;
         }
@@ -1315,10 +1330,9 @@ function handleBuildSubmit(event) {
 
 function setDisplayImage(file) {
     const reader = new FileReader();
-        
+    
     reader.onload = function (event) {
         imageWrapper.style.backgroundImage = `url('${event.target.result}')`;
-        // imageWrapper.style.borderStyle = 'solid';
         
         if(page == "editor") {
             imageLabel.textContent = 'substituir imagem';
@@ -1334,7 +1348,6 @@ function resetDisplayImage() {
     imageInput.value = '';
 
     imageWrapper.style.backgroundImage = 'none';
-    // imageWrapper.style.borderStyle = '';
 
     if(page == "editor") {
         imageLabel.textContent = 'adicionar imagem +';
@@ -1348,7 +1361,54 @@ function updateImageDisplay(e) {
     }
 }
 
-export function addListeners(map) {
+function nameSearch(inputElement, searchFn, onResults, delay = 300) {
+  let timerId = null;
+  let activeAbortController = null;
+  let currentRequestId = 0;
+
+  inputElement.addEventListener('input', (event) => {
+    const query = event.target.value.trim();
+
+    clearTimeout(timerId);
+
+    if (!query) {
+      if (activeAbortController) activeAbortController.abort();
+      onResults([]);
+      return;
+    }
+
+    timerId = setTimeout(async () => {
+      if (activeAbortController) {
+        activeAbortController.abort();
+      }
+      activeAbortController = new AbortController();
+      const signal = activeAbortController.signal;
+
+      const requestId = ++currentRequestId;
+
+      try {
+        const data = await searchFn(query, { signal });
+
+        if (requestId !== currentRequestId || signal.aborted) {
+          return;
+        }
+
+        onResults(data);
+
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        console.error('Search error:', error);
+      }
+    }, delay);
+  });
+}
+
+function goToPlace(place) {
+    const targetPos = Graficos.getContainerPosForPoint(place.coordinate.pos);
+    Graficos.animateTransform(targetPos.x, targetPos.y);
+}
+
+export async function addListeners(map) {
     mapObj = map;
     map.addEventListener("pointerdown", Pointer.down);
     map.addEventListener("pointermove", Pointer.move);
@@ -1378,6 +1438,54 @@ export function addListeners(map) {
         imageLabel = document.getElementById("image-upload-label");
         bannerTitle = document.getElementById("place-name");
         bannerDescription = document.getElementById("place-description");
+
+        searchField = document.getElementById("search-field");
+        searchExpansion = document.getElementById("search-expansion");
+        searchList = document.getElementById("search-list");
+        searchField.addEventListener("click", () => {
+            searchExpansion.classList.remove("hidden");
+        });
+
+        const response = await fetch(defaultImage);
+        const blob = await response.blob();
+        
+        const mimeType = blob.type || 'image/png'; 
+        defaultImageFile = new File([blob], 'ifrn-logo.png', { type: mimeType });
+
+        let currentResults = []; // Store active search results in scope
+
+        nameSearch(searchField, Editor.queryBanner, async function (results) {
+            currentResults = results || [];
+
+            if (currentResults.length === 0) {
+                searchList.innerHTML = '<li class="no-results">Nenhum resultado</li>';
+                return;
+            }
+
+            // 1. Store index in data-index
+            searchList.innerHTML = currentResults.map((item, index) => `
+                <li class="search-element" data-index="${index}">
+                <img src="${item.image}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultImage}';">
+                <aside class="search-element-description">
+                    <h3>${item.title}</h3>
+                    <p>${item.description}</p>
+                </aside>
+                </li>
+            `).join('');
+            }, 300);
+
+            // 2. Retrieve the object reference using the clicked index
+            searchList.addEventListener('click', (event) => {
+            const element = event.target.closest('.search-element');
+            if (element) {
+                const index = element.dataset.index;
+                const targetRef = currentResults[index]?.ref;
+                
+                if (targetRef) {
+                    goToPlace(targetRef);
+                }
+            }
+        });
 
         const closeMenu = () => deactivateList([sidebar, backdrop]);
 -
@@ -1416,7 +1524,7 @@ export function addListeners(map) {
         });
 
         document.addEventListener("keydown", (e) => {
-            if (e.target.closest?.("input, textarea, [contenteditable]")) return; // Ctrl+Z in the name field was undoing the map
+            if (e.target.closest?.("input, textarea, [contenteditable]")) return;
             if (clicking || Holdable.object) return;
 
             const isModifierPressed = e.ctrlKey || e.metaKey;

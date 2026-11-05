@@ -6,12 +6,12 @@ fetch(config)
 .then(response => response.json())
 .then(data => {
     data.page = "editor";
-    
+
     Graficos.setContext(data);
     Editor.setContext(data);
-    Graficos.main().then(() => {
+    Graficos.main().then(async () => {
         Interacao.setContext(data);
-        Interacao.addListeners(Graficos.map);
+        await Interacao.addListeners(Graficos.map);
     });
     Graficos.loadMapScales();
 })
