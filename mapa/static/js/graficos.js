@@ -281,7 +281,7 @@ export function renderPin(graphics, data) {
     // graphics.label.y = pos.y;
 }
 export function clearPin(graphics) {
-    graphics.pin.visible = false;
+    graphics.visible = false;
     // graphics.label.visible = false;
 }
 
