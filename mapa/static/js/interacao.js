@@ -14,6 +14,8 @@ let mapInterface;
 let hoverMap;
 let defaultImageFile;
 
+let currentObjectURL = null;
+
 let searchField;
 let searchExpansion;
 let searchList;
@@ -238,7 +240,7 @@ class Pointer {
             let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
             let border = Editor.Referencer.getOverlappingDotPins(coord);
             if(!border) {
-                border = Editor.Buildings.getOverlappingAreas(coord).building;
+                border = Editor.Buildings.getOverlappingAreas(coord)?.building;
                 if(!border) {
                     border = Editor.Buildings.getOverlappingPins(coord);
                 }
@@ -331,7 +333,7 @@ class Pointer {
             let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
             let border = Editor.Referencer.getOverlappingDotPins(coord);
             if(!border) {
-                border = Editor.Buildings.getOverlappingAreas(coord).building;
+                border = Editor.Buildings.getOverlappingAreas(coord)?.building;
                 if(!border) {
                     border = Editor.Buildings.getOverlappingPins(coord);
                 }
@@ -1192,56 +1194,53 @@ class Actions {
 
     static openBanner(obj) {
         this.saveBanner();
-
+ 
         resetDisplayImage();
-        bannerTitle.value = "";
-        bannerDescription.value = "";
-
-        Holdable.set(obj, "banner", {img: false});
-
+        Holdable.set(obj, "banner", { img: obj.banner.image || false });
+ 
         this.restoreBanner(obj);
         bannerTab.classList.remove("hidden");
     }
+ 
     static closeBanner() {
         bannerTab.classList.add("hidden");
-        
+ 
         this.saveBanner();
-        
-        Holdable.set(false);
+ 
+        if (Holdable.type === "banner") {
+            Holdable.set(false);
+        }
+        showImage(null);
     }
+ 
     static saveBanner() {
-        if (!Holdable.object) {
-            return;
-        }
-        let edited = false;
-
-        let image = Holdable.initialPos["img"];
-        if (image) {
-            edited = true;
-        }
-        let title = bannerTitle.value;
-        if (bannerTitle.value) {
-            edited = true;
-        }
-        let description = bannerDescription.value;
-        if (bannerDescription.value) {
-            edited = true;
-        }
-        let banner = Holdable.object.banner;
-        banner.detailed = edited;
+        if (page != "editor") return;
+        if (!bannerHeld()) return;
+ 
+        const banner = Holdable.object.banner;
+        if (!banner) return;
+ 
+        const image = Holdable.initialPos?.img || false;
+        const title = bannerTitle.value;
+        const description = bannerDescription.value;
+ 
+        banner.detailed = !!(image || title || description);
         banner.image = image;
         banner.title = title;
         banner.description = description;
     }
+ 
     static restoreBanner(obj) {
-        setDisplayImage(obj.banner.image ? obj.banner.image : defaultImageFile);
-
-        if (obj.banner.title) {
-            bannerTitle.value = obj.banner.title;
+        const b = obj.banner;
+ 
+        if (b.image) {
+            setDisplayImage(b.image);
+        } else if (page == "main" && defaultImageFile) {
+            showImage(defaultImageFile);
         }
-        if (obj.banner.description) {
-            bannerDescription.value = obj.banner.description;
-        }
+ 
+        bannerTitle.value = b.title || "";
+        bannerDescription.value = b.description || "";
     }
 }
 function getCookie(name) {
@@ -1287,12 +1286,13 @@ async function saveMapState(formData) {
 }
 
 export async function save() {
+    Actions.saveBanner();
+ 
     const { payload, files } = Editor.buildPayload();
-
+ 
     const formData = new FormData();
-
     formData.append("data", JSON.stringify(payload));
-
+ 
     if (files && typeof files === 'object') {
         for (const [bannerId, file] of Object.entries(files)) {
             if (file instanceof File) {
@@ -1300,7 +1300,7 @@ export async function save() {
             }
         }
     }
-
+ 
     await saveMapState(formData);
 }
 
@@ -1328,37 +1328,49 @@ function handleBuildSubmit(event) {
     Actions.newBuilding(clickX, clickY);
 }
 
+function bannerHeld() {
+    return Holdable.type === "banner" && !!Holdable.object;
+}
+
+function showImage(src) {
+    if (currentObjectURL) {
+        URL.revokeObjectURL(currentObjectURL);
+        currentObjectURL = null;
+    }
+    if (!src) {
+        imageWrapper.style.backgroundImage = 'none';
+        return;
+    }
+    let url = src;
+    if (src instanceof Blob) {
+        url = currentObjectURL = URL.createObjectURL(src);
+    }
+    imageWrapper.style.backgroundImage = `url("${url}")`;
+}
+
 function setDisplayImage(file) {
-    const reader = new FileReader();
-    
-    reader.onload = function (event) {
-        imageWrapper.style.backgroundImage = `url('${event.target.result}')`;
-        
-        if(page == "editor") {
-            imageLabel.textContent = 'substituir imagem';
-        }
-
+    showImage(file);
+ 
+    if (page == "editor") {
+        imageLabel.textContent = 'substituir imagem';
+    }
+    if (bannerHeld()) {
         Holdable.initialPos["img"] = file;
-    };
-
-    reader.readAsDataURL(file);
+    }
 }
 
 function resetDisplayImage() {
     imageInput.value = '';
-
-    imageWrapper.style.backgroundImage = 'none';
-
-    if(page == "editor") {
+    showImage(null);
+ 
+    if (page == "editor") {
         imageLabel.textContent = 'adicionar imagem +';
     }
 }
-
 function updateImageDisplay(e) {
     const file = e.target.files[0];
-    if (file) {
-        setDisplayImage(file);
-    }
+    if (!file || !bannerHeld()) return;
+    setDisplayImage(file);
 }
 
 function nameSearch(inputElement, searchFn, onResults, delay = 300) {
@@ -1525,7 +1537,7 @@ export async function addListeners(map) {
 
         document.addEventListener("keydown", (e) => {
             if (e.target.closest?.("input, textarea, [contenteditable]")) return;
-            if (clicking || Holdable.object) return;
+            if (clicking || (Holdable.object && Holdable.type !== "banner")) return;
 
             const isModifierPressed = e.ctrlKey || e.metaKey;
 
