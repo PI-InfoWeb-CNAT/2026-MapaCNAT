@@ -40,6 +40,44 @@ export let imageSize;
 
 export let groups;
 
+export function getContainerPosForPoint(worldPos, screenTarget) {
+  // 1. Get current scale and rotation of mapContainer
+  const scaleX = mapContainer.scale?.x ?? mapContainer.scaleX ?? 1;
+  const scaleY = mapContainer.scale?.y ?? mapContainer.scaleY ?? 1;
+  const rotation = mapContainer.rotation || 0;
+
+  // 2. Default screen target to the center of the viewport if not specified
+  const target = screenTarget || {
+    x: window.visualViewport.width / 2,
+    y: window.visualViewport.height / 2
+  };
+
+  // 3. Apply scale
+  const scaledX = worldPos.x * scaleX;
+  const scaledY = worldPos.y * scaleY;
+
+  // 4. Apply container rotation to the scaled point
+  // (Uses your Transformacao.rotatePoint if available, otherwise pure math)
+  let rotatedX, rotatedY;
+
+  if (typeof Transformacao !== 'undefined' && Transformacao.rotatePoint) {
+    const rotated = Transformacao.rotatePoint(scaledX, scaledY, rotation);
+    rotatedX = rotated.x;
+    rotatedY = rotated.y;
+  } else {
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    rotatedX = scaledX * cos - scaledY * sin;
+    rotatedY = scaledX * sin + scaledY * cos;
+  }
+
+  // 5. Calculate container offset to align local point with target screen position
+  return {
+    x: target.x - rotatedX,
+    y: target.y - rotatedY
+  };
+}
+
 export function getNormalizedCoordinates(pos) {
     const localPoint = mapContainer.toLocal(pos);
 
@@ -724,4 +762,68 @@ export function smoothRotation(r) {
             }
         }, 1000 / 60);
     }
+}
+
+export function animateTransform(targetX, targetY, targetScaleX, targetScaleY, targetRotation, duration = 500) {
+    if (smoothTransform) return;
+    smoothTransform = true;
+
+    // 1. Capture initial transform states
+    const initialX = mapContainer.x;
+    const initialY = mapContainer.y;
+    const initialScaleX = mapContainer.scale?.x ?? mapContainer.scaleX ?? 1;
+    const initialScaleY = mapContainer.scale?.y ?? mapContainer.scaleY ?? 1;
+    const initialRotation = mapContainer.rotation ?? 0;
+
+    // 2. Fall back to current values if target parameters are omitted, null, or undefined
+    const finalX = targetX ?? initialX;
+    const finalY = targetY ?? initialY;
+    const finalScaleX = targetScaleX ?? initialScaleX;
+    const finalScaleY = targetScaleY ?? initialScaleY;
+    const finalRotation = targetRotation ?? initialRotation;
+
+    // 3. Shortest rotation path using finalRotation
+    let diff = finalRotation - initialRotation;
+    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
+    if (diff < -Math.PI) diff += 2 * Math.PI;
+    const shortestTargetRotation = initialRotation + diff;
+
+    let time = 0;
+    const frameRate = 1000 / 60;
+
+    const transformTimer = setInterval(() => {
+        time += frameRate;
+        const t = Math.min(time / duration, 1);
+        
+        const interpolation = t * t * (3 - 2 * t);
+
+        // 4. Interpolate toward target (or remain constant if defaulted)
+        const currentX = initialX + (finalX - initialX) * interpolation;
+        const currentY = initialY + (finalY - initialY) * interpolation;
+        const currentScaleX = initialScaleX + (finalScaleX - initialScaleX) * interpolation;
+        const currentScaleY = initialScaleY + (finalScaleY - initialScaleY) * interpolation;
+        const currentRotation = initialRotation + (shortestTargetRotation - initialRotation) * interpolation;
+
+        Position(currentX, currentY);
+        Rotation(currentRotation);
+        
+        if (typeof zoom === 'function') {
+            zoom(currentScaleX, currentScaleY);
+        } else if (typeof Scale === 'function') {
+            Scale(currentScaleX, currentScaleY);
+        } else if (mapContainer.scale) {
+            mapContainer.scale.x = currentScaleX;
+            mapContainer.scale.y = currentScaleY;
+        } else {
+            mapContainer.scaleX = currentScaleX;
+            mapContainer.scaleY = currentScaleY;
+        }
+
+        if (time >= duration) {
+            smoothTransform = false;
+            clearInterval(transformTimer);
+
+            mapContainer.rotation = ((mapContainer.rotation + Math.PI) % (2 * Math.PI)) - Math.PI;
+        }
+    }, frameRate);
 }

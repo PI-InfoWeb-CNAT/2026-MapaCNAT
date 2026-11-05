@@ -12,6 +12,13 @@ let pinBtn;
 let pinDone = false;
 let mapInterface;
 let hoverMap;
+let defaultImageFile;
+
+let currentObjectURL = null;
+
+let searchField;
+let searchExpansion;
+let searchList;
 
 let bannerTab;
 let imageInput;
@@ -233,7 +240,10 @@ class Pointer {
             let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
             let border = Editor.Referencer.getOverlappingDotPins(coord);
             if(!border) {
-                border = Editor.Buildings.getOverlappingAreas(coord).building;
+                border = Editor.Buildings.getOverlappingAreas(coord)?.building;
+                if(!border) {
+                    border = Editor.Buildings.getOverlappingPins(coord);
+                }
             }
             if(border) {
                 Actions.openBanner(border);
@@ -323,7 +333,10 @@ class Pointer {
             let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
             let border = Editor.Referencer.getOverlappingDotPins(coord);
             if(!border) {
-                border = Editor.Buildings.getOverlappingAreas(coord).building;
+                border = Editor.Buildings.getOverlappingAreas(coord)?.building;
+                if(!border) {
+                    border = Editor.Buildings.getOverlappingPins(coord);
+                }
             }
             if(hoverMap) {
                 hoverMap.setColor(0x000000);
@@ -332,7 +345,10 @@ class Pointer {
             if(border) {
                 hoverMap = border;
                 border.setColor(0x0080ff);
+                mapObj.style.cursor = "pointer";
             } else {
+                mapObj.style.cursor = "default";
+
                 if (!clicking) return;
                 Pointer.defaultMove(e);
             }
@@ -485,7 +501,9 @@ class Pointer {
 
     static up(e) {
         clicking = false;
+        
         if (page == "main") {
+            searchExpansion.classList.add("hidden");
             if (moved) {
                 return;
             }
@@ -898,7 +916,7 @@ class Actions {
     }
 
     static forceMode(mode = EditorModes.FREE) {
-        if (mode != editorMode) Task.reset();   // the action restores its own snapshot right after
+        if (mode != editorMode) Task.reset();
         this.applyMode(mode);
     }
 
@@ -1027,7 +1045,7 @@ class Actions {
             }
 
             parentForwards();
-            Task.restore(after);                       // restore last: it counts enabled areas
+            Task.restore(after);
         };
         const backward = () => {
             Actions.forceMode(EditorModes.CONSTRUCTION);
@@ -1176,57 +1194,53 @@ class Actions {
 
     static openBanner(obj) {
         this.saveBanner();
-
+ 
         resetDisplayImage();
-        bannerTitle.value = "";
-        bannerDescription.value = "";
-
-        Holdable.set(obj, "banner", {img: false});
-
+        Holdable.set(obj, "banner", { img: obj.banner.image || false });
+ 
         this.restoreBanner(obj);
         bannerTab.classList.remove("hidden");
     }
+ 
     static closeBanner() {
         bannerTab.classList.add("hidden");
-        
+ 
         this.saveBanner();
-        
-        Holdable.set(false);
+ 
+        if (Holdable.type === "banner") {
+            Holdable.set(false);
+        }
+        showImage(null);
     }
+ 
     static saveBanner() {
-        if (!Holdable.object) {
-            return;
-        }
-        let edited = false;
-
-        let image = Holdable.initialPos["img"];
-        if (image) {
-            edited = true;
-        }
-        let title = bannerTitle.value;
-        if (bannerTitle.value) {
-            edited = true;
-        }
-        let description = bannerDescription.value;
-        if (bannerDescription.value) {
-            edited = true;
-        }
-        let banner = Holdable.object.banner;
-        banner.detailed = edited;
+        if (page != "editor") return;
+        if (!bannerHeld()) return;
+ 
+        const banner = Holdable.object.banner;
+        if (!banner) return;
+ 
+        const image = Holdable.initialPos?.img || false;
+        const title = bannerTitle.value;
+        const description = bannerDescription.value;
+ 
+        banner.detailed = !!(image || title || description);
         banner.image = image;
         banner.title = title;
         banner.description = description;
     }
+ 
     static restoreBanner(obj) {
-        if (obj.banner.image) {
-            setDisplayImage(obj.banner.image);
+        const b = obj.banner;
+ 
+        if (b.image) {
+            setDisplayImage(b.image);
+        } else if (page == "main" && defaultImageFile) {
+            showImage(defaultImageFile);
         }
-        if (obj.banner.title) {
-            bannerTitle.value = obj.banner.title;
-        }
-        if (obj.banner.description) {
-            bannerDescription.value = obj.banner.description;
-        }
+ 
+        bannerTitle.value = b.title || "";
+        bannerDescription.value = b.description || "";
     }
 }
 function getCookie(name) {
@@ -1272,12 +1286,13 @@ async function saveMapState(formData) {
 }
 
 export async function save() {
+    Actions.saveBanner();
+ 
     const { payload, files } = Editor.buildPayload();
-
+ 
     const formData = new FormData();
-
     formData.append("data", JSON.stringify(payload));
-
+ 
     if (files && typeof files === 'object') {
         for (const [bannerId, file] of Object.entries(files)) {
             if (file instanceof File) {
@@ -1285,7 +1300,7 @@ export async function save() {
             }
         }
     }
-
+ 
     await saveMapState(formData);
 }
 
@@ -1313,42 +1328,99 @@ function handleBuildSubmit(event) {
     Actions.newBuilding(clickX, clickY);
 }
 
+function bannerHeld() {
+    return Holdable.type === "banner" && !!Holdable.object;
+}
+
+function showImage(src) {
+    if (currentObjectURL) {
+        URL.revokeObjectURL(currentObjectURL);
+        currentObjectURL = null;
+    }
+    if (!src) {
+        imageWrapper.style.backgroundImage = 'none';
+        return;
+    }
+    let url = src;
+    if (src instanceof Blob) {
+        url = currentObjectURL = URL.createObjectURL(src);
+    }
+    imageWrapper.style.backgroundImage = `url("${url}")`;
+}
+
 function setDisplayImage(file) {
-    const reader = new FileReader();
-        
-    reader.onload = function (event) {
-        imageWrapper.style.backgroundImage = `url('${event.target.result}')`;
-        // imageWrapper.style.borderStyle = 'solid';
-        
-        if(page == "editor") {
-            imageLabel.textContent = 'substituir imagem';
-        }
-
+    showImage(file);
+ 
+    if (page == "editor") {
+        imageLabel.textContent = 'substituir imagem';
+    }
+    if (bannerHeld()) {
         Holdable.initialPos["img"] = file;
-    };
-
-    reader.readAsDataURL(file);
+    }
 }
 
 function resetDisplayImage() {
     imageInput.value = '';
-
-    imageWrapper.style.backgroundImage = 'none';
-    // imageWrapper.style.borderStyle = '';
-
-    if(page == "editor") {
+    showImage(null);
+ 
+    if (page == "editor") {
         imageLabel.textContent = 'adicionar imagem +';
     }
 }
-
 function updateImageDisplay(e) {
     const file = e.target.files[0];
-    if (file) {
-        setDisplayImage(file);
-    }
+    if (!file || !bannerHeld()) return;
+    setDisplayImage(file);
 }
 
-export function addListeners(map) {
+function nameSearch(inputElement, searchFn, onResults, delay = 300) {
+  let timerId = null;
+  let activeAbortController = null;
+  let currentRequestId = 0;
+
+  inputElement.addEventListener('input', (event) => {
+    const query = event.target.value.trim();
+
+    clearTimeout(timerId);
+
+    if (!query) {
+      if (activeAbortController) activeAbortController.abort();
+      onResults([]);
+      return;
+    }
+
+    timerId = setTimeout(async () => {
+      if (activeAbortController) {
+        activeAbortController.abort();
+      }
+      activeAbortController = new AbortController();
+      const signal = activeAbortController.signal;
+
+      const requestId = ++currentRequestId;
+
+      try {
+        const data = await searchFn(query, { signal });
+
+        if (requestId !== currentRequestId || signal.aborted) {
+          return;
+        }
+
+        onResults(data);
+
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        console.error('Search error:', error);
+      }
+    }, delay);
+  });
+}
+
+function goToPlace(place) {
+    const targetPos = Graficos.getContainerPosForPoint(place.coordinate.pos);
+    Graficos.animateTransform(targetPos.x, targetPos.y);
+}
+
+export async function addListeners(map) {
     mapObj = map;
     map.addEventListener("pointerdown", Pointer.down);
     map.addEventListener("pointermove", Pointer.move);
@@ -1378,6 +1450,54 @@ export function addListeners(map) {
         imageLabel = document.getElementById("image-upload-label");
         bannerTitle = document.getElementById("place-name");
         bannerDescription = document.getElementById("place-description");
+
+        searchField = document.getElementById("search-field");
+        searchExpansion = document.getElementById("search-expansion");
+        searchList = document.getElementById("search-list");
+        searchField.addEventListener("click", () => {
+            searchExpansion.classList.remove("hidden");
+        });
+
+        const response = await fetch(defaultImage);
+        const blob = await response.blob();
+        
+        const mimeType = blob.type || 'image/png'; 
+        defaultImageFile = new File([blob], 'ifrn-logo.png', { type: mimeType });
+
+        let currentResults = []; // Store active search results in scope
+
+        nameSearch(searchField, Editor.queryBanner, async function (results) {
+            currentResults = results || [];
+
+            if (currentResults.length === 0) {
+                searchList.innerHTML = '<li class="no-results">Nenhum resultado</li>';
+                return;
+            }
+
+            // 1. Store index in data-index
+            searchList.innerHTML = currentResults.map((item, index) => `
+                <li class="search-element" data-index="${index}">
+                <img src="${item.image}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultImage}';">
+                <aside class="search-element-description">
+                    <h3>${item.title}</h3>
+                    <p>${item.description}</p>
+                </aside>
+                </li>
+            `).join('');
+            }, 300);
+
+            // 2. Retrieve the object reference using the clicked index
+            searchList.addEventListener('click', (event) => {
+            const element = event.target.closest('.search-element');
+            if (element) {
+                const index = element.dataset.index;
+                const targetRef = currentResults[index]?.ref;
+                
+                if (targetRef) {
+                    goToPlace(targetRef);
+                }
+            }
+        });
 
         const closeMenu = () => deactivateList([sidebar, backdrop]);
 -
@@ -1416,8 +1536,8 @@ export function addListeners(map) {
         });
 
         document.addEventListener("keydown", (e) => {
-            if (e.target.closest?.("input, textarea, [contenteditable]")) return; // Ctrl+Z in the name field was undoing the map
-            if (clicking || Holdable.object) return;
+            if (e.target.closest?.("input, textarea, [contenteditable]")) return;
+            if (clicking || (Holdable.object && Holdable.type !== "banner")) return;
 
             const isModifierPressed = e.ctrlKey || e.metaKey;
 

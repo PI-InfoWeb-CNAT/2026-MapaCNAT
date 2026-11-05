@@ -14,7 +14,7 @@ fetch(config)
     await Graficos.main();
     
     Interacao.setContext(data);
-    Interacao.addListeners(Graficos.map);
+    await Interacao.addListeners(Graficos.map);
     Localizacao.UserLocation();
 
     Graficos.loadMapScales();

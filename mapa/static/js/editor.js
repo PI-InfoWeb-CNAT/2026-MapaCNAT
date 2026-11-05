@@ -117,6 +117,76 @@ async function urlToFile(url, filename = 'banner.png') {
     return new File([blob], filename, { type: mimeType });
 }
 
+function normalize(text) {
+  return (text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function getFieldScore(targetText, query) {
+  const target = normalize(targetText);
+  const q = normalize(query);
+
+  if (!target || !q) return 0;
+
+  if (target === q) return 100;
+
+  if (target.startsWith(q)) return 80;
+
+  if (target.includes(q)) return 60;
+
+  const queryTokens = q.split(/\s+/).filter(Boolean);
+  const targetTokens = target.split(/\s+/).filter(Boolean);
+  
+  let totalTokenScore = 0;
+
+  for (const qToken of queryTokens) {
+    if (targetTokens.some(t => t === qToken)) {
+      totalTokenScore += 3;
+    } else if (targetTokens.some(t => t.startsWith(qToken))) {
+      totalTokenScore += 2;
+    } else if (targetTokens.some(t => t.includes(qToken))) {
+      totalTokenScore += 1;
+    }
+  }
+
+  return queryTokens.length > 0 ? totalTokenScore / queryTokens.length : 0;
+}
+
+export async function queryBanner(query) {
+  const trimmedQuery = query?.trim();
+  if (!trimmedQuery) return [];
+
+  const combined = [
+    ...Object.values(Buildings.buildings || {}),
+    ...Object.values(Referencer.references || {})
+  ];
+
+  return combined
+    .reduce((acc, element) => {
+      const banner = element?.banner;
+
+      if (!banner?.title) return acc;
+
+      const score = getFieldScore(banner.title, trimmedQuery);
+
+      if (score > 0) {
+        acc.push({
+          title: banner.title,
+          image: banner.image.name ? "/media/banners/" + banner.image.name : "/static/img/ifrn-logo.png",
+          description: banner.description,
+          ref: element,
+          score: score
+        });
+      }
+
+      return acc;
+    }, [])
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+}
+
 export async function load() {
     try {
         const response = await fetch(URLSaveMap);
@@ -135,18 +205,20 @@ export async function load() {
                 let building = new Building(buildCoord, build.name);
                 let bannerKey = build.banner;
                 let banner = data.banners[bannerKey];
-                if (banner.title) {
-                    building.banner.title = banner.title;
-                }
-                if (banner.description) {
-                    building.banner.description = banner.description;
-                }
-                if (banner.image) {
-                    const fileName = banner.image ? banner.image.split('/').pop() : `banner_${key}.png`;
-                    const imageFile = banner.image 
-                        ? await urlToFile(banner.image, fileName) 
-                        : null;
-                    building.banner.image = imageFile;
+                if (banner) {
+                    if (banner.title) {
+                        building.banner.title = banner.title;
+                    }
+                    if (banner.description) {
+                        building.banner.description = banner.description;
+                    }
+                    if (banner.image) {
+                        const fileName = banner.image ? banner.image.split('/').pop() : `banner_${key}.png`;
+                        const imageFile = banner.image 
+                            ? await urlToFile(banner.image, fileName) 
+                            : null;
+                        building.banner.image = imageFile;
+                    }
                 }
 
                 for (const areaKey of build.areas) {

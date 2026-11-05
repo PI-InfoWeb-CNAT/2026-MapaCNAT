@@ -25,9 +25,15 @@
     <div id="map-container">
         <header>
             <form id="search" class="padding" action="" method="get" role="search">
-                <img src="{% static 'img/logo-pequeno.png' %}">
-                <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
-                <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." required>
+                <div id="search-header">
+                    <img src="{% static 'img/logo-pequeno.png' %}">
+                    <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
+                    <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." required>
+                </div>
+                <div id="search-expansion" class="hidden">
+                    <hr>
+                    <ol id="search-list"></ol>
+                </div>
             </form>
             <button class="padding" id="options"><i class="fa-solid fa-bars"></i></button>
         </header>
@@ -65,7 +71,7 @@
                     <textarea 
                         class="editable-description" 
                         id="place-description" 
-                        placeholder="Escreva uma descrição..."
+                        placeholder=""
                         readonly
                     ></textarea>
                 </div>
@@ -79,6 +85,8 @@
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
         const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
+        const URLNameSearch = window.location.origin + "{% url 'name_search' %}";
+        const defaultImage = "{% static 'img/ifrn-logotipo.png' %}";
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
     <script type="module" src="{% static 'js/mapa.js' %}"></script>
