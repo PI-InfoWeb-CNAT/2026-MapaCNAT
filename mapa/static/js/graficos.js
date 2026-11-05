@@ -5,7 +5,7 @@ export let map;
 export let mapContainer;
 let textContainer;
 let referenceContainer;
-let routeContainer;
+let connectionContainer;
 let areasContainer;
 let pinContainer;
 let app;
@@ -19,6 +19,9 @@ let color;
 let textColor;
 let mapImagePath;
 let pinImagePath;
+let entranceImagePath;
+
+let entranceTexture;
 
 let pinoSprite;
 let mapSprite;
@@ -35,8 +38,48 @@ export let scaleFactor = 1;
 
 export let imageSize;
 
-export function getNormalizedCoordinates(screenX, screenY) {
-    const localPoint = mapContainer.toLocal({ x: screenX, y: screenY });
+export let groups;
+
+export function getContainerPosForPoint(worldPos, screenTarget) {
+  // 1. Get current scale and rotation of mapContainer
+  const scaleX = mapContainer.scale?.x ?? mapContainer.scaleX ?? 1;
+  const scaleY = mapContainer.scale?.y ?? mapContainer.scaleY ?? 1;
+  const rotation = mapContainer.rotation || 0;
+
+  // 2. Default screen target to the center of the viewport if not specified
+  const target = screenTarget || {
+    x: window.visualViewport.width / 2,
+    y: window.visualViewport.height / 2
+  };
+
+  // 3. Apply scale
+  const scaledX = worldPos.x * scaleX;
+  const scaledY = worldPos.y * scaleY;
+
+  // 4. Apply container rotation to the scaled point
+  // (Uses your Transformacao.rotatePoint if available, otherwise pure math)
+  let rotatedX, rotatedY;
+
+  if (typeof Transformacao !== 'undefined' && Transformacao.rotatePoint) {
+    const rotated = Transformacao.rotatePoint(scaledX, scaledY, rotation);
+    rotatedX = rotated.x;
+    rotatedY = rotated.y;
+  } else {
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    rotatedX = scaledX * cos - scaledY * sin;
+    rotatedY = scaledX * sin + scaledY * cos;
+  }
+
+  // 5. Calculate container offset to align local point with target screen position
+  return {
+    x: target.x - rotatedX,
+    y: target.y - rotatedY
+  };
+}
+
+export function getNormalizedCoordinates(pos) {
+    const localPoint = mapContainer.toLocal(pos);
 
     return {
         x: localPoint.x,
@@ -44,8 +87,8 @@ export function getNormalizedCoordinates(screenX, screenY) {
     };
 }
 
-export function getScreenCoordinates(localX, localY) {
-    const screenPoint = mapContainer.toGlobal({ x: localX, y: localY });
+export function getScreenCoordinates(pos) {
+    const screenPoint = mapContainer.toGlobal(pos);
 
     return {
         x: screenPoint.x,
@@ -53,88 +96,157 @@ export function getScreenCoordinates(localX, localY) {
     };
 }
 
+/////////////////// Reference
 
-
-
-export function newRegion(x=0, y=0, w=0, h=0) {
-    let square = new PIXI.Graphics();
-
-    if (!(w == 0 && h == 0)) {
-        square
-        .rect(0, 0, w, h)
-        .fill({ color: 0x5c56f9, alpha: 0.78 })
-        .stroke({ width: 4, color: 0x4000ff });
-    }
+export function createReference() {
+    let point = new PIXI.Graphics();
     
-    square.position.set(x, y);
-    areasContainer.addChild(square);
+    point.position.set(0, 0);
+    referenceContainer.addChild(point);
 
-    return square;
+    let referenceImg = PIXI.Sprite.from(entranceTexture);
+    referenceImg.anchor.set(0.5, 0.5);
+    let initialSize = referenceImg.width;
+    referenceImg.scale.set(15 / initialSize / zoom);
+    referenceContainer.addChild(referenceImg);
+
+    return {point: point, door: referenceImg, initialSize: initialSize};
 }
-export function updateRegion(region, x, y, w, h) {
-    region
+
+export function renderReference(graphics, data) {
+    let alpha = data.alpha;
+    let colorOut = data.colorOut;
+    let colorIn = data.colorIn;
+    let size = data.size;
+    let pos = data.coordinate.getIn("normal");
+
+    graphics.point
     .clear()
-    .rect(0, 0, w, h)
-    .fill({ color: 0x5c56f9, alpha: 0.78 })
-    .stroke({ width: 4, color: 0x4000ff });
+    .circle(pos.x, pos.y, size / zoom)
+    .fill({ color: colorIn, alpha: alpha})
+    .stroke({ width: 4 / zoom, color: colorOut });
 
-    region.position.set(x, y);
+    if (data.isEntrance) {
+        graphics.door.visible = true;
+        graphics.door.scale.set(size * 2 / graphics.initialSize / zoom);
+        graphics.door.tint = colorOut;
+        graphics.door.x = pos.x;
+        graphics.door.y = pos.y;
+    } else {
+        graphics.door.visible = false;
+    }
 }
-export function removeRegion(region) {
-    areasContainer.removeChild(region);
-    
-    region.destroy({
+
+export function BringToFrontReference(graphics) {
+    if (graphics && graphics.parent === referenceContainer) {
+        referenceContainer.addChild(graphics.point);
+        referenceContainer.addChild(graphics.door);
+    }
+}
+
+export function clearReference(graphics) {
+    graphics.point.clear();
+    graphics.door.visible = false;
+}
+
+export function destroyReference(graphics) {    
+    referenceContainer.removeChild(graphics.point);
+    referenceContainer.removeChild(graphics.door);
+
+    graphics.point.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+    graphics.door.destroy({
         children: true,
         texture: true,
         baseTexture: true
     });
 }
 
-export function newPolygon(points) {
-    let polygons = [];
-    for (const region of points) {
-        let flattenedPoints = region.flat();
-    
-        let polygonObj = new PIXI.Graphics();
+/////////////////// Connection
 
-        polygonObj
-            .poly(flattenedPoints, true)
-            .fill({ color: 0x5c56f9, alpha: 0.78 })
-            .stroke({ width: 4, color: 0x4000ff });
+export function createConnection() {
+    let connection = new PIXI.Graphics();
     
-        polygonObj.position.set(0, 0);
-        areasContainer.addChild(polygonObj);
-    
-        polygons.push(polygonObj);
-    }
+    connection.position.set(0, 0);
+    connectionContainer.addChild(connection);
 
-    return polygons;
+    return connection;
 }
 
-export function removePolygon(polygons) {
-    for(const polygon of polygons) {
+export function renderConnection(graphics, data) {
 
-        areasContainer.removeChild(polygon);
-        
-        polygon.destroy({
-            children: true,
-            texture: true,
-            baseTexture: true
-        });
+    let alpha = data.alpha;
+    let colorOut = data.colorOut;
+    let colorIn = data.colorIn;
+    let size = data.size;
+
+    let points = data.points;
+
+    if (points.length < 2) {
+        return;
     }
+
+    const buildPath = (g) => {
+        let p0 = points[0].getIn("normal");
+        g.moveTo(p0.x, p0.y);
+
+        for (let i = 1; i < points.length - 1; i++) {
+            const p1 = points[i].getIn("normal");
+            const p2 = points[i + 1].getIn("normal");
+
+            g.arcTo(p1.x, p1.y, p2.x, p2.y, radius);
+        }
+
+        const last = points[points.length - 1].getIn("normal");
+        g.lineTo(last.x, last.y);
+    };
+
+    graphics.clear();
+
+    buildPath(graphics);
+    graphics.stroke({
+        width: (size + 6) / zoom,
+        color: colorOut,
+        alpha: alpha,
+        cap: 'round',
+        join: 'round'
+    });
+
+    buildPath(graphics);
+    graphics.stroke({
+        width: (size) / zoom,
+        color: colorIn,
+        alpha: alpha,
+        cap: 'round',
+        join: 'round'
+    });
+}
+export function clearConnection(graphics) {
+    graphics.clear();
 }
 
-export function newPin(x, y, text) {
+export function destroyConnection(graphics) {
+    connectionContainer.removeChild(graphics);
+    
+    graphics.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+}
+
+/////////////////// Pin
+
+export function createPin(name) {
     let buildPino = PIXI.Sprite.from(pinImagePath);
     buildPino.anchor.set(0.5, 1);
-    buildPino.x = x;
-    buildPino.y = y;
-    buildPino.scale.set(1 / zoom / 7.5);
+    buildPino.scale.set(1 / 7.5);
     
-    pinContainer.addChild(buildPino);
-
     const nodeLabel = new PIXI.Text({
-        text: text,
+        text: name,
         style: {
             fontFamily: 'Arial',
             fontSize: 28,
@@ -143,200 +255,147 @@ export function newPin(x, y, text) {
             stroke: { color: "white", width: 3 }
         }
     });
-    nodeLabel.anchor.set(-0.2, 1);
-    nodeLabel.x = x;
-    nodeLabel.y = y;
-    nodeLabel.scale.set(1 / zoom / 2);
+    nodeLabel.anchor.set(0, 1);
+    nodeLabel.scale.set(1 / 2);
+    nodeLabel.x = buildPino.width / 2;
 
-    pinContainer.addChild(nodeLabel);
-
-    return {pin: buildPino, label: nodeLabel};
-}
-export function updatePin(pin, x, y, text, isSelected=false) {
-    pin.pin.x = x;
-    pin.pin.y = y;
-    pin.pin.scale.set(1 / zoom / 7.5);
-
-    let color;
-    if (isSelected) {
-        color = "#2a60d3";
-    } else {
-        color = "black";
-    }
-
-    const nodeLabel = new PIXI.Text({
-        text: text,
-        style: {
-            fontFamily: 'Arial',
-            fontSize: 28,
-            fill: color,
-            align: 'center',
-            stroke: { color: "white", width: 3 }
-        }
-    });
-    nodeLabel.anchor.set(-0.2, 1);
-    nodeLabel.x = x;
-    nodeLabel.y = y;
-    nodeLabel.scale.set(1 / zoom / 2);
-
-    pinContainer.addChild(nodeLabel);
-
-    pinContainer.removeChild(pin.label);
-    pin.label.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-
-    pin.label = nodeLabel;
-}
-export function removePin(pin) {    
-    pinContainer.removeChild(pin.pin);
-    pinContainer.removeChild(pin.label);
+    let pinGfx = new PIXI.Container();
     
-    pin.pin.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
-    pin.label.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
+    pinGfx.addChild(nodeLabel);
+    pinGfx.addChild(buildPino);
+
+    pinContainer.addChild(pinGfx);
+
+    return pinGfx;
 }
 
+export function renderPin(graphics, data) {
+    let pos = data.coordinate.getIn("normal");
+    let size = data.size;
+    graphics.children[0].style.fill = data.color;
+    graphics.visible = true;
+    graphics.x = pos.x;
+    graphics.y = pos.y;
+    graphics.scale.set(size / zoom);
+    // graphics.label.x = pos.x + graphics.pin.width / 2 / zoom;
+    // graphics.label.y = pos.y;
+}
+export function clearPin(graphics) {
+    graphics.visible = false;
+    // graphics.label.visible = false;
+}
 
-
-export function newReference(x, y, temp=false) {
-    let point = new PIXI.Graphics();
-
-    let alpha = 1;
-    if (temp) {
-        alpha = .5;
-    }
-
-    point
-    .circle(x, y, 10 / zoom)
-    .fill({ color: 0xffffff, alpha: alpha})
-    .stroke({ width: 4 / zoom, color: 0x4000ff });
+export function destroyPin(graphics) {
+    pinContainer.removeChild(graphics);
     
-    point.position.set(0, 0);
-    referenceContainer.addChild(point);
-
-    return point;
-}
-export function updateReference(graphics, x, y, temp=false, isFocus=false) {
-    let alpha = 1;
-    if (temp) {
-        alpha = .5;
-    }
-    let cols = [0xffffff, 0x4000ff];
-    if (isFocus) {
-        cols = [0x8888ff, 0x4000ff];
+    for (const child of graphics.children) {
+        child.destroy({
+            children: true,
+            texture: true,
+            baseTexture: true
+        });
     }
 
-    graphics
-    .clear()
-    .circle(x, y, 10 / zoom)
-    .fill({ color: cols[0], alpha: alpha})
-    .stroke({ width: 4 / zoom, color: cols[1] });
+    graphics.destroy({ children: true });
 }
 
-export function removeReference(graphics) {    
-    referenceContainer.removeChild(graphics);
-    
-    graphics.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true
-    });
+/////////////////// Areas
+
+function normalizeBox(x1, y1, x2, y2) {
+    return {
+        x: Math.min(x1, x2),
+        y: Math.min(y1, y2),
+        width: Math.abs(x2 - x1),
+        height: Math.abs(y2 - y1),
+        minX: Math.min(x1, x2),
+        maxX: Math.max(x1, x2),
+        minY: Math.min(y1, y2),
+        maxY: Math.max(y1, y2)
+    };
 }
 
-
-export function newConnection(x1, y1, x2=null, y2=null, temp=false) {
-    let routeGraphics = new PIXI.Graphics();
-    
-    if (x2 === null || y2 === null) {
-        x2 = x1;
-        y2 = y1;
-    }
-
-    let alpha = 1;
-    if (temp) {
-        alpha = .5;
-    }
-
-    routeGraphics
-    .moveTo(x1, y1)
-    .lineTo(x2, y2)
-    .stroke({ width: 8, color: 0x4000ff, alpha: alpha});
-    
-    routeGraphics.position.set(0, 0);
-    routeContainer.addChild(routeGraphics);
-
-    return routeGraphics;
+export function createArea() {
+    let area = new PIXI.Graphics();
+    area.position.set(0, 0);
+    areasContainer.addChild(area);
+    return area;
 }
 
-export function multiRouteDraw(points = [], temp = false) {
-    if (points.length < 2) return null;
+export function renderArea(graphics, data) {
 
-    let routeGraphics = new PIXI.Graphics();
-    let alpha = temp ? 0.5 : 1;
-    let radius = 10;
+    let alpha = data.alpha;
+    let colorOut = data.colorOut;
+    let colorIn = data.colorIn;
+    let size = data.borderSize / zoom;
+    let radius = data.radius !== undefined ? data.radius : 12;
 
-    const buildPath = (g) => {
-        g.moveTo(points[0].x, points[0].y);
+    let start = data.start.getIn("normal");
+    let end = data.end.getIn("normal");
+    let box = normalizeBox(start.x, start.y, end.x, end.y);
 
-        for (let i = 1; i < points.length - 1; i++) {
-            const p1 = points[i];
-            const p2 = points[i + 1];
+    graphics.clear();
 
-            g.arcTo(p1.x, p1.y, p2.x, p2.y, radius);
-        }
+    if (box.width < 2 || box.height < 2) return;
 
-        const last = points[points.length - 1];
-        g.lineTo(last.x, last.y);
+    const { x, y, width: w, height: h } = box;
+    const r = Math.min(radius, w / 2, h / 2);
+
+    graphics.roundRect(x, y, w, h, r);
+    graphics.fill({ color: colorIn, alpha: alpha * 0.35 });
+
+    const borderColors = typeof colorOut === "object" && colorOut !== null ? colorOut : {
+        top: colorOut,
+        right: colorOut,
+        bottom: colorOut,
+        left: colorOut
     };
 
-    buildPath(routeGraphics);
-    routeGraphics.stroke({
-        width: 16,
-        color: 0xffffff,
+    const getStroke = (color) => ({
+        width: size,
+        color: color,
         alpha: alpha,
-        cap: 'round',
-        join: 'round'
+        alignment: 0.5
     });
 
-    buildPath(routeGraphics);
-    routeGraphics.stroke({
-        width: 12,
-        color: 0x40c0ff,
-        alpha: alpha,
-        cap: 'round',
-        join: 'round'
-    });
+    if (r > 0) {
+        graphics.beginPath();
+        graphics.arc(x + r, y + r, r, Math.PI * 1.25, Math.PI * 1.5);
+        graphics.lineTo(x + w - r, y);
+        graphics.arc(x + w - r, y + r, r, Math.PI * 1.5, Math.PI * 1.75);
+        graphics.stroke(getStroke(borderColors.top));
 
-    routeGraphics.position.set(0, 0);
-    routeContainer.addChild(routeGraphics);
+        graphics.beginPath();
+        graphics.arc(x + w - r, y + r, r, Math.PI * 1.75, Math.PI * 2);
+        graphics.lineTo(x + w, y + h - r);
+        graphics.arc(x + w - r, y + h - r, r, 0, Math.PI * 0.25);
+        graphics.stroke(getStroke(borderColors.right));
 
-    return routeGraphics;
-}
+        graphics.beginPath();
+        graphics.arc(x + w - r, y + h - r, r, Math.PI * 0.25, Math.PI * 0.5);
+        graphics.lineTo(x + r, y + h);
+        graphics.arc(x + r, y + h - r, r, Math.PI * 0.5, Math.PI * 0.75);
+        graphics.stroke(getStroke(borderColors.bottom));
 
-export function updateConnection(graphics, x1, y1, x2, y2, temp=false) {    
-    let alpha = 1;
-    if (temp) {
-        alpha = .5;
+        graphics.beginPath();
+        graphics.arc(x + r, y + h - r, r, Math.PI * 0.75, Math.PI);
+        graphics.lineTo(x, y + r);
+        graphics.arc(x + r, y + r, r, Math.PI, Math.PI * 1.25);
+        graphics.stroke(getStroke(borderColors.left));
+    } else {
+        graphics.beginPath().moveTo(x, y).lineTo(x + w, y).stroke(getStroke(borderColors.top));
+        graphics.beginPath().moveTo(x + w, y).lineTo(x + w, y + h).stroke(getStroke(borderColors.right));
+        graphics.beginPath().moveTo(x + w, y + h).lineTo(x, y + h).stroke(getStroke(borderColors.bottom));
+        graphics.beginPath().moveTo(x, y + h).lineTo(x, y).stroke(getStroke(borderColors.left));
     }
-    
-    graphics
-    .clear()
-    .moveTo(x1, y1)
-    .lineTo(x2, y2)
-    .stroke({ width: 8, color: 0x4000ff, alpha: alpha });
 }
-export function removeConnection(graphics) {    
-    routeContainer.removeChild(graphics);
+
+export function clearArea(graphics) {
+    graphics.clear();
+}
+
+export function destroyArea(graphics) {
+    if (!graphics) return;
+    areasContainer.removeChild(graphics);
     
     graphics.destroy({
         children: true,
@@ -345,19 +404,89 @@ export function removeConnection(graphics) {
     });
 }
 
-
-export async function setBuildAreaSize(square) {
-    if (!(Math.abs(square.width) > 10 && Math.abs(square.height) > 10)) {
-        square.areaObj.clear();
-    } else {
-        square.areaObj
-        .clear()
-        .rect(0, 0, Math.abs(square.width), Math.abs(square.height))
-        .fill({ color: 0x5c56f9, alpha: 0.78 })
-        .stroke({ width: 4, color: 0x4000ff });
-        square.areaObj.position.set(Math.min(square.x, square.x - square.width), Math.min(square.y, square.y - square.height));
-    }
+export function createPoly() {
+    let area = new PIXI.Graphics();
+    area.position.set(0, 0);
+    areasContainer.addChild(area);
+    return area;
 }
+
+export function renderPoly(graphics, data) {
+
+    graphics.clear();
+
+    let rawPoints = data.points;
+    if (!rawPoints || rawPoints.length === 0) return;
+
+    const isSinglePolygon = rawPoints[0] && (
+        typeof rawPoints[0].getIn === "function" ||
+        typeof rawPoints[0].x === "number" ||
+        (Array.isArray(rawPoints[0]) && typeof rawPoints[0][0] === "number")
+    );
+
+    let polygons = isSinglePolygon ? [rawPoints] : rawPoints;
+
+    let alpha = data.alpha;
+    let colorOut = data.colorOut;
+    let colorIn = data.colorIn;
+    let size = data.borderSize / zoom;
+    let radius = data.radius !== undefined ? data.radius : 12;
+
+    const getPos = (p) => {
+        if (!p) return { x: 0, y: 0 };
+        if (typeof p.getIn === "function") return p.getIn("normal");
+        if (Array.isArray(p)) return { x: p[0], y: p[1] };
+        return p;
+    };
+
+    const buildPolygonPath = (g, points) => {
+        if (!points || points.length < 3) return;
+
+        let p0 = getPos(points[0]);
+        g.moveTo(p0.x, p0.y);
+
+        for (let i = 0; i < points.length; i++) {
+            let p1 = getPos(points[i]);
+            let p2 = getPos(points[(i + 1) % points.length]);
+            let midX = (p1.x + p2.x) / 2;
+            let midY = (p1.y + p2.y) / 2;
+            g.arcTo(p1.x, p1.y, midX, midY, Math.min(radius, 20));
+        }
+    };
+
+    for (const poly of polygons) {
+        buildPolygonPath(graphics, poly);
+    }
+    graphics.fill({ color: colorIn, alpha: alpha * 0.45 });
+
+    for (const poly of polygons) {
+        buildPolygonPath(graphics, poly);
+    }
+    graphics.stroke({
+        width: size + 1,
+        color: colorOut,
+        alpha: alpha,
+        cap: 'round',
+        join: 'round'
+    });
+}
+
+export function clearPoly(graphics) {
+    graphics.clear();
+}
+
+export function destroyPoly(graphics) {
+    if (!graphics) return;
+    areasContainer.removeChild(graphics);
+    
+    graphics.destroy({
+        children: true,
+        texture: true,
+        baseTexture: true
+    });
+}
+
+/////////////////// Context
 
 export function setContext(context) {
     page = context.page;
@@ -368,21 +497,14 @@ export function setContext(context) {
 
     mapImagePath = mapImage;
     pinImagePath = pinImage;
-}
-
-export function setPinPosition(x, y) {
-    pinoSprite.x = x;
-    pinoSprite.y = y;
-}
-
-export function showPin(show) {
-    pinoSprite.visible = show;
+    entranceImagePath = entranceImage;
 }
 
 export async function main() {
     app = new PIXI.Application();
     await app.init({ 
         resizeTo: window,
+        antialias: true,
         backgroundColor: color,
         resolution: window.devicePixelRatio || 1,
     });
@@ -418,6 +540,8 @@ export async function main() {
     pinoSprite.y = 0;
     pinoSprite.scale.set(1 / zoom / 7.5);
     mapContainer.addChild(pinoSprite);
+
+    entranceTexture = await PIXI.Assets.load(entranceImagePath);
     
     textContainer = new PIXI.Container();
     mapContainer.addChild(textContainer);
@@ -425,14 +549,21 @@ export async function main() {
     areasContainer = new PIXI.Container();
     mapContainer.addChild(areasContainer);
 
-    routeContainer = new PIXI.Container();
-    mapContainer.addChild(routeContainer);
+    connectionContainer = new PIXI.Container();
+    mapContainer.addChild(connectionContainer);
 
     referenceContainer = new PIXI.Container();
     mapContainer.addChild(referenceContainer);
 
     pinContainer = new PIXI.Container();
     mapContainer.addChild(pinContainer);
+
+    groups = {
+        AREAS: areasContainer,
+        CONNECTIONS: connectionContainer,
+        REFERENCES: referenceContainer,
+        PINS: pinContainer,
+    }
 }
 
 export function nodeText(text, configuration) {
@@ -529,23 +660,29 @@ function Zoom(z) {
     pinoSprite.scale.set(1 / zoom / 7.5);
     for (const child of pinContainer.children) {
         if (child instanceof PIXI.Text) {
-            child.scale.set(1 / zoom / 2);
+            child.scale.set(1 / zoom);
         } else {
-            child.scale.set(1 / zoom / 7.5);
+            child.scale.set(1 / zoom);
         }
     }
     for (const child of textContainer.children) {
         child.scale.set(1 / zoom / 2);
     }
+    
     let references = Editor.Referencer.references;
     for (const ref of Object.values(references)) {
-        updateReference(ref.graphics, ref.pos.x, ref.pos.y, false, ref.isFocus);
+        ref.updateGraphics();
     };
-    Editor.Referencer.radius = 15 / zoom;
+    
+    let areas = Editor.Buildings.areas;
+    for (const area of Object.values(areas)) {
+        area.updateGraphics();
+    };
 
-    // if (tempReference) {
-    //     tempReference.drawRef
-    // }
+    let buildings = Editor.Buildings.buildings;
+    for (const building of Object.values(buildings)) {
+        building.updateGraphics();
+    };
 
     clampPos();
 }
@@ -576,6 +713,20 @@ export function editorFocus(value) {
         mapSprite.alpha = 0.5;
     }
 }
+export function highlight(activeGroups) {
+    if(activeGroups === true) {
+        for(const group of Object.values(groups)) {
+            group.alpha = 1;
+        }
+        return;
+    }
+    for(const group of Object.values(groups)) {
+        group.alpha = 0.25;
+    }
+    for(const group of activeGroups) {
+        group.alpha = 1;
+    }
+}
 
 export function smoothRotation(r) {
     if (!smoothTransform) {
@@ -600,7 +751,6 @@ export function smoothRotation(r) {
 
             Rotation(initialRotation + (shortestTargetRotation - initialRotation) * interpolation);
             let center = {x: window.visualViewport.width / 2, y: window.visualViewport.height / 2}
-            let rotatedCenter = Transformacao.rotatePoint(center.x, center.y, mapContainer.rotation);
             let pivo = Transformacao.rotatePoint(containerPos.x - center.x, containerPos.y - center.y, mapContainer.rotation - initialRotation);
             pivo = {x: pivo.x + center.x, y: pivo.y + center.y};
             Position(pivo.x, pivo.y);
@@ -612,4 +762,68 @@ export function smoothRotation(r) {
             }
         }, 1000 / 60);
     }
+}
+
+export function animateTransform(targetX, targetY, targetScaleX, targetScaleY, targetRotation, duration = 500) {
+    if (smoothTransform) return;
+    smoothTransform = true;
+
+    // 1. Capture initial transform states
+    const initialX = mapContainer.x;
+    const initialY = mapContainer.y;
+    const initialScaleX = mapContainer.scale?.x ?? mapContainer.scaleX ?? 1;
+    const initialScaleY = mapContainer.scale?.y ?? mapContainer.scaleY ?? 1;
+    const initialRotation = mapContainer.rotation ?? 0;
+
+    // 2. Fall back to current values if target parameters are omitted, null, or undefined
+    const finalX = targetX ?? initialX;
+    const finalY = targetY ?? initialY;
+    const finalScaleX = targetScaleX ?? initialScaleX;
+    const finalScaleY = targetScaleY ?? initialScaleY;
+    const finalRotation = targetRotation ?? initialRotation;
+
+    // 3. Shortest rotation path using finalRotation
+    let diff = finalRotation - initialRotation;
+    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
+    if (diff < -Math.PI) diff += 2 * Math.PI;
+    const shortestTargetRotation = initialRotation + diff;
+
+    let time = 0;
+    const frameRate = 1000 / 60;
+
+    const transformTimer = setInterval(() => {
+        time += frameRate;
+        const t = Math.min(time / duration, 1);
+        
+        const interpolation = t * t * (3 - 2 * t);
+
+        // 4. Interpolate toward target (or remain constant if defaulted)
+        const currentX = initialX + (finalX - initialX) * interpolation;
+        const currentY = initialY + (finalY - initialY) * interpolation;
+        const currentScaleX = initialScaleX + (finalScaleX - initialScaleX) * interpolation;
+        const currentScaleY = initialScaleY + (finalScaleY - initialScaleY) * interpolation;
+        const currentRotation = initialRotation + (shortestTargetRotation - initialRotation) * interpolation;
+
+        Position(currentX, currentY);
+        Rotation(currentRotation);
+        
+        if (typeof zoom === 'function') {
+            zoom(currentScaleX, currentScaleY);
+        } else if (typeof Scale === 'function') {
+            Scale(currentScaleX, currentScaleY);
+        } else if (mapContainer.scale) {
+            mapContainer.scale.x = currentScaleX;
+            mapContainer.scale.y = currentScaleY;
+        } else {
+            mapContainer.scaleX = currentScaleX;
+            mapContainer.scaleY = currentScaleY;
+        }
+
+        if (time >= duration) {
+            smoothTransform = false;
+            clearInterval(transformTimer);
+
+            mapContainer.rotation = ((mapContainer.rotation + Math.PI) % (2 * Math.PI)) - Math.PI;
+        }
+    }, frameRate);
 }
