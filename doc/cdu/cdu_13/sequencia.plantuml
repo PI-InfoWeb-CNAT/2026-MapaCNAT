@@ -1,0 +1,23 @@
+@startuml
+actor Usuario
+participant Interacao
+participant Editor
+participant Construcao
+participant Referencia
+participant Banner
+participant Graficos
+Usuario -> Interacao: toque()
+Interacao -> Editor: buscaPorNome(nome: string)
+Editor -> Construcao: listar()
+Construcao -> Editor: lista de construcoes
+Editor -> Referencia: listar()
+Referencia -> Editor: lista de referencias
+Editor -> Banner: validar(objeto: Construcao | Referencia)
+Banner -> Editor: bool
+Editor -> Interacao : lista de locais por proximidade
+Interacao -> Usuario
+Usuario -> Interacao: toque()
+Interacao -> Graficos: moverTelaPara(x: float, y: float)
+Graficos -> Interacao
+Interacao -> Usuario
+@enduml

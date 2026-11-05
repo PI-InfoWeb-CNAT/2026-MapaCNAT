@@ -88,7 +88,7 @@ def mapa_editor_data(request: Any):
                     )
                     ref_db_map[str(ref_id)] = ref_obj
 
-                # 4. Save Banners and map uploaded files
+                # 4. Save Banners with unique key-based filenames
                 for banner_id, banner_info in banners_data.items():
                     title = banner_info.get("title", "")
                     description = banner_info.get("description", "")
@@ -96,6 +96,11 @@ def mapa_editor_data(request: Any):
 
                     if uploaded_file is None and not title and not description:
                         continue
+
+                    # Rename the uploaded file using banner_id as key
+                    if uploaded_file:
+                        ext = os.path.splitext(uploaded_file.name)[1].lower()
+                        uploaded_file.name = f"banner_{banner_id}{ext}"
 
                     linked_build = None
                     linked_ref = None
@@ -138,7 +143,7 @@ def mapa_editor_data(request: Any):
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
     elif request.method == "GET":
-            return JsonResponse(export_db_to_json(request=request), status=200)
+        return JsonResponse(export_db_to_json(request=request), status=200)
 
 def export_db_to_json(request=None):
     banners_dict = {}
@@ -147,10 +152,7 @@ def export_db_to_json(request=None):
 
     for banner in Banner.objects.all():
         banner_id_str = str(banner.id)
-        image_name = os.path.basename(banner.imagem.name) if banner.imagem else None
-        image_url = ""
-        if image_name:
-            image_url = "/media/banners/" + image_name
+        image_url = banner.imagem.url if banner.imagem else ""
 
         banners_dict[banner_id_str] = {
             "image": image_url,

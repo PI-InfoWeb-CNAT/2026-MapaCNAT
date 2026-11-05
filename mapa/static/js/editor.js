@@ -53,6 +53,7 @@ export function buildPayload() {
     let bannerCounter = 0;
 
     function registerBanner(banner) {
+        // console.log(banner);
         if (!hasBannerContent(banner)) return null;
 
         const id = bannerCounter++;
@@ -208,16 +209,19 @@ export async function load() {
                 if (banner) {
                     if (banner.title) {
                         building.banner.title = banner.title;
+                        building.banner.detailed = true;
                     }
                     if (banner.description) {
                         building.banner.description = banner.description;
+                        building.banner.detailed = true;
                     }
                     if (banner.image) {
                         const fileName = banner.image ? banner.image.split('/').pop() : `banner_${key}.png`;
                         const imageFile = banner.image 
-                            ? await urlToFile(banner.image, fileName) 
-                            : null;
+                        ? await urlToFile(banner.image, fileName) 
+                        : null;
                         building.banner.image = imageFile;
+                        building.banner.detailed = true;
                     }
                 }
 
@@ -238,6 +242,7 @@ export async function load() {
                 let reference = data.references[key];
                 let coord = newCoord(reference.pos.x, reference.pos.y, "normal");
                 let refObject = new Reference(coord);
+
                 refMap[key] = refObject;
                 let bannerKey = reference.banner;
                 if (bannerKey == null) {
@@ -247,16 +252,19 @@ export async function load() {
                 if (banner.title) {
                     refObject.banner.title = banner.title;
                     refObject.setName(banner.title);
+                    refObject.banner.detailed = true;
                 }
                 if (banner.description) {
                     refObject.banner.description = banner.description;
+                    refObject.banner.detailed = true;
                 }
                 if (banner.image) {
                     const fileName = banner.image ? banner.image.split('/').pop() : `banner_${key}.png`;
                     const imageFile = banner.image 
-                        ? await urlToFile(banner.image, fileName) 
-                        : null;
+                    ? await urlToFile(banner.image, fileName) 
+                    : null;
                     refObject.banner.image = imageFile;
+                    refObject.banner.detailed = true;
                 }
             }
         }

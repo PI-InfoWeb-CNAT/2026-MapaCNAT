@@ -1289,6 +1289,7 @@ export async function save() {
     Actions.saveBanner();
  
     const { payload, files } = Editor.buildPayload();
+    console.log(payload, files);
  
     const formData = new FormData();
     formData.append("data", JSON.stringify(payload));
@@ -1418,6 +1419,7 @@ function nameSearch(inputElement, searchFn, onResults, delay = 300) {
 function goToPlace(place) {
     const targetPos = Graficos.getContainerPosForPoint(place.coordinate.pos);
     Graficos.animateTransform(targetPos.x, targetPos.y);
+    Actions.openBanner(place);
 }
 
 export async function addListeners(map) {
