@@ -1,6 +1,12 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
 
+let page;
+
+export function setContext(context) {
+    page = context.page;
+}
+
 function rgbToHex(r, g, b) {
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
@@ -168,6 +174,7 @@ export async function load() {
                 let banner = data.banners[bannerKey];
                 if (banner.title) {
                     refObject.banner.title = banner.title;
+                    refObject.setName(banner.title);
                 }
                 if (banner.description) {
                     refObject.banner.description = banner.description;
@@ -641,6 +648,39 @@ export class Referencer {
         this.hashMap[key].push(reference);
     }
     
+    static getOverlappingDotPins(coordinate, all) {
+        let pos = coordinate.getIn("normal");
+        let allList = [];
+
+        const references = Object.values(this.references).toReversed();
+
+        for (const reference of references) {
+            let textSize = reference.graphics;
+
+            if(!reference.name) {
+                continue;
+            }
+
+            const minX = textSize.x - textSize.children[1].width * textSize.scale.x / 2;
+            const maxX = textSize.x - textSize.children[1].width * textSize.scale.x / 2 + textSize.width;
+            const minY = textSize.y - textSize.children[1].height * textSize.scale.y;
+            const maxY = textSize.y;
+
+
+            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+                if (!all) {
+                    return reference;
+                }
+                allList.push(reference);
+            }
+        }
+
+        if (allList.length === 0) {
+            return false;
+        }
+        return allList;
+    }
+
     static getOverlappingDots(coordinate, all) {
         let pos = coordinate.getIn("normal");
         let hashPos = this.getHashCoord(pos);
@@ -823,12 +863,11 @@ export class Buildings {
         const buildings = Object.values(this.buildings).toReversed();
 
         for (const building of buildings) {
-            // let pin = building.coordinate;
             let textSize = building.graphics;
 
-            const minX = textSize.x - textSize.children[1].width * textSize.scale.x / 2;//- textSize.width;
+            const minX = textSize.x - textSize.children[1].width * textSize.scale.x / 2;
             const maxX = textSize.x - textSize.children[1].width * textSize.scale.x / 2 + textSize.width;
-            const minY = textSize.y - textSize.children[1].height * textSize.scale.y;// - textSize.height;
+            const minY = textSize.y - textSize.children[1].height * textSize.scale.y;
             const maxY = textSize.y;
 
 
@@ -849,7 +888,7 @@ export class Buildings {
     static getOverlappingAreas(coordinate, all) {
         let pos = coordinate.getIn("normal");
         let allList = [];
-
+        
         const areas = Object.values(this.areas).toReversed();
 
         for (const area of areas) {
@@ -967,11 +1006,30 @@ export class Reference {
         this.positionTracked = false;
         this.move(coordinate, true);
         
-        this.graphics = Graficos.createReference();
+        this.graphics = null;
+        if (page == "editor") {
+            this.graphics = Graficos.createReference();
+        }
+        this.name = "";
+        this.tint = 0x000000;
 
         this.banner = new Banner();
 
         this.updateGraphics();
+    }
+
+    setColor(color) {
+        this.tint = color;
+        this.updateGraphics();
+    }
+
+    setName(name) {
+        if (page == "main") {
+            this.size = 1;
+            this.name = name;
+            this.graphics = Graficos.createPin(name);
+            this.updateGraphics();
+        }
     }
 
     hoverAdd() {
@@ -1006,12 +1064,19 @@ export class Reference {
             colorIn: this.colorIn,
             size: this.size,
             alpha: this.alpha,
-            isEntrance: this.isEntrance
+            isEntrance: this.isEntrance,
+            color: this.tint
         }
     }
 
     updateGraphics() {
         if (this.enabled) {
+            if (page == "main") {
+                if(this.name) {
+                    Graficos.renderPin(this.graphics, this.buildData());
+                }
+                return;
+            }
             Graficos.renderReference(this.graphics, this.buildData());
 
             for(const connection of this.connections) {
@@ -1171,6 +1236,9 @@ export class Connection {
     
     updateGraphics() {
         if (this.enabled && this.end.enabled && this.start.enabled) {
+            if (page == "main") {
+                return;
+            }
             Graficos.renderConnection(this.graphics, this.buildData());
         } else {
             Graficos.clearConnection(this.graphics);
@@ -1220,6 +1288,7 @@ export class Building {
         this.colorIn = 0xa4d1f5;
         this.borderSize = 8;
         this.radius = 5;
+        this.tint = 0x000000;
 
         this.polygonGraphics = Graficos.createPoly();
 
@@ -1310,8 +1379,14 @@ export class Building {
     buildData() {
         return {
             size: this.pinSize,
-            coordinate: this.coordinate
+            coordinate: this.coordinate,
+            color: this.tint
         }
+    }
+
+    setColor(color) {
+        this.tint = color;
+        this.updateGraphics();
     }
 
     buildDataPoly() {
@@ -1530,6 +1605,9 @@ export class Area {
 
     updateGraphics() {
         if (this.enabled && this.areaMode) {
+            if (page == "main") {
+                return;
+            }
             Graficos.renderArea(this.graphics, this.buildData());
         } else {
             Graficos.clearArea(this.graphics);

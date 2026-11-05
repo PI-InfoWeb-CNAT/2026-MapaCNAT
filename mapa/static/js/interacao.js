@@ -11,6 +11,7 @@ let bannerBtn;
 let pinBtn;
 let pinDone = false;
 let mapInterface;
+let hoverMap;
 
 let bannerTab;
 let imageInput;
@@ -229,7 +230,16 @@ class Pointer {
         moved = false;
         
         if (page == "main") {
-            return;
+            let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+            let border = Editor.Referencer.getOverlappingDotPins(coord);
+            if(!border) {
+                border = Editor.Buildings.getOverlappingAreas(coord).building;
+            }
+            if(border) {
+                Actions.openBanner(border);
+            } else {
+                Actions.closeBanner();
+            }
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
@@ -310,37 +320,22 @@ class Pointer {
         moved = true;
         hoverTargetSet = new Set();
         if (page == "main") {
-            if (clicking) {
-                Pointer.defaultMove(e);
-            } else {
-                if (!pinMap) return;
-                let colPin = Editor.Builder.getCollisionPin(pinMap, e.clientX, e.clientY);
-                let colConstruction = Editor.Builder.getCollisionMapArea(e.clientX, e.clientY, constructionMap);
-                let resultPin = colPin || pinMap[colConstruction.text];
-
-                Graficos.map.style.cursor = 'default';
-                if (resultPin) {
-                    if (resultPin != previousTitle && previousTitle) {
-                        let gfxObj = {"pin": previousTitle.gfx, "label": previousTitle.label};
-                        Graficos.updatePin(gfxObj, previousTitle.x, previousTitle.y, previousTitle.text, false);
-                        previousTitle.gfx = gfxObj.pin;
-                        previousTitle.label = gfxObj.label;
-                    }
-                    let gfxObj = {"pin": resultPin.gfx, "label": resultPin.label};
-                    Graficos.updatePin(gfxObj, resultPin.x, resultPin.y, resultPin.text, true);
-                    resultPin.gfx = gfxObj.pin;
-                    resultPin.label = gfxObj.label;
-                    Graficos.map.style.cursor = 'pointer';
-                    
-                    previousTitle = resultPin;
-                } else if (previousTitle) {
-                    let gfxObj = {"pin": previousTitle.gfx, "label": previousTitle.label};
-                    Graficos.updatePin(gfxObj, previousTitle.x, previousTitle.y, previousTitle.text, false);
-                    previousTitle.gfx = gfxObj.pin;
-                    previousTitle.label = gfxObj.label;
-                }
+            let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+            let border = Editor.Referencer.getOverlappingDotPins(coord);
+            if(!border) {
+                border = Editor.Buildings.getOverlappingAreas(coord).building;
             }
-            
+            if(hoverMap) {
+                hoverMap.setColor(0x000000);
+                hoverMap = false;
+            }
+            if(border) {
+                hoverMap = border;
+                border.setColor(0x0080ff);
+            } else {
+                if (!clicking) return;
+                Pointer.defaultMove(e);
+            }
         } else if (page == "editor") {
             if (editorMode == EditorModes.FREE) {
                 if (!clicking) return;
@@ -1281,10 +1276,8 @@ export async function save() {
 
     const formData = new FormData();
 
-    // 1. Envia a estrutura do mapa como JSON na chave 'data'
     formData.append("data", JSON.stringify(payload));
 
-    // 2. Anexa cada arquivo do objeto files no FormData usando a chave 'file_<bannerId>'
     if (files && typeof files === 'object') {
         for (const [bannerId, file] of Object.entries(files)) {
             if (file instanceof File) {
@@ -1293,7 +1286,6 @@ export async function save() {
         }
     }
 
-    // 3. Envia o FormData para a requisição
     await saveMapState(formData);
 }
 
@@ -1326,9 +1318,11 @@ function setDisplayImage(file) {
         
     reader.onload = function (event) {
         imageWrapper.style.backgroundImage = `url('${event.target.result}')`;
-        imageWrapper.style.borderStyle = 'solid';
+        // imageWrapper.style.borderStyle = 'solid';
         
-        imageLabel.textContent = 'substituir imagem';
+        if(page == "editor") {
+            imageLabel.textContent = 'substituir imagem';
+        }
 
         Holdable.initialPos["img"] = file;
     };
@@ -1340,9 +1334,11 @@ function resetDisplayImage() {
     imageInput.value = '';
 
     imageWrapper.style.backgroundImage = 'none';
-    imageWrapper.style.borderStyle = '';
+    // imageWrapper.style.borderStyle = '';
 
-    imageLabel.textContent = 'adicionar imagem +';
+    if(page == "editor") {
+        imageLabel.textContent = 'adicionar imagem +';
+    }
 }
 
 function updateImageDisplay(e) {
@@ -1376,11 +1372,12 @@ export function addListeners(map) {
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebar-backdrop');
 
-        mapInterface = document.getElementById('screen-ui');
-
-        imageLabel = document.getElementById("banner-image");
-        bannerTitle = document.getElementById("banner-title");
-        bannerDescription = document.getElementById("banner-description");
+        bannerTab = document.getElementById("screen-ui");
+        imageInput = document.getElementById("banner-image-input");
+        imageWrapper = document.getElementById("image-upload-wrapper");
+        imageLabel = document.getElementById("image-upload-label");
+        bannerTitle = document.getElementById("place-name");
+        bannerDescription = document.getElementById("place-description");
 
         const closeMenu = () => deactivateList([sidebar, backdrop]);
 -
@@ -1492,17 +1489,5 @@ export function addListeners(map) {
         imageInput.addEventListener("change", e => updateImageDisplay(e));
 
         Editor.load();
-
-        // let k = 100;
-        // let r = 100;
-        // let c = [1920 / 2, 1080 / 2];
-        // for(let i = 0; i < k; i ++) {
-        //     Actions.newReference(c[0] + Math.cos(i / k * Math.PI * 2) * r, c[1] + Math.sin(i / k * Math.PI * 2) * r);
-        // }
-        // for(let i of Object.values(Editor.Referencer.references)) {
-        //     for(let j of Object.values(Editor.Referencer.references)) {
-        //         Actions.newConnection(i, j);
-        //     }
-        // }
     }
 }

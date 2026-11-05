@@ -39,15 +39,37 @@
 
     <section id="screen-ui" class="hidden main-ui">
         <article id="banner">
-            <div class="banner-image-container">
-                <img id="banner-image" src="" alt="Imagem do local">
-            </div>
+            <form class="banner-form" id="bannerForm">
+                <label 
+                    for="banner-image-input" 
+                    class="image-upload-wrapper" 
+                    id="image-upload-wrapper"
+                    style="pointer-events: none !important;">
+                    <input 
+                        type="file" 
+                        id="banner-image-input" 
+                        accept="image/*"
+                        disabled>
+                </label>
 
-            <div class="banner-content">
-                <h1 id="banner-title" class="banner-title">Nome do Local</h1>
-                <hr class="banner-divider">
-                <p id="banner-description" class="banner-description">Descrição do local...</p>
-            </div>
+                <div class="banner-content">
+                    <input 
+                        type="text" 
+                        class="editable-title" 
+                        id="place-name" 
+                        placeholder="Nome da construção"
+                        readonly>
+
+                    <hr class="banner-divider">
+
+                    <textarea 
+                        class="editable-description" 
+                        id="place-description" 
+                        placeholder="Escreva uma descrição..."
+                        readonly
+                    ></textarea>
+                </div>
+            </form>
         </article>
     </section>
 

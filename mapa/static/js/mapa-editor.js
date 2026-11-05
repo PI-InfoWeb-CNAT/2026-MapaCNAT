@@ -1,5 +1,6 @@
 import * as Graficos from "./graficos.js";
 import * as Interacao from "./interacao.js";
+import * as Editor from "./editor.js";
 
 fetch(config)
 .then(response => response.json())
@@ -7,6 +8,7 @@ fetch(config)
     data.page = "editor";
     
     Graficos.setContext(data);
+    Editor.setContext(data);
     Graficos.main().then(() => {
         Interacao.setContext(data);
         Interacao.addListeners(Graficos.map);

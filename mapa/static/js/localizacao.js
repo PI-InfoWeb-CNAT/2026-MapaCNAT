@@ -15,7 +15,7 @@ function success(position) {
 
 function error(err) {
     console.warn(`ERROR(${err.code}): ${err.message}`);
-    Graficos.showPin(false);
+    // Graficos.showPin(false);
 }
 
 export function UserLocation() {

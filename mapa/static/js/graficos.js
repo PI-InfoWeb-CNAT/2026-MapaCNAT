@@ -81,7 +81,7 @@ export function renderReference(graphics, data) {
     let colorIn = data.colorIn;
     let size = data.size;
     let pos = data.coordinate.getIn("normal");
-    
+
     graphics.point
     .clear()
     .circle(pos.x, pos.y, size / zoom)
@@ -139,6 +139,7 @@ export function createConnection() {
 }
 
 export function renderConnection(graphics, data) {
+
     let alpha = data.alpha;
     let colorOut = data.colorOut;
     let colorIn = data.colorIn;
@@ -233,6 +234,7 @@ export function createPin(name) {
 export function renderPin(graphics, data) {
     let pos = data.coordinate.getIn("normal");
     let size = data.size;
+    graphics.children[0].style.fill = data.color;
     graphics.visible = true;
     graphics.x = pos.x;
     graphics.y = pos.y;
@@ -282,6 +284,7 @@ export function createArea() {
 }
 
 export function renderArea(graphics, data) {
+
     let alpha = data.alpha;
     let colorOut = data.colorOut;
     let colorIn = data.colorIn;
@@ -371,6 +374,7 @@ export function createPoly() {
 }
 
 export function renderPoly(graphics, data) {
+
     graphics.clear();
 
     let rawPoints = data.points;
