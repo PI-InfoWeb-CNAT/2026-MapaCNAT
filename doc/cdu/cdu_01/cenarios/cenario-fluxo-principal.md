@@ -2,17 +2,18 @@
 
 - **Ator principal**: Usuário qualquer
 - **Atores secundários**: Nenhum
-- **Resumo**: O Usuário localiza um local pelo mapa
+- **Resumo**: O usuário desloca-se para uma nova região do mapa
 - **Pré-condição**: Usuário está na tela inicial da aplicação
-- **Pós-Condição**: Usuário é apresentado um banner informativo do local
+- **Pós-Condição**: Usuário é deslocado para uma nova visão de locais no mapa
 
 ## Fluxo Principal
 
 1. Usuário
-   1. aperta duas vezes no lugar da tela em que está o local que deseja conhecer
+   1. desliza pela tela do mapa
+      ![tela do mapa](./img/cenario-uso-do-mapa-0.png)
       ![tela do mapa](./img/cenario-uso-do-mapa-0.png)
 2. Sistema
-   1. Registrar o local de aperto relativo ao mapa
+   1. Muda a tela do usuário para uma nova região do mapa
       - Javascript obtêm as coordenadas do ponto de toque na tela e processa o objeto em colisão com o toque.
    2. Busca as informações do local selecionado
       - O django retorna ao javascript os dados do local selecionado.
