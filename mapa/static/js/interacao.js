@@ -1289,7 +1289,6 @@ export async function save() {
     Actions.saveBanner();
  
     const { payload, files } = Editor.buildPayload();
-    console.log(payload, files);
  
     const formData = new FormData();
     formData.append("data", JSON.stringify(payload));
