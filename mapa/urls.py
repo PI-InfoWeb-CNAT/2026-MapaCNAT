@@ -10,6 +10,7 @@ urlpatterns = [
     path('register/', views.register, name='register'),
     path('mapa/editor/', views.mapa_editor, name='mapa_editor'),
     path('mapa/editor/save', views.mapa_editor_data, name='mapa_editor_data'),
+    path('mapa/search', views.name_search, name="name_search"),
     path('feedback/', views.feedback, name='feedback'),
     path('', views.home, name='home'),
 ]

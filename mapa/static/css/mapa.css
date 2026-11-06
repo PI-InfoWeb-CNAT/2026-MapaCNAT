@@ -30,13 +30,18 @@ canvas {
     margin-right: 1em;
     
     display: flex;
-    align-items: center;
-    
-    height: 50px; 
+    flex-direction: column;
+
     box-sizing: border-box; 
     
     padding: 0 15px;
     border-radius: 25px;
+
+}
+#search-header {
+    display: flex;
+    align-items: center;
+    height: 50px;
 }
 
 #search input[type="search"] {
@@ -44,7 +49,7 @@ canvas {
     outline: none;
     font-size: 1em;
     font-family: var(--font-family);
-    width: 100%;
+    width: 400px;
     background: transparent;
     margin-left: 10px;
 }
@@ -70,9 +75,8 @@ canvas {
 
 header {
     position: absolute;
-    width: calc(100% - 2 * var(--body-margin));
     display: flex;
-    align-items: center; 
+    align-items: top; 
     box-sizing: border-box;
     background-color: transparent;
     z-index: 2;
@@ -192,6 +196,11 @@ header {
     background-color: white;
 }
 
+#logo-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
 #editor-logo {
     width: 56px;
     margin: var(--body-margin);
@@ -207,6 +216,15 @@ header {
     height: 100%;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
+
+#pin-mode {
+    position: fixed;
+    left: calc(var(--body-margin) * 5 + 56px);
+    bottom: var(--body-margin);
+}
+#pin-mode button {
+    margin: 0 !important;
+}
 #editor-modes hr {
     border: none;
     height: 2px;
@@ -215,8 +233,11 @@ header {
 }
 
 .editor-button {
-    margin: var(--body-margin);
+    margin: 0 var(--body-margin);
     border-radius: 5px;
+}
+.editor-button:first-child {
+    margin-top:var(--body-margin);
 }
 .mode-active {
     background-color: #aaa;
@@ -328,8 +349,12 @@ header {
 }
 .button-list {
     background-color: #ddd;
-    overflow-y: scroll;
-    margin: var(--body-margin) 0;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+
+    margin: var(--body-margin);
     height: calc(100vh - 2 * 56px - 4 * var(--body-margin));
 }
 
@@ -357,12 +382,11 @@ header {
     margin-bottom: auto; 
     flex-shrink: 0;
 }
-/* Banner Container */
 #banner {
     width: 500px;
     background-color: white;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-    padding: 0; /* Removed padding to allow full-width image */
+    padding: 0;
     box-sizing: border-box;
     overflow-y: auto;
     font-family: var(--font-family, sans-serif);
@@ -373,7 +397,6 @@ header {
     flex-direction: column;
 }
 
-/* Image Upload Wrapper - Edge-to-Edge */
 .image-upload-wrapper {
     position: relative;
     width: 100%;
@@ -410,14 +433,12 @@ header {
     box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
 
-/* Editable Text Fields & Content Area */
 .banner-content {
     padding: var(--body-margin, 15px);
     display: flex;
     flex-direction: column;
 }
 
-/* Editable Title Input */
 .editable-title {
     width: 100%;
     border: none;
@@ -437,7 +458,6 @@ header {
     font-weight: bold;
 }
 
-/* Separator Line */
 .banner-divider {
     border: none;
     height: 1px;
@@ -445,7 +465,6 @@ header {
     margin: 12px 0;
 }
 
-/* Editable Description Textarea */
 .editable-description {
     width: 100%;
     border: none;
@@ -483,7 +502,7 @@ header {
 }
 
 #map-container header {
-    width: calc(100% - 2 * var(--body-margin));
+    width: 500px;
 }
 
 #map-container #orientation {
@@ -518,4 +537,71 @@ header {
     height: 100%;
     object-fit: cover;
     display: block;
+}
+.modal-button {
+    background-color: white;
+    color: green;
+    border: none;
+    padding: 1em;
+}
+.modal-button:hover {
+    cursor: pointer;
+}
+.modal-button-main {
+    background-color: green;
+    color: white;
+    border-radius: 15px;
+}
+
+#search-list {
+  list-style: none;
+  padding: 0;
+  margin: 15px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.search-element {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 5px;
+}
+.search-element:hover {
+    background-color: #eee;
+    cursor: pointer;
+}
+
+.search-element img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  background-color: #f2f2f2;
+  flex-shrink: 0;
+}
+
+.search-element-description {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.search-element-description h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  color: #111111;
+  line-height: 1.2;
+}
+
+.search-element-description p {
+  margin: 3px 0 0 0;
+  font-size: 14px;
+  color: #767676;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
 }

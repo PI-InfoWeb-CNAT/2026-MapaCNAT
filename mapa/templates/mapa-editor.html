@@ -16,16 +16,21 @@
 {% block content %}
 <header>
     <div id="editor-modes">
-        <a href="{% url 'home' %}"><img id="editor-logo" src="{% static 'img/logo-pequeno.png' %}"></a>
+        <a href="{% url 'home' %}" id="logo-wrapper"><img id="editor-logo" src="{% static 'img/logo-pequeno.png' %}"></a>
         <div class="button-list">
-            <button class="padding icon editor-button" id="selection"><i class="fa-solid fa-arrow-pointer"></i></button>
+            <button class="padding icon editor-button" id="selection"><i class="fa-solid fa-hand"></i></button>
             <button class="padding icon editor-button" id="delete"><i class="fa-solid fa-trash"></i></button>
             <hr>
             <button class="padding icon editor-button" id="build"><i class="fa-solid fa-building"></i></button>
             <button class="padding icon editor-button" id="reference"><i class="fa-solid fa-map-pin"></i></button>
-            <button class="padding icon editor-button" id="conection"><i class="fa-solid fa-circle-nodes"></i></button>
+            <button class="padding icon editor-button" id="connection"><i class="fa-solid fa-circle-nodes"></i></button>
+            <button class="padding icon editor-button" id="banner-btn"><i class="fa-solid fa-image"></i></button>
         </div>
         <button class="padding icon editor-button hidden" style="cursor: pointer;" id="submit"><i class="fa-solid fa-check"></i></button>
+    </div>
+    <div id="pin-mode" class="hidden">
+        <button class="padding icon editor-button hidden" id="pin"><i class="fa-solid fa-check"></i></button>
+        <button class="padding icon editor-button" id="pin"><img src="{% static 'img/pino.png' %}" width="32" alt="Pino de Construção"></button>
     </div>
 </header>
 
@@ -83,8 +88,19 @@
                     <label for="build-name">Nome:</label>
                     <input type="text" id="build-name" placeholder="Use siglas se possível..." required>
                 </div>
-                <button type="submit" class="modal-submit-btn" id="buildFormSubmit">Continuar</button>
+                <button type="submit" class="modal-submit-btn" id="build-form-submit">Continuar</button>
             </form>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="confirm-modal-overlay">
+        <div class="modal-box">
+            <button type="button" class="modal-close" id="close-confirm-modal">&times;</button>
+            <h3>Termine de editar a construção</p>
+            <div class="form-group">
+                <button class="modal-button" id="modal-decline">Voltar</button>
+                <button class="modal-button modal-button-main" id="modal-confirm">Descartar Alterações</button>
+            </div>
         </div>
     </div>
     
@@ -92,6 +108,7 @@
         const config = "{% static 'json/config.json' %}";
         const mapImage =  "{% static 'svg/mapa.svg' %}";
         const pinImage = "{% static 'img/pino.png' %}";
+        const entranceImage = "{% static 'img/entrance.png' %}";
         const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
