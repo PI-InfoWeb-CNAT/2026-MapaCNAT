@@ -1,18 +1,6 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "build_files.sh",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "staticfiles"
-      }
-    },
-    {
-      "src": "mapa_cnat/wsgi.py",
-      "use": "@vercel/python"
-    }
-  ],
+  "buildCommand": "bash build_files.sh",
+  "outputDirectory": "staticfiles",
   "routes": [
     {
       "src": "/(.*)",
