@@ -84,7 +84,9 @@
         const mapImage =  "{% static 'svg/mapa.svg' %}";
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
+        const defaultUserImage = "{% static 'img/default-user.png' %}";
         const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
+        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' %}";
         const URLNameSearch = window.location.origin + "{% url 'name_search' %}";
         const defaultImage = "{% static 'img/ifrn-logotipo.png' %}";
     </script>

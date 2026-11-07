@@ -1466,7 +1466,7 @@ export async function addListeners(map) {
         const mimeType = blob.type || 'image/png'; 
         defaultImageFile = new File([blob], 'ifrn-logo.png', { type: mimeType });
 
-        let currentResults = []; // Store active search results in scope
+        let currentResults = [];
 
         nameSearch(searchField, Editor.queryBanner, async function (results) {
             currentResults = results || [];

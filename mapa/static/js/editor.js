@@ -206,12 +206,13 @@ export async function queryBanner(query) {
 
 export async function load() {
     try {
-        const response = await fetch(URLSaveMap);
+        const response = await fetch(URLLoadMap);
         if (!response.ok) throw new Error('Erro de rede');
         const data = await response.json();
         let refMap = {};
         let areaMap = {};
-
+        
+        
         if (data.buildings) {
             for (const key of Object.keys(data.buildings)) {
                 let build = data.buildings[key];
