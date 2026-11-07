@@ -3,6 +3,22 @@ import * as Geometria from "./geometria.js";
 
 let page;
 
+const MIME_MAP = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'text/plain': 'txt',
+    'application/json': 'json',
+};
+
+function generateRandomFileName(mimeType) {
+    const extension = MIME_MAP[mimeType] || mimeType.split('/')[1] || 'bin';
+    const timestamp = Date.now().toString(36);
+    const randomPart = Math.random().toString(36).substring(2, 8);
+    return `${timestamp}-${randomPart}.${extension}`;
+}
+
 export function setContext(context) {
     page = context.page;
 }
@@ -53,7 +69,6 @@ export function buildPayload() {
     let bannerCounter = 0;
 
     function registerBanner(banner) {
-        // console.log(banner);
         if (!hasBannerContent(banner)) return null;
 
         const id = bannerCounter++;
@@ -109,12 +124,13 @@ export function buildPayload() {
     return { payload, files };
 }
 
-async function urlToFile(url, filename = 'banner.png') {
+async function urlToFile(url) {
     if (!url) return null;
     const response = await fetch(url);
     const blob = await response.blob();
     
     const mimeType = blob.type || 'image/png'; 
+    let filename = generateRandomFileName(mimeType);
     return new File([blob], filename, { type: mimeType });
 }
 
@@ -193,7 +209,6 @@ export async function load() {
         const response = await fetch(URLSaveMap);
         if (!response.ok) throw new Error('Erro de rede');
         const data = await response.json();
-        
         let refMap = {};
         let areaMap = {};
 
@@ -216,9 +231,8 @@ export async function load() {
                         building.banner.detailed = true;
                     }
                     if (banner.image) {
-                        const fileName = banner.image ? banner.image.split('/').pop() : `banner_${key}.png`;
                         const imageFile = banner.image 
-                        ? await urlToFile(banner.image, fileName) 
+                        ? await urlToFile(banner.image) 
                         : null;
                         building.banner.image = imageFile;
                         building.banner.detailed = true;
@@ -259,9 +273,8 @@ export async function load() {
                     refObject.banner.detailed = true;
                 }
                 if (banner.image) {
-                    const fileName = banner.image ? banner.image.split('/').pop() : `banner_${key}.png`;
                     const imageFile = banner.image 
-                    ? await urlToFile(banner.image, fileName) 
+                    ? await urlToFile(banner.image) 
                     : null;
                     refObject.banner.image = imageFile;
                     refObject.banner.detailed = true;

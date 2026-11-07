@@ -1290,6 +1290,7 @@ export async function save() {
  
     const { payload, files } = Editor.buildPayload();
  
+
     const formData = new FormData();
     formData.append("data", JSON.stringify(payload));
  

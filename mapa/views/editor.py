@@ -29,8 +29,6 @@ def mapa_editor_data(request: Any):
             else:
                 data = json.loads(request.body)
 
-            # NOTE: Filesystem cleanup removed since files are now stored in DB
-
             with transaction.atomic():
                 Rota.objects.all().delete()
                 Referencia.objects.all().delete()
@@ -47,13 +45,11 @@ def mapa_editor_data(request: Any):
                 areas_catalog = data.get("areas", {})
                 connections_data = data.get("connections", {})
 
-                # 1. Map entrance reference IDs to building IDs
                 ref_to_build_id = {}
                 for b_id, b_info in buildings_data.items():
                     for entrance_ref_id in b_info.get("entrances", []):
                         ref_to_build_id[str(entrance_ref_id)] = str(b_id)
 
-                # 2. Save Buildings and their Regions (Areas)
                 for b_id, b_info in buildings_data.items():
                     construcao = Construcao.objects.create(
                         nome=b_info.get("name", ""),
@@ -71,7 +67,6 @@ def mapa_editor_data(request: Any):
                                 construcao=construcao
                             )
 
-                # 3. Save References linking single building parent via FK
                 for ref_id, ref_info in references_data.items():
                     linked_build_id = ref_to_build_id.get(str(ref_id))
                     linked_build = build_db_map.get(linked_build_id) if linked_build_id else None
@@ -92,7 +87,6 @@ def mapa_editor_data(request: Any):
 
                     image_bytes = None
                     mime_type = None
-
                     if uploaded_file:
                         image_bytes = uploaded_file.read()
                         mime_type = uploaded_file.content_type or 'image/png'
@@ -155,11 +149,9 @@ def export_db_to_json(request=None):
     build_banner_map = {}
     ref_banner_map = {}
 
-    # 1. Banners catalog (Updated to use BLOB route instead of banner.imagem.url)
     for banner in Banner.objects.all():
         banner_id_str = str(banner.id)
         
-        # Build image URL pointing to your get_banner_image endpoint
         if banner.imagem_blob:
             image_url = reverse('banner_image', args=[banner.id])
             if request:
@@ -178,7 +170,6 @@ def export_db_to_json(request=None):
         if banner.referencia_id is not None:
             ref_banner_map[banner.referencia_id] = banner.id
 
-    # 2. Areas catalog & building mapping
     areas_dict = {}
     build_areas_map = defaultdict(list)
     for area in ConstrucaoRegiao.objects.all():
@@ -190,7 +181,6 @@ def export_db_to_json(request=None):
         if area.construcao_id is not None:
             build_areas_map[area.construcao_id].append(area.id)
 
-    # 3. References catalog & entrance mapping
     references_dict = {}
     build_entrances_map = defaultdict(list)
     for ref in Referencia.objects.all():
@@ -202,7 +192,6 @@ def export_db_to_json(request=None):
         if ref.construcao_id is not None:
             build_entrances_map[ref.construcao_id].append(ref.id)
 
-    # 4. Buildings catalog
     buildings_dict = {}
     for build in Construcao.objects.all():
         build_id_str = str(build.id)
@@ -214,7 +203,6 @@ def export_db_to_json(request=None):
             "banner": build_banner_map.get(build.id)
         }
 
-    # 5. Connections (Routes) catalog
     connections_dict = {}
     for route in Rota.objects.all():
         start_id = route.local_inicio_id
