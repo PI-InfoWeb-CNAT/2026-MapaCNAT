@@ -35,10 +35,14 @@ Durante a semana normalmente utilizamos de um grupo do Whatsapp por questão de 
 Clique em cada um dos links abaixo para acessar o artefato específico.
 
 1. [Documento de Visão](doc/visao/README.md)
-1. [Protótipos de Interface com o Usuário](doc/prototipos/prototipos.md)
-1. [Modelo de Casos de Uso](doc/cdu/README.md)
-1. [Modelo de Domínio](doc/dominio/dominio.md)
-1. [Modelo de Dados](doc/bd/bd.md)
+2. [Protótipos de Interface com o Usuário](doc/prototipos/prototipos.md)
+3. [Modelo de Casos de Uso](doc/cdu/README.md)
+4. [Modelo de Domínio](doc/dominio/dominio.md)
+5. [Modelo de Dados](doc/bd/bd.md)
+
+# Implantação
+
+1. [Implantação](doc/implantacao/README.md)
 
 # Manual da Desenvolvedor
 
