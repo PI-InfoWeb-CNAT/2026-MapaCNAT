@@ -1,6 +1,10 @@
 #!/bin/bash
 
-uv pip install --system .
+uv python install 3.12
+uv venv --python 3.12 .venv
+source .venv/bin/activate
+
+uv pip install .
 
 python manage.py migrate --noinput
 
