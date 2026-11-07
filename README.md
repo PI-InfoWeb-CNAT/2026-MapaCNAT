@@ -42,7 +42,7 @@ Clique em cada um dos links abaixo para acessar o artefato específico.
 
 # Implantação
 
-1. [Implantação](doc/implantacao/README.md)
+[Processo de Implantação com Vercel](doc/implantacao/README.md)
 
 # Manual da Desenvolvedor
 
