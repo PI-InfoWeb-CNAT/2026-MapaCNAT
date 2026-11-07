@@ -1290,6 +1290,7 @@ export async function save() {
  
     const { payload, files } = Editor.buildPayload();
  
+
     const formData = new FormData();
     formData.append("data", JSON.stringify(payload));
  
@@ -1475,7 +1476,6 @@ export async function addListeners(map) {
                 return;
             }
 
-            // 1. Store index in data-index
             searchList.innerHTML = currentResults.map((item, index) => `
                 <li class="search-element" data-index="${index}">
                 <img src="${item.image}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultImage}';">
