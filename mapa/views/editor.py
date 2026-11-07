@@ -1,7 +1,9 @@
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponse, JsonResponse, Http404
 from django.db import transaction
 from django.template import loader
+from django.urls import reverse
 from typing import Any
 import json
 from collections import defaultdict
@@ -27,15 +29,7 @@ def mapa_editor_data(request: Any):
             else:
                 data = json.loads(request.body)
 
-            banners_dir = os.path.join(settings.MEDIA_ROOT, "banners")
-
-            if os.path.exists(banners_dir):
-                for filename in os.listdir(banners_dir):
-                    path = os.path.join(banners_dir, filename)
-                    if os.path.isdir(path):
-                        shutil.rmtree(path)
-                    else:
-                        os.remove(path)
+            # NOTE: Filesystem cleanup removed since files are now stored in DB
 
             with transaction.atomic():
                 Rota.objects.all().delete()
@@ -44,8 +38,8 @@ def mapa_editor_data(request: Any):
                 Construcao.objects.all().delete()
                 Banner.objects.all().delete()
 
-                ref_db_map = {}        # Maps frontend ref_id -> Referencia instance
-                build_db_map = {}      # Maps frontend build_id -> Construcao instance
+                ref_db_map = {}
+                build_db_map = {}
                 
                 buildings_data = data.get("buildings", {})
                 references_data = data.get("references", {})
@@ -88,7 +82,6 @@ def mapa_editor_data(request: Any):
                     )
                     ref_db_map[str(ref_id)] = ref_obj
 
-                # 4. Save Banners with unique key-based filenames
                 for banner_id, banner_info in banners_data.items():
                     title = banner_info.get("title", "")
                     description = banner_info.get("description", "")
@@ -97,10 +90,12 @@ def mapa_editor_data(request: Any):
                     if uploaded_file is None and not title and not description:
                         continue
 
-                    # Rename the uploaded file using banner_id as key
+                    image_bytes = None
+                    mime_type = None
+
                     if uploaded_file:
-                        ext = os.path.splitext(uploaded_file.name)[1].lower()
-                        uploaded_file.name = f"banner_{banner_id}{ext}"
+                        image_bytes = uploaded_file.read()
+                        mime_type = uploaded_file.content_type or 'image/png'
 
                     linked_build = None
                     linked_ref = None
@@ -119,12 +114,12 @@ def mapa_editor_data(request: Any):
                     Banner.objects.create(
                         titulo=title,
                         descricao=description,
-                        imagem=uploaded_file,
+                        imagem_blob=image_bytes,
+                        imagem_mime_type=mime_type,
                         construcao=linked_build,
                         referencia=linked_ref
                     )
 
-                # 5. Save Connections (Routes)
                 conn_items = connections_data.values() if isinstance(connections_data, dict) else connections_data
                 for conn in conn_items:
                     start_ref_id = str(conn.get("a"))
@@ -145,14 +140,32 @@ def mapa_editor_data(request: Any):
     elif request.method == "GET":
         return JsonResponse(export_db_to_json(request=request), status=200)
 
+def get_banner_image(request, banner_id):
+    banner = get_object_or_404(Banner, pk=banner_id)
+    if not banner.imagem_blob:
+        raise Http404("Image does not exist")
+    
+    return HttpResponse(
+        banner.imagem_blob, 
+        content_type=banner.imagem_mime_type or 'image/png'
+    )
+    
 def export_db_to_json(request=None):
     banners_dict = {}
     build_banner_map = {}
     ref_banner_map = {}
 
+    # 1. Banners catalog (Updated to use BLOB route instead of banner.imagem.url)
     for banner in Banner.objects.all():
         banner_id_str = str(banner.id)
-        image_url = banner.imagem.url if banner.imagem else ""
+        
+        # Build image URL pointing to your get_banner_image endpoint
+        if banner.imagem_blob:
+            image_url = reverse('banner_image', args=[banner.id])
+            if request:
+                image_url = request.build_absolute_uri(image_url)
+        else:
+            image_url = ""
 
         banners_dict[banner_id_str] = {
             "image": image_url,
