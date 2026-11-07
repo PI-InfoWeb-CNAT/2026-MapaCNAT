@@ -1,0 +1,86 @@
+:root {
+    --page-margin: 50px;
+}
+body {
+    overflow-x: hidden;
+    min-height: 100vh;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+header {
+    display: flex;
+}
+header img {
+    margin: var(--page-margin);
+}
+header #autenticar {
+    margin: var(--page-margin) var(--page-margin) 0 auto;
+    display: block;
+}
+header #autenticar button {
+    display: inline;
+}
+header button {
+    background-color: rgba(0, 0, 0, 0);
+    border: 2px solid var(--dark-green-main);
+    border-radius: 10px;
+    font-size: 1em;
+    padding: .5em 1em;
+}
+header a, header i {
+    color: var(--dark-green-main);
+}
+main button {
+    border: none;
+    border-radius: 10px;
+    padding: 1em 3em;
+    font-size: 1.2em;
+    background-color: var(--dark-green-main);
+    margin: var(--page-margin);
+}
+.botao {
+    display: flex;
+    
+}
+.botao a {
+    display: inline;
+    text-decoration: none;
+    font-family: var(--font-family);
+}
+.botao:hover {
+    cursor: pointer;
+}
+.alt-botao {
+    background-color: var(--dark-green-main);
+}
+.alt-botao a, .alt-botao i {
+    color: white;
+}
+main a {
+    margin: 0 1em;
+}
+main button a, main button i {
+    color: white;
+}
+main h1 {
+    font-size: 2.5em;
+}
+main h1, main p {
+    width: 400px;
+    margin: 25px var(--page-margin);
+    color: var(--blue-main);
+    font-family: var(--font-family);
+}
+@media (max-width: 768px) {
+    :root {
+        --page-margin: 25px;
+    }
+    header img {
+        width: 150px;
+    }
+    main h1, main p {
+        width: 75vw;
+    }
+}
