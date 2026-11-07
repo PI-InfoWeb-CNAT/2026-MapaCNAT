@@ -26,10 +26,10 @@
 
 > Obs. as seções a seguir apenas serão utilizadas na segunda unidade do PDSWeb (segundo orientações do gerente do projeto).
 
-## Diagrama de Interação (Sequência ou Comunicação)
+## Diagrama de Sequência
 
-> Substituir pela imagem correspondente...
+![Sequeência](sequencia.png)
 
 ## Diagrama de Classes de Projeto
 
-> Substituir pela imagem contendo as classes (modelo, visão e templates) que implementam o respectivo CDU...
+![Classe de Projeto](classe-de-projeto.png)
