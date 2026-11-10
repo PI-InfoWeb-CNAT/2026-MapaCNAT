@@ -8,14 +8,10 @@ function success(position) {
     const longitude = position.coords.longitude;
     const accuracy = position.coords.accuracy;
     let point = coordinateTransform.transform([latitude, longitude]);
-    
-    // Graficos.setPinPosition(point[0], point[1]);
-    // Graficos.showPin(true);
 }
 
 function error(err) {
     console.warn(`ERROR(${err.code}): ${err.message}`);
-    // Graficos.showPin(false);
 }
 
 export function UserLocation() {
