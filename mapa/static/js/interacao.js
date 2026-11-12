@@ -617,6 +617,7 @@ class Pointer {
         if (Holdable.phantomObject) {
             Holdable.phantomObject.updateGraphics();
         }
+        Route.redraw();
         Graficos.updateMap();
     }
 }

@@ -274,7 +274,7 @@ function frame(now) {
     lastDrawn = { x: display.x, y: display.y };
 
     const [lat, lon] = toLatLon(display.x, display.y);
-    const point = [0, 0];//coordinateTransform.transform([lat, lon]);
+    const point = coordinateTransform.transform([lat, lon]);
     const coord = Editor.newCoord(point[0], point[1], "normal");
     Editor.Self.setPos(coord);
     
