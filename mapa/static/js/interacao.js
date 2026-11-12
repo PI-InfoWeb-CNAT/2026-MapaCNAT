@@ -4,6 +4,7 @@ import * as Editor from "./editor.js";
 import * as Toasts from './toasts.js';
 import * as Modals from './modals.js';
 import * as Localizacao from './localizacao.js';
+import { getShortestPath } from "./rota.js";
 
 let mapObj;
 let buildBtn;
@@ -23,9 +24,22 @@ let shareIdResolved;
 
 let currentObjectURL = null;
 
+let searchForm;
+let searchHeader;
 let searchField;
 let searchExpansion;
 let searchList;
+
+let routeFields;
+let routeOrigin;
+let routeDestination;
+
+let search;               // { schedule, now, cancel }
+let activeInput = null;   // campo de texto em uso no momento
+let expanded = false;
+let currentResults = [];
+let currentQuery = '';
+let activeImageUrls = [];
 
 let userTab;
 let shareLocation;
@@ -519,13 +533,11 @@ class Pointer {
     }
 
     static up(e) {
+        const wasClicking = clicking;
         clicking = false;
         
         if (page == "main") {
-            searchExpansion.classList.add("hidden");
-            if (moved) {
-                return;
-            }
+            if (moved || !wasClicking) return;
 
             let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
             let pin = Editor.Self.getOverlappingPin(coord);
@@ -605,6 +617,7 @@ class Pointer {
         if (Holdable.phantomObject) {
             Holdable.phantomObject.updateGraphics();
         }
+        Route.redraw();
         Graficos.updateMap();
     }
 }
@@ -1484,46 +1497,373 @@ function updateImageDisplay(e) {
     setDisplayImage(file);
 }
 
-let timerId = null;
-function nameSearch(inputElement, searchFn, onResults, delay = 300) {
-  let activeAbortController = null;
-  let currentRequestId = 0;
+function createSearch(searchFn, onResults, delay = 300) {
+    let timer = null;
+    let controller = null;
+    let requestId = 0;
 
-  inputElement.addEventListener('input', (event) => {
-    const query = event.target.value.trim();
+    const cancel = () => {
+        clearTimeout(timer);
+        controller?.abort();
+        requestId++;
+    };
 
-    clearTimeout(timerId);
+    const execute = async (query) => {
+        controller?.abort();
+        controller = new AbortController();
+        const { signal } = controller;
+        const id = ++requestId;
 
-    if (!query) {
-      if (activeAbortController) activeAbortController.abort();
-      onResults([]);
-      return;
+        try {
+            const data = await searchFn(query, { signal });
+            if (id !== requestId || signal.aborted) return;
+            onResults(data || [], query);
+        } catch (error) {
+            if (error.name !== 'AbortError') console.error('Search error:', error);
+        }
+    };
+
+    const run = (rawQuery, wait) => {
+        const query = rawQuery.trim();
+        cancel();
+        if (!query) {
+            onResults([], '');
+            return;
+        }
+        if (wait) timer = setTimeout(() => execute(query), wait);
+        else execute(query);
+    };
+
+    return {
+        schedule: (query) => run(query, delay), // com debounce (digitando)
+        now: (query) => run(query, 0),          // imediata (ao focar/clicar)
+        cancel,
+    };
+}
+
+function selfPoint() {
+    return Editor.Self ? { ref: Editor.Self, title: 'Sua localização', self: true } : null;
+}
+
+// título do ponto já escolhido naquele campo (para não buscar o que já foi escolhido)
+function pointTitle(input) {
+    if (input === routeOrigin) return Route.origin?.title;
+    if (input === routeDestination) return Route.destination?.title;
+    return null;
+}
+
+// a expansão (HR + lista) só aparece quando há conteúdo
+function syncExpansion() {
+    const hasContent = searchList.children.length > 0;
+    searchExpansion.classList.toggle('hidden', !(expanded && hasContent));
+}
+
+function renderSearchList() {
+    activeImageUrls.forEach(url => URL.revokeObjectURL(url));
+    activeImageUrls = [];
+
+    let html = '';
+
+    // no campo de partida, "Sua localização" é sempre uma opção rápida
+    if (Route.active && activeInput === routeOrigin && Editor.Self && !Route.origin?.self) {
+        html += `
+            <li class="search-element" data-self="true">
+                <div class="search-element-icon"><i class="fa-solid fa-location-crosshairs"></i></div>
+                <aside class="search-element-description">
+                    <h3>Sua localização</h3>
+                    <p>Usar onde você está agora</p>
+                </aside>
+            </li>`;
     }
 
-    timerId = setTimeout(async () => {
-      if (activeAbortController) {
-        activeAbortController.abort();
-      }
-      activeAbortController = new AbortController();
-      const signal = activeAbortController.signal;
+    if (currentQuery) {
+        if (currentResults.length === 0) {
+            html += '<li class="no-results">Nenhum resultado</li>';
+        } else {
+            html += currentResults.map((item, index) => {
+                let imageSrc = defaultImage;
 
-      const requestId = ++currentRequestId;
+                if (item.image instanceof Blob) {
+                    imageSrc = URL.createObjectURL(item.image);
+                    activeImageUrls.push(imageSrc);
+                } else if (typeof item.image === 'string' && item.image) {
+                    imageSrc = item.image;
+                }
 
-      try {
-        const data = await searchFn(query, { signal });
+                return `
+                    <li class="search-element" data-index="${index}">
+                        <img src="${imageSrc}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultImage}';">
+                        <aside class="search-element-description">
+                            <h3>${item.title}</h3>
+                            <p>${item.description}</p>
+                        </aside>
+                    </li>`;
+            }).join('');
+        }
+    }
 
-        if (requestId !== currentRequestId || signal.aborted) {
-          return;
+    searchList.innerHTML = html;
+    syncExpansion();
+}
+
+// chamado ao focar ou clicar em qualquer um dos três campos
+function activateInput(input) {
+    expanded = true;
+
+    if (activeInput !== input) {
+        activeInput = input;
+        search.cancel();
+        currentResults = [];
+        currentQuery = '';
+
+        const text = input.value.trim();
+        if (text && text !== pointTitle(input)) search.now(text);
+    }
+
+    renderSearchList();
+}
+
+function pickResult(item) {
+    const target = activeInput;
+    activeInput = null;
+    expanded = false;
+    syncExpansion();
+
+    if (Route.active) {
+        const point = { ref: item.ref, title: item.title };
+        Route.setPoint(target === routeOrigin ? 'origin' : 'destination', point);
+    } else {
+        goToPlace(item.ref);
+        Actions.openBanner(item.ref);
+        searchField.blur();
+    }
+}
+
+function pickSelf() {
+    activeInput = null;
+    expanded = false;
+    syncExpansion();
+    Route.setPoint('origin', selfPoint());
+}
+
+function nearestNodeId(coordinate, nodes) {
+    const p = coordinate.getIn("normal");
+    let best = null;
+    let bestDist = Infinity;
+
+    for (const [id, pos] of Object.entries(nodes)) {
+        const d = (pos.x - p.x) ** 2 + (pos.y - p.y) ** 2;
+        if (d < bestDist) {
+            bestDist = d;
+            best = id; // Object.entries devolve strings, que é o que o A* espera
+        }
+    }
+    return best;
+}
+
+function findRoute(fromPlace, toPlace) {
+    const edges = [];
+    const nodes = {};
+
+    // só entram referências que têm conexão, então o nó mais próximo nunca é um nó isolado
+    for (const conn of Object.values(Editor.Connections.connections)) {
+        edges.push([conn.start.id, conn.end.id]);
+        nodes[conn.start.id] = conn.start.coordinate.getIn("normal");
+        nodes[conn.end.id] = conn.end.coordinate.getIn("normal");
+    }
+
+    const startId = nearestNodeId(fromPlace.coordinate, nodes);
+    const goalId = nearestNodeId(toPlace.coordinate, nodes);
+    if (startId === null || goalId === null) return null;
+
+    const ids = getShortestPath(edges, nodes, startId, goalId);
+    return ids ? ids.map(id => Editor.Referencer.references[id]) : null;
+}
+
+class Route {
+    constructor() { throw new Error("Classe estática. Não instancie."); }
+
+    static active = false;
+    static origin = null;       // { ref, title, self? }
+    static destination = null;  // { ref, title }
+
+    static start(place) {
+        const title = bannerTitle.value.trim() || 'Destino';
+        const wasActive = this.active;
+
+        this.active = true;
+        searchHeader.classList.add("hidden");
+        routeFields.classList.remove("hidden");
+
+        this.destination = { ref: place, title };
+        routeDestination.value = title;
+
+        if (!wasActive) {
+            this.origin = selfPoint();
+            routeOrigin.value = this.origin ? this.origin.title : '';
+            if (!this.origin) routeOrigin.focus();
         }
 
-        onResults(data);
+        this.update();
+    }
 
-      } catch (error) {
-        if (error.name === 'AbortError') return;
-        console.error('Search error:', error);
-      }
-    }, delay);
-  });
+    static stop() {
+        this.active = false;
+        this.origin = null;
+        this.destination = null;
+        routeOrigin.value = '';
+        routeDestination.value = '';
+
+        routeFields.classList.add("hidden");
+        searchHeader.classList.remove("hidden");
+
+        activeInput = null;
+        expanded = false;
+        search.cancel();
+        currentResults = [];
+        currentQuery = '';
+        renderSearchList();
+
+        this.update();
+    }
+
+    static setPoint(which, point) {
+        this[which] = point;
+
+        const input = which === 'origin' ? routeOrigin : routeDestination;
+        const other = which === 'origin' ? routeDestination : routeOrigin;
+        const otherPoint = which === 'origin' ? this.destination : this.origin;
+
+        input.value = point ? point.title : '';
+
+        if (point && !otherPoint) other.focus();
+        else input.blur();
+
+        this.update();
+    }
+
+    static clearPoint(which) {
+        if (!this[which]) return;
+        this[which] = null;
+        this.update();
+    }
+
+    static swap() {
+        [this.origin, this.destination] = [this.destination, this.origin];
+        [routeOrigin.value, routeDestination.value] = [routeDestination.value, routeOrigin.value];
+        this.update();
+    }
+    
+    static segments = [];
+    static graphics = null;
+    static points = [];
+
+    static update() {
+        this.points = [];
+
+        if (this.active && this.origin && this.destination) {
+            const path = findRoute(this.origin.ref, this.destination.ref);
+
+            if (path) {
+                this.points = [
+                    this.origin.ref.coordinate,
+                    ...path.map(ref => ref.coordinate),
+                    this.destination.ref.coordinate,
+                ];
+            } else {
+                Toasts.toaster.show({ text: 'Nenhum caminho encontrado' });
+            }
+        }
+
+        this.redraw();
+    }
+
+    static redraw() {
+        if (this.points.length < 2) {
+            if (this.graphics) Graficos.clearConnection(this.graphics);
+            return;
+        }
+
+        if (!this.graphics) this.graphics = Graficos.createConnection();
+
+        Graficos.renderConnection(this.graphics, {
+            points: this.points,
+            colorOut: 0x1a7f37,
+            colorIn: 0x4cc36a,
+            alpha: 1,
+            size: 8,
+        });
+    }
+}
+
+function initSearch() {
+    searchForm = document.getElementById("search");
+    searchHeader = document.getElementById("search-header");
+    searchField = document.getElementById("search-field");
+    searchExpansion = document.getElementById("search-expansion");
+    searchList = document.getElementById("search-list");
+
+    routeFields = document.getElementById("route-fields");
+    routeOrigin = document.getElementById("route-origin");
+    routeDestination = document.getElementById("route-destination");
+
+    search = createSearch(Editor.queryBanner, (results, query) => {
+        currentResults = results;
+        currentQuery = query;
+        renderSearchList();
+    });
+
+    for (const input of [searchField, routeOrigin, routeDestination]) {
+        input.addEventListener('focus', () => activateInput(input));
+        input.addEventListener('click', () => activateInput(input));
+        input.addEventListener('input', () => {
+            activeInput = input;
+            expanded = true;
+            if (input !== searchField) {
+                Route.clearPoint(input === routeOrigin ? 'origin' : 'destination');
+            }
+            search.schedule(input.value);
+        });
+    }
+
+    // clicar em qualquer parte da barra foca o campo
+    searchHeader.addEventListener('click', (e) => {
+        if (e.target !== searchField) searchField.focus();
+    });
+    routeFields.addEventListener('click', (e) => {
+        const field = e.target.closest('.route-field');
+        if (field && e.target.tagName !== 'INPUT') field.querySelector('input').focus();
+    });
+
+    // clicar fora da barra fecha a lista
+    document.addEventListener('pointerdown', (e) => {
+        if (searchForm.contains(e.target)) return;
+        activeInput = null;
+        expanded = false;
+        syncExpansion();
+    });
+
+    // Enter escolhe o primeiro resultado (em vez de recarregar a página)
+    searchForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (currentResults[0]) pickResult(currentResults[0]);
+    });
+
+    searchList.addEventListener('click', (event) => {
+        const element = event.target.closest('.search-element');
+        if (!element) return;
+
+        if (element.dataset.self) {
+            pickSelf();
+            return;
+        }
+
+        const item = currentResults[element.dataset.index];
+        if (item?.ref) pickResult(item);
+    });
+
+    document.getElementById("route-close").addEventListener('click', () => Route.stop());
+    document.getElementById("route-swap").addEventListener('click', () => Route.swap());
 }
 
 function updateUrlParams(paramsObj) {
@@ -1608,12 +1948,7 @@ export async function addListeners(map) {
         bannerTitle = document.getElementById("place-name");
         bannerDescription = document.getElementById("place-description");
 
-        searchField = document.getElementById("search-field");
-        searchExpansion = document.getElementById("search-expansion");
-        searchList = document.getElementById("search-list");
-        searchField.addEventListener("click", () => {
-            searchExpansion.classList.remove("hidden");
-        });
+        initSearch();
 
         const response = await fetch(defaultImage);
         const blob = await response.blob();
@@ -1621,61 +1956,16 @@ export async function addListeners(map) {
         const mimeType = blob.type || 'image/png'; 
         defaultImageFile = new File([blob], 'ifrn-logo.png', { type: mimeType });
 
-        let currentResults = [];
-        let activeImageUrls = [];
-
-        nameSearch(searchField, Editor.queryBanner, async function (results) {
-            currentResults = results || [];
-            activeImageUrls.forEach(url => URL.revokeObjectURL(url));
-            activeImageUrls = [];
-
-            if (currentResults.length === 0) {
-                searchList.innerHTML = '<li class="no-results">Nenhum resultado</li>';
-                return;
-            }
-            const html = currentResults.map((item, index) => {
-                let imageSrc = defaultImage;
-
-                if (item.image instanceof Blob) { // File inherits from Blob
-                imageSrc = URL.createObjectURL(item.image);
-                activeImageUrls.push(imageSrc);
-                } else if (typeof item.image === 'string' && item.image) {
-                imageSrc = item.image;
-                }
-
-                return `
-                <li class="search-element" data-index="${index}">
-                    <img src="${imageSrc}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultImage}';">
-                    <aside class="search-element-description">
-                    <h3>${item.title}</h3>
-                    <p>${item.description}</p>
-                    </aside>
-                </li>
-                `;
-            }).join('');
-
-            searchList.innerHTML = html;
-            }, 300);
-
-            searchList.addEventListener('click', (event) => {
-            const element = event.target.closest('.search-element');
-            if (element) {
-                const index = element.dataset.index;
-                const targetRef = currentResults[index]?.ref;
-                
-                if (targetRef) {
-                    goToPlace(targetRef);
-                    Actions.openBanner(targetRef);
-                }
-            }
-        });
-
         const closeMenu = () => deactivateList([sidebar, backdrop]);
--
+
         orientationBtn.addEventListener('click', () => Graficos.smoothRotation(0));
         optionsBtn.addEventListener('click', () => activateList([sidebar, backdrop]));
         closeBtn.addEventListener('click', closeMenu);
         backdrop.addEventListener('click', closeMenu);
+
+        document.getElementById("banner-route").addEventListener("click", () => {
+            if (bannerHeld()) Route.start(Holdable.object);
+        });
 
         userTab = document.getElementById("user-tab");
         shareLocation = document.getElementById("share-location");
