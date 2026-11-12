@@ -1,0 +1,10 @@
+{
+  "buildCommand": "bash build_files.sh",
+  "outputDirectory": "staticfiles",
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "mapa_cnat/wsgi.py"
+    }
+  ]
+}

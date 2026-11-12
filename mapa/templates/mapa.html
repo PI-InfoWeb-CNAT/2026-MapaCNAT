@@ -4,7 +4,9 @@
 
 {% block title %}MapaCNAT | Explorar{% endblock %}
 
-{% block style %}<link rel="stylesheet" href="{% static 'css/mapa.css' %}">{% endblock %}
+{% block style %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
+{% endblock %}
 
 {% block content %}
 <main id="app-layout">
@@ -28,8 +30,30 @@
                 <div id="search-header">
                     <img src="{% static 'img/logo-pequeno.png' %}">
                     <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
-                    <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." required>
+                    <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." autocomplete="off">
                 </div>
+
+                <div id="route-fields" class="hidden">
+                    <button type="button" class="route-icon-btn" id="route-close" aria-label="Sair das rotas">
+                        <i class="fa-solid fa-arrow-left"></i>
+                    </button>
+
+                    <div class="route-inputs">
+                        <div class="route-field route-field--origin">
+                            <span class="route-dot"></span>
+                            <input type="search" id="route-origin" placeholder="Local de partida" autocomplete="off">
+                        </div>
+                        <div class="route-field route-field--destination">
+                            <i class="fa-solid fa-location-dot"></i>
+                            <input type="search" id="route-destination" placeholder="Destino" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <button type="button" class="route-icon-btn" id="route-swap" aria-label="Inverter partida e destino">
+                        <i class="fa-solid fa-right-left"></i>
+                    </button>
+                </div>
+
                 <div id="search-expansion" class="hidden">
                     <hr>
                     <ol id="search-list"></ol>
@@ -41,54 +65,89 @@
         <div id="map"></div>
 
         <button class="padding icon" id="orientation"><i class="fa-solid fa-compass"></i></button>
+
+        <div id="user-tab" class="collapsed">
+            <img id="user-avatar" src="{% static 'img/default-user.png' %}" alt="Foto do usuário">
+
+            <div id="user-info">
+                <h3 id="user-name">Você</h3>
+                <p>Atualmente em: <strong id="user-place">—</strong></p>
+                <p>No IF desde: <strong id="user-since">—</strong></p>
+            </div>
+
+            <button type="button" id="share-location">
+                <i class="fa-solid fa-location-arrow"></i>
+                <span>Compartilhar localização atual</span>
+            </button>
+        </div>
     </div>
 
     <section id="screen-ui" class="hidden main-ui">
-        <article id="banner">
+        <article id="banner" class="banner-view">
             <form class="banner-form" id="bannerForm">
-                <label 
-                    for="banner-image-input" 
-                    class="image-upload-wrapper" 
+                <label
+                    for="banner-image-input"
+                    class="image-upload-wrapper"
                     id="image-upload-wrapper"
                     style="pointer-events: none !important;">
-                    <input 
-                        type="file" 
-                        id="banner-image-input" 
+                    <input
+                        type="file"
+                        id="banner-image-input"
                         accept="image/*"
                         disabled>
                 </label>
 
                 <div class="banner-content">
-                    <input 
-                        type="text" 
-                        class="editable-title" 
-                        id="place-name" 
+                    <input
+                        type="text"
+                        class="editable-title"
+                        id="place-name"
                         placeholder="Nome da construção"
                         readonly>
 
+                    <div class="banner-actions">
+                        <button type="button" class="banner-action banner-action--primary" id="banner-route">
+                            <i class="fa-solid fa-diamond-turn-right"></i>
+                            <span>Rotas</span>
+                        </button>
+                        <button type="button" class="banner-action banner-action--secondary" id="banner-share">
+                            <i class="fa-solid fa-share-nodes"></i>
+                            <span>Compartilhar</span>
+                        </button>
+                    </div>
+
                     <hr class="banner-divider">
 
-                    <textarea 
-                        class="editable-description" 
-                        id="place-description" 
-                        placeholder=""
-                        readonly
-                    ></textarea>
+                    <div class="banner-section">
+                        <h4 class="banner-section-title">Sobre</h4>
+                        <textarea
+                            class="editable-description"
+                            id="place-description"
+                            placeholder=" "
+                            readonly
+                        ></textarea>
+                    </div>
                 </div>
             </form>
         </article>
     </section>
+
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
     <script>
         const config = "{% static 'json/config.json' %}";
         const mapImage =  "{% static 'svg/mapa.svg' %}";
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
+        const defaultUserImage = "{% static 'img/default-user.png' %}";
         const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
-        const URLNameSearch = window.location.origin + "{% url 'name_search' %}";
+        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' %}";
+        let sharePlaceLat = "{{ lat }}";
+        let sharePlaceLong = "{{ long }}";
         const defaultImage = "{% static 'img/ifrn-logotipo.png' %}";
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
+    
     <script type="module" src="{% static 'js/mapa.js' %}"></script>
 </main>
 {% endblock %}

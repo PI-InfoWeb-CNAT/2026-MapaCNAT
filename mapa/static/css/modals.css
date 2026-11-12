@@ -1,0 +1,94 @@
+.app-modal {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+
+  /* Fit width and height to content, with a sensible minimum width */
+  width: fit-content;
+  min-width: 280px; /* Prevents grid/flex children from collapsing */
+  height: fit-content;
+  max-width: 92vw;
+  max-height: 90vh;
+  overflow: hidden; /* Move scrolling to the inner body so the header stays clean */
+
+  border: none;
+  border-radius: 16px;
+  padding: 0;
+  background: #ffffff;
+  color: #1f2937;
+  box-shadow: 0 20px 30px rgba(0, 0, 0, 0.2);
+  font-family: sans-serif;
+
+  opacity: 0;
+  transform: translateY(16px) scale(0.98);
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.2, 0, 0.1, 1);
+}
+
+.app-modal[data-size="sm"] { max-width: min(360px, 92vw); }
+.app-modal[data-size="md"] { max-width: min(480px, 92vw); }
+.app-modal[data-size="lg"] { max-width: min(720px, 92vw); }
+
+.app-modal.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.app-modal.closing {
+  opacity: 0;
+  transform: translateY(16px) scale(0.98);
+}
+
+/* Backdrop escurecido */
+.app-modal::backdrop {
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0px);
+  transition: background 0.25s ease, backdrop-filter 0.25s ease;
+}
+
+.app-modal.open::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.app-modal-box {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh; /* Matches modal max-height */
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.app-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0; /* Prevents the header from ever collapsing or overlapping */
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.app-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.app-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0 4px;
+}
+
+.app-modal-close:hover {
+  color: #111827;
+}
+
+.app-modal-body {
+  overflow-y: auto;
+}
