@@ -1300,10 +1300,13 @@ class Actions {
 
     static async openModal(name) {
         if (name == "share") {
-            const url = new URL(window.location.href);
+            const url = new URL(window.location.origin + window.location.pathname);
+
             let geocoords = Localizacao.mapToGeographical(Editor.Self.coordinate.getIn("normal"));
             url.searchParams.set('lat', geocoords[0]);
             url.searchParams.set('long', geocoords[1]);
+
+            window.history.replaceState({}, '', url);
             console.log(url);
 
             Modals.modal.open({
