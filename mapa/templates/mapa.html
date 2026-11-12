@@ -59,12 +59,18 @@
                 </label>
 
                 <div class="banner-content">
-                    <input 
-                        type="text" 
-                        class="editable-title" 
-                        id="place-name" 
-                        placeholder="Nome da construção"
-                        readonly>
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                        <input 
+                            type="text" 
+                            class="editable-title" 
+                            id="place-name" 
+                            placeholder="Nome da construção"
+                            readonly>
+                        
+                        <button type="button" id="share-location-btn" title="Partilhar Localização" style="background: none; border: none; cursor: pointer; font-size: 1.2rem; color: #555; padding: 4px;">
+                            <i class="fa-solid fa-share-nodes"></i>
+                        </button>
+                    </div>
 
                     <hr class="banner-divider">
 
@@ -87,6 +93,22 @@
         const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
         const URLNameSearch = window.location.origin + "{% url 'name_search' %}";
         const defaultImage = "{% static 'img/ifrn-logotipo.png' %}";
+
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            const xParam = params.get("x");
+            const yParam = params.get("y");
+
+            if (xParam !== null && yParam !== null) {
+                const x = parseFloat(xParam);
+                const y = parseFloat(yParam);
+
+                if (!isNaN(x) && !isNaN(y)) {
+                    window.initialCoordinates = { x, y };
+                    console.log("Coordenadas extraídas da URL:", window.initialCoordinates);
+                }
+            }
+        })();
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
     <script type="module" src="{% static 'js/mapa.js' %}"></script>
