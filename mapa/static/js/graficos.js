@@ -188,7 +188,7 @@ export function renderConnection(graphics, data) {
     let size = data.size;
 
     let points = data.points;
-    let radius = data.radius ? data.radius : 5;
+    let radius = data.radius ? data.radius : 15;
 
     if (points.length < 2) {
         return;
