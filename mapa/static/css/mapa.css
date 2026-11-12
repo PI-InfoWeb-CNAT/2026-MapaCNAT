@@ -250,68 +250,10 @@ header {
 .hidden {
     display: none !important;
 }
-
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background-color: rgba(0, 0, 0, 0.6);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease-in-out;
-    z-index: 99999;
-}
-
-.modal-overlay.active {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.modal-box {
-    background-color: white;
-    padding: 25px;
-    border-radius: 8px;
-    width: 350px;
-    max-width: 85%;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-    position: relative;
-    transform: translateY(-20px);
-    transition: transform 0.3s ease-in-out;
-    font-family: var(--font-family);
-}
-
-.modal-overlay.active .modal-box {
-    transform: translateY(0);
-}
-
-.modal-close {
-    position: absolute;
-    top: 10px;
-    right: 15px;
-    background: none;
-    border: none;
-    font-size: 1.5em;
-    cursor: pointer;
-    color: #888;
-}
-
-.modal-close:hover {
-    color: #000;
-}
-
 .modal-form {
     display: flex;
     flex-direction: column;
     gap: 15px;
-}
-
-.modal-form h3 {
-    margin: 0 0 5px 0;
 }
 
 .form-group {
@@ -499,6 +441,7 @@ header {
     flex: 1 1 auto;
     height: 100vh;
     min-width: 0;
+    --user-tab-height: 0px;
 }
 
 #map-container header {
@@ -604,4 +547,167 @@ header {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
+}
+
+
+
+#user-tab {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    box-sizing: border-box;
+    padding: 20px 30px;
+    background-color: white;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+    font-family: var(--font-family, sans-serif);
+
+    transform: translateY(0);
+    transition: transform 0.3s ease, visibility 0.3s;
+}
+
+/* Hidden: slides down off-screen. Not using .hidden because
+   it has display:none !important, which would kill the animation. */
+#user-tab.collapsed {
+    transform: translateY(100%);
+    visibility: hidden;
+}
+
+#user-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    background-color: #ddd;
+    flex-shrink: 0;
+}
+
+#user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+#user-info h3 {
+    margin: 0 0 6px 0;
+    font-size: 1.2em;
+}
+
+#user-info p {
+    margin: 2px 0 0 0;
+    font-size: 0.9em;
+    color: #444;
+}
+
+#share-location {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 30px;
+    padding: 14px 24px;
+    background-color: green;
+    color: white;
+    font-family: inherit;
+    font-size: 1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#share-location:hover {
+    background-color: #006400;
+}
+
+/* Compass rides on top of the tab and moves with it */
+#map-container #orientation {
+    bottom: calc(var(--body-margin) + var(--user-tab-height));
+    transition: bottom 0.3s ease;
+}
+
+@media (max-width: 700px) {
+    #user-tab { flex-wrap: wrap; }
+    #share-location { width: 100%; justify-content: center; }
+}
+
+
+/* --- Share Modal Inner Content --- */
+.share-social-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.social-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.social-btn:hover {
+  background: #e5e7eb;
+  transform: translateY(-2px);
+}
+
+.social-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.share-link-box {
+  display: flex;
+  align-items: center;
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 4px 4px 4px 12px;
+  gap: 8px;
+}
+
+.share-link-box input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: #4b5563;
+  outline: none;
+  min-width: 0; /* Prevents flex input from overflowing the box */
+  text-overflow: ellipsis;
+}
+
+.btn-copy {
+  background: #111827;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-copy:hover {
+  background: #374151;
+}
+
+.btn-copy.copied {
+  background: #16a34a;
 }

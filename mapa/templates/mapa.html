@@ -4,7 +4,9 @@
 
 {% block title %}MapaCNAT | Explorar{% endblock %}
 
-{% block style %}<link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">{% endblock %}
+{% block style %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
+{% endblock %}
 
 {% block content %}
 <main id="app-layout">
@@ -41,6 +43,21 @@
         <div id="map"></div>
 
         <button class="padding icon" id="orientation"><i class="fa-solid fa-compass"></i></button>
+
+        <div id="user-tab" class="collapsed">
+            <img id="user-avatar" src="{% static 'img/default-user.png' %}" alt="Foto do usuário">
+
+            <div id="user-info">
+                <h3 id="user-name">Você</h3>
+                <p>Atualmente em: <strong id="user-place">—</strong></p>
+                <p>No IF desde: <strong id="user-since">—</strong></p>
+            </div>
+
+            <button type="button" id="share-location">
+                <i class="fa-solid fa-location-arrow"></i>
+                <span>Compartilhar localização atual</span>
+            </button>
+        </div>
     </div>
 
     <section id="screen-ui" class="hidden main-ui">
@@ -79,16 +96,22 @@
         </article>
     </section>
 
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
     <script>
         const config = "{% static 'json/config.json' %}";
         const mapImage =  "{% static 'svg/mapa.svg' %}";
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
+        const defaultUserImage = "{% static 'img/default-user.png' %}";
         const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
-        const URLNameSearch = window.location.origin + "{% url 'name_search' %}";
+        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' %}";
+        let sharePlaceLat = "{{ lat }}";
+        let sharePlaceLong = "{{ long }}";
         const defaultImage = "{% static 'img/ifrn-logotipo.png' %}";
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
+    
     <script type="module" src="{% static 'js/mapa.js' %}"></script>
 </main>
 {% endblock %}

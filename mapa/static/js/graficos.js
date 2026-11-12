@@ -10,6 +10,8 @@ let areasContainer;
 let pinContainer;
 let app;
 
+let avatarSize = 20;
+
 export let tempConnection;
 export let tempReference;
 
@@ -19,12 +21,14 @@ let color;
 let textColor;
 let mapImagePath;
 let pinImagePath;
+let userImagePath;
 let entranceImagePath;
 
 let entranceTexture;
 
 let pinoSprite;
 let mapSprite;
+let userTexture;
 let mapTextures;
 let gl;
 
@@ -244,6 +248,7 @@ export function createPin(name) {
     let buildPino = PIXI.Sprite.from(pinImagePath);
     buildPino.anchor.set(0.5, 1);
     buildPino.scale.set(1 / 7.5);
+    buildPino.tint = 0xff0000;
     
     const nodeLabel = new PIXI.Text({
         text: name,
@@ -277,12 +282,9 @@ export function renderPin(graphics, data) {
     graphics.x = pos.x;
     graphics.y = pos.y;
     graphics.scale.set(size / zoom);
-    // graphics.label.x = pos.x + graphics.pin.width / 2 / zoom;
-    // graphics.label.y = pos.y;
 }
 export function clearPin(graphics) {
     graphics.visible = false;
-    // graphics.label.visible = false;
 }
 
 export function destroyPin(graphics) {
@@ -486,6 +488,118 @@ export function destroyPoly(graphics) {
     });
 }
 
+/////////////////// User pin
+
+export function createSelfPin() {
+    let userPin = PIXI.Sprite.from(pinImagePath);
+    userPin.anchor.set(0.5, 1);
+    userPin.scale.set(1 / 7.5);
+    userPin.tint = 0x0033ee;
+
+    let pinGfx = new PIXI.Container();
+    pinGfx.addChild(userPin);
+
+    let userAvatar = PIXI.Sprite.from(userImagePath);
+    userAvatar.anchor.set(0.5);
+    
+    userAvatar.width = avatarSize;
+    userAvatar.height = avatarSize;
+
+    const radius = avatarSize / 2;
+    let avatarMask = new PIXI.Graphics();
+    avatarMask.beginFill(0xffffff);
+    avatarMask.drawCircle(0, 0, radius);
+    avatarMask.endFill();
+
+    userAvatar.position.set(0, -23);
+    avatarMask.position.set(0, -23);
+
+    userAvatar.mask = avatarMask;
+    pinGfx.addChild(userAvatar);
+    pinGfx.addChild(avatarMask);
+
+    pinContainer.addChild(pinGfx);
+
+    return pinGfx;
+}
+
+export function renderSelfPin(graphics, data) {
+    let visibility = data.visible;
+    let online = data.online;
+    let size = data.size;
+    let pos = data.coordinate.getIn("normal");
+
+    graphics.visible = visibility;
+    
+    let color;
+    if (online) {
+        color = 0x0033ee;
+    } else {
+        color = 0x454545;
+    }
+    graphics.children[0].tint = color;
+
+    graphics.x = pos.x;
+    graphics.y = pos.y;
+
+    graphics.scale.set(size / zoom);
+}
+
+export function destroySelfPin(graphics) {
+    pinContainer.removeChild(graphics);
+    
+    for (const child of graphics.children) {
+        child.destroy({
+            children: true,
+            texture: true,
+            baseTexture: true
+        });
+    }
+
+    graphics.destroy({ children: true });
+}
+
+/////////////////// touch pin
+
+export function createTouchPin() {
+    let buildPino = PIXI.Sprite.from(pinImagePath);
+    buildPino.anchor.set(0.5, 1);
+    buildPino.scale.set(1 / 7.5);
+    buildPino.tint = 0xff0000;
+    
+    let pinGfx = new PIXI.Container();
+    
+    pinGfx.addChild(buildPino);
+
+    pinContainer.addChild(pinGfx);
+
+    return pinGfx;
+}
+
+export function renderTouchPin(graphics, data) {
+    let pos = data.coordinate.getIn("normal");
+    let size = data.size;
+    graphics.children[0].tint = data.color;
+    graphics.visible = true;
+    graphics.x = pos.x;
+    graphics.y = pos.y;
+    graphics.scale.set(size / zoom);
+}
+
+export function destroyTouchPin(graphics) {
+    pinContainer.removeChild(graphics);
+    
+    for (const child of graphics.children) {
+        child.destroy({
+            children: true,
+            texture: true,
+            baseTexture: true
+        });
+    }
+
+    graphics.destroy({ children: true });
+}
+
 /////////////////// Context
 
 export function setContext(context) {
@@ -497,6 +611,7 @@ export function setContext(context) {
 
     mapImagePath = mapImage;
     pinImagePath = pinImage;
+    userImagePath = defaultUserImage;
     entranceImagePath = entranceImage;
 }
 
@@ -540,8 +655,9 @@ export async function main() {
     pinoSprite.y = 0;
     pinoSprite.scale.set(1 / zoom / 7.5);
     mapContainer.addChild(pinoSprite);
-
+    
     entranceTexture = await PIXI.Assets.load(entranceImagePath);
+    userTexture = await PIXI.Assets.load(userImagePath);
     
     textContainer = new PIXI.Container();
     mapContainer.addChild(textContainer);
@@ -554,7 +670,7 @@ export async function main() {
 
     referenceContainer = new PIXI.Container();
     mapContainer.addChild(referenceContainer);
-
+    
     pinContainer = new PIXI.Container();
     mapContainer.addChild(pinContainer);
 
@@ -659,11 +775,7 @@ function Zoom(z) {
     mapContainer.scale.set(zoom);
     pinoSprite.scale.set(1 / zoom / 7.5);
     for (const child of pinContainer.children) {
-        if (child instanceof PIXI.Text) {
-            child.scale.set(1 / zoom);
-        } else {
-            child.scale.set(1 / zoom);
-        }
+        child.scale.set(1 / zoom);
     }
     for (const child of textContainer.children) {
         child.scale.set(1 / zoom / 2);
