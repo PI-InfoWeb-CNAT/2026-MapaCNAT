@@ -116,8 +116,8 @@ export function getShortestPath(rawEdges, rawNodes, startId, goalId) {
     let weight = 1;
     
     if (posA && posB) {
-      const dx = posA.pos.x - posB.pos.x;
-      const dy = posA.pos.y - posB.pos.y;
+      const dx = posA.x - posB.x;
+      const dy = posA.y - posB.y;
       weight = Math.sqrt(dx * dx + dy * dy);
     }
 

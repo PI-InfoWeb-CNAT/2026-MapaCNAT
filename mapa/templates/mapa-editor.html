@@ -87,6 +87,8 @@
         const defaultUserImage = "{% static 'img/default-user.png' %}";
         const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
         const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' %}";
+        let sharePlaceLat = false;
+        let sharePlaceLong = false;
         const bannerURL = "{% url 'banner_image' 0 %}";
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
