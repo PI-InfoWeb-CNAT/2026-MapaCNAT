@@ -1307,7 +1307,6 @@ class Actions {
             url.searchParams.set('long', geocoords[1]);
 
             window.history.replaceState({}, '', url);
-            console.log(url);
 
             Modals.modal.open({
                 title: 'Compartilhar página',
