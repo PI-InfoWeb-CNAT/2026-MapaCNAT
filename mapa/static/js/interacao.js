@@ -2119,7 +2119,6 @@ function updateUrlParams(paramsObj) {
 }
 
 function goToPlace(place) {
-    Graficos.hideTemporaryPin();
     const targetPos = Graficos.getContainerPosForPoint(place.coordinate.pos);
     Graficos.animateTransform(targetPos.x, targetPos.y);
 }
