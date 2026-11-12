@@ -1484,8 +1484,8 @@ function updateImageDisplay(e) {
     setDisplayImage(file);
 }
 
+let timerId = null;
 function nameSearch(inputElement, searchFn, onResults, delay = 300) {
-  let timerId = null;
   let activeAbortController = null;
   let currentRequestId = 0;
 
@@ -1622,24 +1622,39 @@ export async function addListeners(map) {
         defaultImageFile = new File([blob], 'ifrn-logo.png', { type: mimeType });
 
         let currentResults = [];
+        let activeImageUrls = [];
 
         nameSearch(searchField, Editor.queryBanner, async function (results) {
             currentResults = results || [];
+            activeImageUrls.forEach(url => URL.revokeObjectURL(url));
+            activeImageUrls = [];
 
             if (currentResults.length === 0) {
                 searchList.innerHTML = '<li class="no-results">Nenhum resultado</li>';
                 return;
             }
+            const html = currentResults.map((item, index) => {
+                let imageSrc = defaultImage;
 
-            searchList.innerHTML = currentResults.map((item, index) => `
+                if (item.image instanceof Blob) { // File inherits from Blob
+                imageSrc = URL.createObjectURL(item.image);
+                activeImageUrls.push(imageSrc);
+                } else if (typeof item.image === 'string' && item.image) {
+                imageSrc = item.image;
+                }
+
+                return `
                 <li class="search-element" data-index="${index}">
-                <img src="${item.image}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultImage}';">
-                <aside class="search-element-description">
+                    <img src="${imageSrc}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultImage}';">
+                    <aside class="search-element-description">
                     <h3>${item.title}</h3>
                     <p>${item.description}</p>
-                </aside>
+                    </aside>
                 </li>
-            `).join('');
+                `;
+            }).join('');
+
+            searchList.innerHTML = html;
             }, 300);
 
             searchList.addEventListener('click', (event) => {

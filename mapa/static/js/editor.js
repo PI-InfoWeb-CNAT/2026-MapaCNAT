@@ -194,7 +194,7 @@ export async function queryBanner(query) {
       if (score > 0) {
         acc.push({
           title: banner.title,
-          image: banner.image.name ? "/media/banners/" + banner.image.name : "/static/img/ifrn-logo.png",
+          image: banner.image,//.name ? "/media/banners/" + banner.image.name : "/static/img/ifrn-logo.png",
           description: banner.description,
           ref: element,
           score: score
