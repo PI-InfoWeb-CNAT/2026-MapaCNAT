@@ -10,8 +10,6 @@ let areasContainer;
 let pinContainer;
 let app;
 
-let selfPin;
-
 let avatarSize = 20;
 
 export let tempConnection;
@@ -521,26 +519,85 @@ export function createSelfPin() {
     pinGfx.addChild(avatarMask);
 
     pinContainer.addChild(pinGfx);
-    selfPin = pinGfx;
+
+    return pinGfx;
 }
 
-export function showSelfPin(bool) {
-    selfPin.visible = bool;
-}
+export function renderSelfPin(graphics, data) {
+    let visibility = data.visible;
+    let online = data.online;
+    let size = data.size;
+    let pos = data.coordinate.getIn("normal");
 
-export function selfPinOnline(bool) {
-    if (bool) {
+    graphics.visible = visibility;
+    
+    let color;
+    if (online) {
         color = 0x0033ee;
     } else {
         color = 0x454545;
     }
-    selfPin.children[0].tint = color;
-    
+    graphics.children[0].tint = color;
+
+    graphics.x = pos.x;
+    graphics.y = pos.y;
+
+    graphics.scale.set(size / zoom);
 }
 
-export function selfPinPos(x, y) {
-    selfPin.x = x;
-    selfPin.y = y;
+export function destroySelfPin(graphics) {
+    pinContainer.removeChild(graphics);
+    
+    for (const child of graphics.children) {
+        child.destroy({
+            children: true,
+            texture: true,
+            baseTexture: true
+        });
+    }
+
+    graphics.destroy({ children: true });
+}
+
+/////////////////// touch pin
+
+export function createTouchPin() {
+    let buildPino = PIXI.Sprite.from(pinImagePath);
+    buildPino.anchor.set(0.5, 1);
+    buildPino.scale.set(1 / 7.5);
+    buildPino.tint = 0xff0000;
+    
+    let pinGfx = new PIXI.Container();
+    
+    pinGfx.addChild(buildPino);
+
+    pinContainer.addChild(pinGfx);
+
+    return pinGfx;
+}
+
+export function renderTouchPin(graphics, data) {
+    let pos = data.coordinate.getIn("normal");
+    let size = data.size;
+    graphics.children[0].tint = data.color;
+    graphics.visible = true;
+    graphics.x = pos.x;
+    graphics.y = pos.y;
+    graphics.scale.set(size / zoom);
+}
+
+export function destroyTouchPin(graphics) {
+    pinContainer.removeChild(graphics);
+    
+    for (const child of graphics.children) {
+        child.destroy({
+            children: true,
+            texture: true,
+            baseTexture: true
+        });
+    }
+
+    graphics.destroy({ children: true });
 }
 
 /////////////////// Context
@@ -616,8 +673,6 @@ export async function main() {
     
     pinContainer = new PIXI.Container();
     mapContainer.addChild(pinContainer);
-    
-    createSelfPin();
 
     groups = {
         AREAS: areasContainer,

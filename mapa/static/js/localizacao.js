@@ -1,5 +1,6 @@
 import { MatrixTransform } from "./transformacao.js";
 import * as Graficos from "./graficos.js";
+import * as Editor from "./editor.js";
 
 const CONFIG = {
     debug: false,
@@ -31,6 +32,32 @@ const CONFIG = {
     extrapolateMaxMs: 2500,
     snapDistance: 60
 };
+
+let geographical = [
+    [-5.811105868698768, -35.201445594283136],
+    [-5.810082771429163, -35.204026579227964],
+    [-5.812708592957059, -35.20497480931187],
+]
+export function mapToGeographical(point) {
+    let coordinateTransform = new MatrixTransform(
+        [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
+        [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
+        [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
+        geographical[0], geographical[1], geographical[2],
+    );
+
+    return coordinateTransform.transform([point.x, point.y]); 
+}
+export function GeographicalToMap(point) {
+    let coordinateTransform = new MatrixTransform(
+        geographical[0], geographical[1], geographical[2],
+        [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
+        [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
+        [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
+    );
+
+    return coordinateTransform.transform([point.x, point.y]);
+}
 
 const log = (...args) => { if (CONFIG.debug) console.debug("[geo]", ...args); };
 
@@ -114,7 +141,7 @@ function setOnline(value) {
     if (online === value) return;
     online = value;
     log(value ? "ONLINE" : "OFFLINE");
-    Graficos.selfPinOnline(value);
+    Editor.Self.setOnline(value);
 }
 
 function onPosition(position) {
@@ -248,10 +275,11 @@ function frame(now) {
 
     const [lat, lon] = toLatLon(display.x, display.y);
     const point = coordinateTransform.transform([lat, lon]);
-    Graficos.selfPinPos(point[0], point[1]);
-
+    const coord = Editor.newCoord(point[0], point[1], "normal");
+    Editor.Self.setPos(coord);
+    
     if (!pinShown) {
-        Graficos.showSelfPin(true);
+        Editor.Self.setVisible(true);
         pinShown = true;
     }
 }

@@ -45,6 +45,9 @@ function interpCol(start, end, t) {
 
     return rgbToHex(final[0], final[1], final[2]);
 }
+function interp(start, end, t) {
+    return start * (1 - t) + end * t;
+}
 
 function normalPos(coord) {
     const p = coord.getIn("normal");
@@ -492,6 +495,190 @@ function addObj(list, item) {
         return list;
     }
     return list;
+}
+
+export class TouchPin {
+    constructor() {
+        throw new Error("Classe estática. Não instancie.");
+    }
+
+    static graphics = null;
+    static coordinate = newCoord(0, 0, "normal");
+    static visible = false;
+    static hover = 0;
+    static hoverTime = .2;
+    static size = 1;
+    static tint = 0xff0000;
+    static selfPin = true;
+
+    static buildData() {
+        return {
+            coordinate: this.coordinate,
+            size: this.size,
+            color: this.tint,
+        }
+    }
+
+    static updateGraphics() {
+        if(this.graphics === null) {
+            this.graphics = Graficos.createTouchPin();
+        }
+        Graficos.renderTouchPin(this.graphics, this.buildData());
+    }
+
+    static setVisible(bool) {
+        this.visible = bool;
+        this.updateGraphics();
+    }
+
+    static setPos(coordinate) {
+        this.coordinate = coordinate;
+        this.coordinate.convertTo("normal");
+        this.updateGraphics();
+    }
+
+    static getOverlappingPin(coordinate) {
+        let pos = coordinate.getIn("normal");
+
+        let textSize = this.graphics;
+
+        if (!this.graphics) {
+            return false;
+        }
+        const minX = textSize.x - textSize.children[0].width * textSize.scale.x / 2;
+        const maxX = textSize.x - textSize.children[0].width * textSize.scale.x / 2 + textSize.width;
+        const minY = textSize.y - textSize.children[0].height * textSize.scale.y;
+        const maxY = textSize.y;
+
+
+        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+            return this;
+        }
+
+        return false;
+    }
+    
+    static hoverAdd() {
+        this.hover += 1;
+        let cap = this.hoverTime * 30;
+
+        if (this.hover >= cap) {
+            this.hover = cap;
+        }
+        this.hoverUpdate();
+    }
+    static hoverDec() {
+        this.hover -= 1;
+        if (this.hover <= 0) {
+            this.hover = 0;
+        }
+
+        this.hoverUpdate();
+    }
+    static hoverUpdate() {
+        let ms = this.hoverTime * 1000;
+        let t = this.hover * (1000 / 30) / ms;
+        t = ease(t);
+        
+        this.size = interp(1, 1.2, t);
+        this.updateGraphics();
+    }
+}
+
+export class Self {
+    constructor() {
+        throw new Error("Classe estática. Não instancie.");
+    }
+
+    static graphics = null;
+    static coordinate = newCoord(0, 0, "normal");
+    static visible = false;
+    static online = false;
+    static hover = 0;
+    static hoverTime = .2;
+    static size = 1;
+    static selfPin = true;
+    static location = "";
+    static onSince = null;
+
+    static buildData() {
+        return {
+            coordinate: this.coordinate,
+            online: this.online,
+            visible: this.visible,
+            size: this.size,
+        }
+    }
+
+    static updateGraphics() {
+        if(this.graphics === null) {
+            this.graphics = Graficos.createSelfPin();
+        }
+        Graficos.renderSelfPin(this.graphics, this.buildData());
+    }
+
+    static setOnline(bool) {
+        this.online = bool;
+        this.updateGraphics();
+    }
+
+    static setVisible(bool) {
+        this.visible = bool;
+        this.updateGraphics();
+    }
+
+    static setPos(coordinate) {
+        this.coordinate = coordinate;
+        this.coordinate.convertTo("normal");
+        this.updateGraphics();
+    }
+
+    static getOverlappingPin(coordinate) {
+        let pos = coordinate.getIn("normal");
+
+        let textSize = this.graphics;
+
+        if (!this.graphics) {
+            return false;
+        }
+        const minX = textSize.x - textSize.children[0].width * textSize.scale.x / 2;
+        const maxX = textSize.x - textSize.children[0].width * textSize.scale.x / 2 + textSize.width;
+        const minY = textSize.y - textSize.children[0].height * textSize.scale.y;
+        const maxY = textSize.y;
+
+
+        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+            return this;
+        }
+
+        return false;
+    }
+    
+    static hoverAdd() {
+        this.hover += 1;
+        let cap = this.hoverTime * 30;
+
+        if (this.hover >= cap) {
+            this.hover = cap;
+        }
+        this.hoverUpdate();
+    }
+    static hoverDec() {
+        this.hover -= 1;
+        if (this.hover <= 0) {
+            this.hover = 0;
+        }
+
+        this.hoverUpdate();
+    }
+    static hoverUpdate() {
+        let ms = this.hoverTime * 1000;
+        let t = this.hover * (1000 / 30) / ms;
+        t = ease(t);
+        
+        this.size = interp(1, 1.2, t);
+        this.updateGraphics();
+    }
 }
 
 export class Connections {
@@ -1147,7 +1334,8 @@ export class Reference {
         let ms = this.hoverTime * 1000;
         let t = this.hover * (1000 / 30) / ms;
         t = ease(t);
-        this.size = 10 + t * 5;
+        this.size = page == "editor" ? 10 + t * 5: 1 + t * .2;
+        this.tint = interpCol(0x000000, 0x00aaff, t);
         this.updateGraphics();
     }
 
@@ -1413,6 +1601,7 @@ export class Building {
         let t = this.hover * (1000 / 30) / ms;
         t = ease(t);
         this.pinSize = 1 + t * .2;
+        this.tint = interpCol(0x000000, 0x00aaff, t);
         this.updateGraphics();
     }
 

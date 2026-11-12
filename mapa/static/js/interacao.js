@@ -1,6 +1,9 @@
 import * as Transformacao from "./transformacao.js";
 import * as Graficos from "./graficos.js";
 import * as Editor from "./editor.js";
+import * as Toasts from './toasts.js';
+import * as Modals from './modals.js';
+import * as Localizacao from './localizacao.js';
 
 let mapObj;
 let buildBtn;
@@ -11,14 +14,21 @@ let bannerBtn;
 let pinBtn;
 let pinDone = false;
 let mapInterface;
+let mapContainer;
 let hoverMap;
 let defaultImageFile;
+let ableToMark;
+
+let shareIdResolved;
 
 let currentObjectURL = null;
 
 let searchField;
 let searchExpansion;
 let searchList;
+
+let userTab;
+let shareLocation;
 
 let bannerTab;
 let imageInput;
@@ -237,18 +247,29 @@ class Pointer {
         moved = false;
         
         if (page == "main") {
+            ableToMark = true;
             let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-            let border = Editor.Referencer.getOverlappingDotPins(coord);
-            if(!border) {
-                border = Editor.Buildings.getOverlappingAreas(coord)?.building;
-                if(!border) {
-                    border = Editor.Buildings.getOverlappingPins(coord);
-                }
+            let pin = Editor.Self.getOverlappingPin(coord);
+            if (!pin) {
+                pin = Editor.Referencer.getOverlappingDotPins(coord);
             }
-            if(border) {
-                Actions.openBanner(border);
+            if(!pin) {
+                pin = Editor.Buildings.getOverlappingAreas(coord)?.building;
+            }
+            if(!pin) {
+                pin = Editor.Buildings.getOverlappingPins(coord);
+            }
+
+            if (pin.selfPin) {
+                Actions.openUser(pin);
+            } else if (pin) {
+                Actions.openBanner(pin);
             } else {
+                if (!bannerTab.classList.contains("hidden") && !userTab.classList.contains("hidden")) {
+                    ableToMark = false;
+                }
                 Actions.closeBanner();
+                Actions.closeUser();
             }
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
@@ -283,8 +304,7 @@ class Pointer {
             } else if (editorMode == EditorModes.CONSTRUCTION) {
                 if (Task.task == "build") {
                     if (Task.taskStep == 0 && isInside(e, mapObj)) {
-                        const overlay = document.getElementById('build-modal-overlay');
-                        overlay.classList.add('active');
+                        Actions.openModal("buildName");
                     } else if (Task.taskStep == 1) {
                         let coord = Editor.newCoord(clickX, clickY, "screen");
                         let border = Editor.Buildings.getOverlappingAreaBorders(coord);
@@ -331,20 +351,19 @@ class Pointer {
         hoverTargetSet = new Set();
         if (page == "main") {
             let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-            let border = Editor.Referencer.getOverlappingDotPins(coord);
-            if(!border) {
-                border = Editor.Buildings.getOverlappingAreas(coord)?.building;
-                if(!border) {
-                    border = Editor.Buildings.getOverlappingPins(coord);
+            let pin = Editor.Self.getOverlappingPin(coord);
+            if (!pin) {
+                pin = Editor.Referencer.getOverlappingDotPins(coord);
+                if(!pin) {
+                    pin = Editor.Buildings.getOverlappingAreas(coord)?.building;
+                    if(!pin) {
+                        pin = Editor.Buildings.getOverlappingPins(coord);
+                    }
                 }
             }
-            if(hoverMap) {
-                hoverMap.setColor(0x000000);
-                hoverMap = false;
-            }
-            if(border) {
-                hoverMap = border;
-                border.setColor(0x0080ff);
+
+            if(pin) {
+                hoverTargetSet.add(pin);
                 mapObj.style.cursor = "pointer";
             } else {
                 mapObj.style.cursor = "default";
@@ -507,6 +526,27 @@ class Pointer {
             if (moved) {
                 return;
             }
+
+            let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+            let pin = Editor.Self.getOverlappingPin(coord);
+            if (!pin) {
+                pin = Editor.Referencer.getOverlappingDotPins(coord);
+            }
+            if(!pin) {
+                pin = Editor.Buildings.getOverlappingAreas(coord)?.building;
+            }
+            if(!pin) {
+                pin = Editor.Buildings.getOverlappingPins(coord);
+            }
+
+            if (pin || !ableToMark) {
+                return;
+            }
+            Editor.TouchPin.setPos(coord);
+            Editor.TouchPin.setVisible(true);
+            let geographical = Localizacao.mapToGeographical(coord.pos);
+            updateUrlParams({ lat: geographical[0], long: geographical[1]});
+
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
                 if (Holdable.object) {
@@ -940,10 +980,9 @@ class Actions {
             const building = Task.data["buildObject"];
             if (Task.task == "build" && Task.taskStep == 1 && !hasEnabledAreas(building)) {
                 this.switching = true;
-                const result = await confirmationCall();
+                const discard = await Actions.openModal("buildConfirm");
                 this.switching = false;
-                document.getElementById('confirm-modal-overlay').classList.remove('active');
-                if (result.index == 0 || result.index == 1) return;
+                if (!discard) return;
             }
             this.resetTask();
         }
@@ -1242,6 +1281,99 @@ class Actions {
         bannerTitle.value = b.title || "";
         bannerDescription.value = b.description || "";
     }
+
+    static openUser(user) {
+        userTab.classList.remove("collapsed");
+        Actions.updateUserTab();
+    }
+    static closeUser() {
+        userTab.classList.add("collapsed");
+        Actions.updateUserTab();
+    }
+    static updateUserTab() {
+        const open = !userTab.classList.contains('collapsed');
+        mapContainer.style.setProperty(
+            '--user-tab-height',
+            open ? userTab.offsetHeight + 'px' : '0px'
+        );
+    }
+
+    static async openModal(name) {
+        if (name == "share") {
+            const url = new URL(window.location.href);
+            let geocoords = Localizacao.mapToGeographical(Editor.Self.coordinate.getIn("normal"));
+            url.searchParams.set('lat', geocoords[0]);
+            url.searchParams.set('long', geocoords[1]);
+            console.log(url);
+
+            Modals.modal.open({
+                title: 'Compartilhar página',
+                size: 'sm',
+                html: `
+                <div class="share-social-grid">
+                    <button type="button" class="social-btn" data-platform="whatsapp">💬 WhatsApp</button>
+                    <button type="button" class="social-btn" data-platform="instagram">📸 Instagram</button>
+                </div>
+                <div class="share-link-box">
+                    <input type="text" id="share-input" value="${url.toString()}" readonly />
+                    <button type="button" id="btn-copy-share" class="btn-copy">Copiar</button>
+                </div>
+                `,
+                onMount(body) {
+                const btnCopy = body.querySelector('#btn-copy-share');
+                const input = body.querySelector('#share-input');
+
+                btnCopy.addEventListener('click', async () => {
+                    await navigator.clipboard.writeText(input.value);
+                    Toasts.toaster.show({ text: 'Link copiado' });
+                });
+                }
+            });
+        } else if (name == "buildName") {
+            let submitted = false;
+
+            Modals.modal.open({
+                title: 'Nova Construção',
+                size: 'sm',
+                html: `
+                    <form class="modal-form" id="buildForm">
+                        <div class="form-group">
+                            <label for="build-name">Nome:</label>
+                            <input type="text" id="build-name" placeholder="Use siglas se possível..." autocomplete="off" required>
+                        </div>
+                        <button type="submit" class="modal-submit-btn">Continuar</button>
+                    </form>
+                `,
+                onMount(body, manager) {
+                    const form = body.querySelector('#buildForm');
+                    const input = body.querySelector('#build-name');
+                    input.focus();
+
+                    form.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        const name = input.value.trim();
+                        if (!name) return;
+
+                        submitted = true;
+                        manager.close();
+                        Task.data["name"] = name;
+                        Actions.newBuilding(clickX, clickY);
+                    });
+                },
+                onClose() {
+                    if (!submitted) Actions.switchMode();
+                }
+            });
+        } else if (name == "buildConfirm") {
+            return Modals.modal.confirm({
+                title: 'Termine de editar a construção',
+                message: 'A construção ainda não tem nenhuma área. Se continuar, ela será descartada.',
+                cancelText: 'Voltar',
+                confirmText: 'Descartar Alterações',
+            });
+        }
+    }
+
 }
 function getCookie(name) {
     let cookieValue = null;
@@ -1303,30 +1435,6 @@ export async function save() {
     }
  
     await saveMapState(formData);
-}
-
-async function confirmationCall() {
-    const overlay = document.getElementById('confirm-modal-overlay');
-
-    overlay.classList.add('active');
-    
-    let close = document.getElementById('close-confirm-modal');
-    let decline = document.getElementById('modal-decline');
-    let confirm = document.getElementById('modal-confirm');
-    
-    const result = await WaitButtonClick([close, decline, confirm]);
-
-    return result;
-}
-
-function handleBuildSubmit(event) {
-    event.preventDefault();
-    const buildName = document.getElementById('build-name').value.trim();
-    if (!buildName) return;
-    document.getElementById('build-modal-overlay').classList.remove('active');
-    document.getElementById('buildForm').reset();
-    Task.data["name"] = buildName;
-    Actions.newBuilding(clickX, clickY);
 }
 
 function bannerHeld() {
@@ -1416,10 +1524,23 @@ function nameSearch(inputElement, searchFn, onResults, delay = 300) {
   });
 }
 
+function updateUrlParams(paramsObj) {
+  const url = new URL(window.location.href);
+
+  for (const [key, value] of Object.entries(paramsObj)) {
+    if (value === null || value === undefined) {
+      url.searchParams.delete(key);
+    } else {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  window.history.replaceState({}, '', url);
+}
+
 function goToPlace(place) {
     const targetPos = Graficos.getContainerPosForPoint(place.coordinate.pos);
     Graficos.animateTransform(targetPos.x, targetPos.y);
-    Actions.openBanner(place);
 }
 
 export async function addListeners(map) {
@@ -1433,11 +1554,43 @@ export async function addListeners(map) {
     map.addEventListener("touchmove", Touch.step, { passive: false });
     document.addEventListener("touchend", Touch.end);
 
+    mapContainer = document.getElementById("map-container");
+
     document.addEventListener('contextmenu', function(event) {
         event.preventDefault();
     });
 
     bannerTab = document.getElementById("banner");
+
+    hoverLoop = () => {
+        for(const obj of hoverTargetSet) {
+            obj.hoverAdd();
+            if (!hoverSet.has(obj)) {
+                hoverSet.add(obj);
+            }
+        }
+        let remove = [];
+        for(const obj of hoverSet) {
+            if (!hoverTargetSet.has(obj)) {
+                obj.hoverDec();
+                if (obj.hover <= 0) {
+                    remove.push(obj);
+                }
+            }
+        }
+        for (const obj of remove) {
+            hoverSet.delete(obj);
+        }
+    }
+    setInterval(hoverLoop, 1000 / 30);
+
+    if(sharePlaceLat && sharePlaceLong) {
+        let normalPoint = Localizacao.GeographicalToMap({x: sharePlaceLat, y: sharePlaceLong});
+        let coord = Editor.newCoord(normalPoint[0], normalPoint[1], "normal");
+        Editor.TouchPin.setPos(coord);
+        Editor.TouchPin.setVisible(true);
+        goToPlace({coordinate: coord});
+    }
 
     if (page == "main") {
         const orientationBtn = document.getElementById('orientation');
@@ -1487,7 +1640,6 @@ export async function addListeners(map) {
             `).join('');
             }, 300);
 
-            // 2. Retrieve the object reference using the clicked index
             searchList.addEventListener('click', (event) => {
             const element = event.target.closest('.search-element');
             if (element) {
@@ -1496,6 +1648,7 @@ export async function addListeners(map) {
                 
                 if (targetRef) {
                     goToPlace(targetRef);
+                    Actions.openBanner(targetRef);
                 }
             }
         });
@@ -1506,6 +1659,12 @@ export async function addListeners(map) {
         optionsBtn.addEventListener('click', () => activateList([sidebar, backdrop]));
         closeBtn.addEventListener('click', closeMenu);
         backdrop.addEventListener('click', closeMenu);
+
+        userTab = document.getElementById("user-tab");
+        shareLocation = document.getElementById("share-location");
+        shareLocation.addEventListener("click", async (e) => {
+            Actions.openModal("share");
+        });
 
         Editor.load();
     
@@ -1526,10 +1685,6 @@ export async function addListeners(map) {
         selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
         
-        const buildModalBtn = document.getElementById("build-form-submit");
-        const buildOverlay = document.getElementById("build-modal-overlay");
-        const buildCloseBtn = document.getElementById("close-build-modal");
-
         let bannerForm = document.getElementById("bannerForm");
 
         bannerForm.addEventListener("submit", (e) => {
@@ -1537,6 +1692,7 @@ export async function addListeners(map) {
         });
 
         document.addEventListener("keydown", (e) => {
+            if (Modals.modal.dialog.open) return;
             if (e.target.closest?.("input, textarea, [contenteditable]")) return;
             if (clicking || (Holdable.object && Holdable.type !== "banner")) return;
 
@@ -1556,21 +1712,6 @@ export async function addListeners(map) {
             }
         });
 
-        const closeBuildModal = () => {
-            document.getElementById("build-modal-overlay").classList.remove("active");
-            document.getElementById("buildForm").reset();
-
-            Actions.switchMode();
-        }
-
-        buildCloseBtn.addEventListener("click", closeBuildModal);
-
-        buildOverlay.addEventListener("click", (e) => {
-            if (e.target === buildOverlay) {
-                closeBuildModal();
-            }
-        });
-
         buildBtn.addEventListener("click", () => Actions.switchMode(EditorModes.CONSTRUCTION));
         referenceBtn.addEventListener("click", () => Actions.switchMode(EditorModes.REFERENCE));
         connectionBtn.addEventListener("click", () => Actions.switchMode(EditorModes.CONNECTION));
@@ -1582,29 +1723,6 @@ export async function addListeners(map) {
             else Actions.finishTask();
         });
 
-        hoverLoop = () => {
-            for(const obj of hoverTargetSet) {
-                obj.hoverAdd();
-                if (!hoverSet.has(obj)) {
-                    hoverSet.add(obj);
-                }
-            }
-            let remove = [];
-            for(const obj of hoverSet) {
-                if (!hoverTargetSet.has(obj)) {
-                    obj.hoverDec();
-                    if (obj.hover <= 0) {
-                        remove.push(obj);
-                    }
-                }
-            }
-            for (const obj of remove) {
-                hoverSet.delete(obj);
-            }
-        }
-        setInterval(hoverLoop, 1000 / 30);
-
-        buildModalBtn.addEventListener("click", handleBuildSubmit);
         saveBtn.addEventListener("click", save);
 
         imageInput.addEventListener("change", e => updateImageDisplay(e));

@@ -79,31 +79,6 @@
 
     <div id="map"></div>
     
-    <div class="modal-overlay" id="build-modal-overlay">
-        <div class="modal-box">
-            <button type="button" class="modal-close" id="close-build-modal">&times;</button>
-            <form class="modal-form" id="buildForm">
-                <h3>Nova Construção</h3>
-                <div class="form-group">
-                    <label for="build-name">Nome:</label>
-                    <input type="text" id="build-name" placeholder="Use siglas se possível..." required>
-                </div>
-                <button type="submit" class="modal-submit-btn" id="build-form-submit">Continuar</button>
-            </form>
-        </div>
-    </div>
-    
-    <div class="modal-overlay" id="confirm-modal-overlay">
-        <div class="modal-box">
-            <button type="button" class="modal-close" id="close-confirm-modal">&times;</button>
-            <h3>Termine de editar a construção</p>
-            <div class="form-group">
-                <button class="modal-button" id="modal-decline">Voltar</button>
-                <button class="modal-button modal-button-main" id="modal-confirm">Descartar Alterações</button>
-            </div>
-        </div>
-    </div>
-    
     <script>
         const config = "{% static 'json/config.json' %}";
         const mapImage =  "{% static 'svg/mapa.svg' %}";
