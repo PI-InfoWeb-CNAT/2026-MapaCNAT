@@ -355,13 +355,7 @@ export function UserLocation() {
     started = true;
 
     coordinateTransform = new MatrixTransform(
-        [-5.8544767,-35.2695842],
-        [-5.8553004,-35.2699835],
-        [-5.8556845,-35.268242],
-        // [-5.811105868698768, -35.201445594283136],
-        // [-5.810082771429163, -35.204026579227964],
-        // [-5.812708592957059, -35.20497480931187],
-
+        geographical[0], geographical[1], geographical[2],
         [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
         [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
         [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2]
