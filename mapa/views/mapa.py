@@ -7,10 +7,12 @@ from mapa.models.banner import Banner
 def mapa(request: Any):
     lat = request.GET.get('lat')
     long = request.GET.get('long')
-    context = {}
+    render = request.GET.get('r')
+    context = {"r": 0}
     if lat and long:
         context["lat"] = lat
         context["long"] = long
+        context["r"] = render
     template = loader.get_template('mapa.html')
     return HttpResponse(template.render(context=context))
 
