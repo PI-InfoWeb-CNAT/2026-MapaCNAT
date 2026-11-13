@@ -9,27 +9,26 @@
 {% endblock %}
 
 {% block content %}
-
-<div class="home-page">
-
+<div class="home-page"
+    data-background="{% static 'img/cnat/bosque.jpeg' %}">
     <header>
-        <a href="{% url 'home' %}" class="logo">
+        <a href="{% url 'home' %}" class="logo intro-item">
             <img src="{% static 'img/logo.png' %}" alt="Logo do Mapa CNAT">
         </a>
 
         <nav id="autenticar">
             {% if is_authenticated %}
-                <a class="botao" href="{% url 'logout' %}">
+                <a class="botao intro-item" href="{% url 'logout' %}">
                     <i class="fa-solid fa-user"></i>
                     <span>Sair</span>
                 </a>
             {% else %}
-                <a class="botao" href="{% url 'login' %}">
+                <a class="botao intro-item" href="{% url 'login' %}">
                     <i class="fa-solid fa-user"></i>
                     <span>Entrar</span>
                 </a>
 
-                <a class="botao alt-botao" href="{% url 'register' %}">
+                <a class="botao alt-botao intro-item" href="{% url 'register' %}">
                     <i class="fa-solid fa-user-plus"></i>
                     <span>Cadastrar</span>
                 </a>
@@ -37,16 +36,19 @@
         </nav>
     </header>
 
+    
     <main>
         <section class="hero">
-            <h1>Explore o Campus com facilidade</h1>
+            <h1 class="intro-item">
+                Explore o Campus com facilidade
+            </h1>
 
-            <p>
+            <p class="intro-item">
                 Com a ferramenta do Mapa CNAT, navegar o Campus
                 se torna fácil e simples.
             </p>
 
-            <a href="{% url 'mapa' %}" class="botao explorar">
+            <a href="{% url 'mapa' %}" class="botao explorar intro-item">
                 <i class="fa-solid fa-map"></i>
                 <span>Explorar</span>
             </a>
@@ -54,59 +56,34 @@
     </main>
 
     <footer>
-        <div class="footer-info">
+        <div class="footer-info intro-item">
             <span>Desenvolvido pelo IFRN</span>
             <span class="separator">•</span>
             <span>Mapa CNAT</span>
         </div>
 
         <div class="footer-logos">
-            <a href="https://github.com/PI-InfoWeb-CNAT/2026-MapaCNAT"
-               target="_blank"
-               rel="noopener noreferrer"
-               aria-label="Repositório do projeto">
+            <a class="intro-item"
+            href="https://github.com/PI-InfoWeb-CNAT/2026-MapaCNAT"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Repositório do projeto">
                 <i class="fa-brands fa-github"></i>
             </a>
-            
-            <a href="https://diatinf.ifrn.edu.br/"
-               target="_blank"
-               rel="noopener noreferrer"
-               aria-label="Página da DIATINF">
+
+            <a class="intro-item"
+            href="https://diatinf.ifrn.edu.br/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Página da DIATINF">
                 <img src="{% static 'img/diatinf.png' %}"
-                     alt="DIATINF"
-                     class="logo-diatinf">
+                    alt="DIATINF"
+                    class="logo-diatinf">
             </a>
         </div>
     </footer>
-    <script>
-        function setHomeBackground() {
-            if (window.innerWidth <= 768) {
-                document.body.style.backgroundImage = `
-                    linear-gradient(
-                        to bottom,
-                        rgba(255, 255, 255, 1) 0,
-                        rgba(255, 255, 255, .9) 70px,
-                        rgba(255, 255, 255, 0) 600px
-                    ),
-                    url("{% static 'img/cnat/bosque.jpeg' %}")
-                `;
-            } else {
-                document.body.style.backgroundImage = `
-                    radial-gradient(
-                        circle at 150px 250px,
-                        rgba(255, 255, 255, 1) 0,
-                        rgba(255, 255, 255, .95) 300px,
-                        rgba(255, 255, 255, 0) 600px
-                    ),
-                    url("{% static 'img/cnat/bosque.jpeg' %}")
-                `;
-            }
-        }
 
-        setHomeBackground();
-
-        window.addEventListener("resize", setHomeBackground);
-    </script>
+    <script src="{% static 'js/home.js' %}"></script>
 </div>
 
 {% endblock %}

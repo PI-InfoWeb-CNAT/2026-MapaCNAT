@@ -393,3 +393,42 @@ footer {
         padding-bottom: 5px;
     }
 }
+
+
+
+/* =================================
+   INTRODUÇÃO — ANIMAÇÃO FADE UP
+================================= */
+
+/* Só esconde os elementos quando o JS estiver ativo */
+.intro-ready .intro-item {
+    opacity: 0;
+    transform: translateY(25px);
+}
+
+/* Estado animado */
+.intro-ready .intro-item.show {
+    animation: fadeUp .7s ease forwards;
+}
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(25px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Respeita usuários que preferem movimento reduzido */
+@media (prefers-reduced-motion: reduce) {
+    .intro-ready .intro-item,
+    .intro-ready .intro-item.show {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+}
