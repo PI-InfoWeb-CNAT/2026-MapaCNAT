@@ -131,7 +131,10 @@ def mapa_editor_data(request: Any):
             return JsonResponse({"status": "success"})
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
-    elif request.method == "GET":
+
+@ensure_csrf_cookie
+def mapa_data_load(request: Any):
+    if request.method == "GET":
         return JsonResponse(export_db_to_json(request=request), status=200)
 
 def get_banner_image(request, banner_id):
