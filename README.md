@@ -39,6 +39,7 @@ Clique em cada um dos links abaixo para acessar o artefato específico.
 3. [Modelo de Casos de Uso](doc/cdu/README.md)
 4. [Modelo de Domínio](doc/dominio/dominio.md)
 5. [Modelo de Dados](doc/bd/bd.md)
+6. [Relatório de Testes com Usuários Reais](doc/testes-com-usuarios-reais.md)
 
 # Implantação
 
