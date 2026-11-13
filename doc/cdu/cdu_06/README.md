@@ -2,22 +2,34 @@
 
 - **Ator principal**: Usuário qualquer
 - **Atores secundários**: Nenhum
-- **Resumo**: O usuário recebe uma localização redirecionando para o aplicativo
-- **Pré-condição**: Usuário acessou um redirecionamento do aplicativo
-- **Pós-Condição**: Usuário tem o mapa atualizado
+- **Resumo**: O usuário recebe uma localização por meio de um redirecionamento para o aplicativo, que atualiza o mapa de acordo com as coordenadas recebidas.
+- **Pré-condição**: Usuário acessou um link de redirecionamento para o aplicativo contendo as coordenadas de uma localização.
+- **Pós-Condição**: O mapa é atualizado e centralizado na localização correspondente às coordenadas recebidas.
 
 ## Fluxo Principal
-| Ações do ator | Ações do sistema |
-| :-----------------: | :-----------------: | 
-| | 1.1 - Obtêm as coordenadas do redirecionamento | 
-| | 1.2 - Relocaliza o usuário dentro do mapa para as coordenadas obtidas | 
 
-> Obs. as seções a seguir apenas serão utilizadas na segunda unidade do PDSWeb (segundo orientações do gerente do projeto).
+| Ações do ator | Ações do sistema |
+| :-----------------: | :-----------------: |
+| 1 - Acessa o link de redirecionamento para o aplicativo | |
+| | 2 - Recebe as coordenadas geográficas enviadas pelo redirecionamento |
+| | 3 - Valida as coordenadas recebidas |
+| | 4 - Atualiza o mapa, centralizando a visualização na localização correspondente |
+| 5 - Visualiza a localização indicada no mapa | |
+
+## Fluxo Alternativo I - Coordenadas inválidas ou não encontradas
+
+| Ações do ator | Ações do sistema |
+| :-----------------: | :-----------------: |
+| 1 - Acessa o link de redirecionamento para o aplicativo | |
+| | 2 - Recebe as coordenadas geográficas enviadas pelo redirecionamento |
+| | 3 - Identifica que as coordenadas são inválidas ou não foram encontradas |
+| | 4 - Informa que não foi possível localizar o endereço |
+| 5 - Permanece na visualização padrão do mapa | |
 
 ## Diagrama de Interação (Sequência ou Comunicação)
 
-> Substituir pela imagem correspondente...
+![Diagrama de Sequência - CDU006](imgs/diagrama-sequencia-cdu006.png)
 
 ## Diagrama de Classes de Projeto
 
-> Substituir pela imagem contendo as classes (modelo, visão e templates) que implementam o respectivo CDU...
+![Diagrama de Classes de Projeto - CDU006](imgs/diagrama-classes-cdu006.png)
