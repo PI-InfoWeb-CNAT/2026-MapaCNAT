@@ -41,6 +41,10 @@ Clique em cada um dos links abaixo para acessar o artefato específico.
 5. [Modelo de Dados](doc/bd/bd.md)
 6. [Relatório de Testes com Usuários Reais](doc/testes-com-usuarios-reais.md)
 
+# Implantação
+
+[Processo de Implantação com Vercel](doc/implantacao/README.md)
+
 # Manual da Desenvolvedor
 
 [Orientações para os desenvolvedores do projeto](doc/guia-ds/guia.md)

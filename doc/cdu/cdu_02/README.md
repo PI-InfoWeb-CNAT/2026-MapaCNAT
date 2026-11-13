@@ -7,13 +7,25 @@
 - **Pós-Condição**: Usuário é redirecionado a outro banner
 
 ## Fluxo Principal
-| Ações do ator | Ações do sistema |
-| :-----------------: | :-----------------: | 
-| 1 - Usuário aperta no lugar da tela em que o banner possui um redirecionador para outro local do mapa | |  
-| | 2.1 - Busca as informações do local selecionado | 
-| | 2.2 - Expôe os dados de informações, imagens e descrições para o usuário visualmente | 
 
-> Obs. as seções a seguir apenas serão utilizadas na segunda unidade do PDSWeb (segundo orientações do gerente do projeto).
+| **Ações do ator** | **Ações do sistema** |
+| :-----------------: | :-----------------: |
+| 1 - Seleciona uma sugestão de local disponível no banner | |
+| | 2 - Identifica o local selecionado pelo usuário |
+| | 3 - Busca as informações correspondentes ao local selecionado |
+| | 4 - Obtém os dados, imagens e descrições do local |
+| | 5 - Exibe visualmente as informações do local selecionado no banner |
+| 6 - Visualiza as informações apresentadas | |
+
+## Fluxo Alternativo I - Informações do local não encontradas
+
+| **Ações do ator** | **Ações do sistema** |
+| :-----------------: | :-----------------: |
+| 1 - Seleciona uma sugestão de local disponível no banner | |
+| | 2 - Busca as informações correspondentes ao local selecionado |
+| | 3 - Identifica que não existem informações disponíveis para o local |
+| | 4 - Informa que não foi possível carregar os dados do local selecionado |
+| 5 - Retorna à visualização do banner anterior | |
 
 ## Diagrama de Interação (Sequência ou Comunicação)
 
