@@ -10,28 +10,28 @@ Este documento apresenta os resultados dos testes de usabilidade realizados com 
 
 ## 2. Objetivos
 
-* Avaliar a experiência de navegação e compreensão da interface por usuários reais.
-* Verificar o funcionamento das funcionalidades já implementadas.
-* Identificar dificuldades de uso e possíveis erros (*bugs*).
-* Levantar sugestões de melhorias para futuras versões do sistema.
+- Avaliar a experiência de navegação e compreensão da interface por usuários reais.
+- Verificar o funcionamento das funcionalidades já implementadas.
+- Identificar dificuldades de uso e possíveis erros (*bugs*).
+- Levantar sugestões de melhorias para futuras versões do sistema.
 
 ---
 
 ## 3. Participantes
 
-Para preservar a privacidade, os participantes serão identificados de forma anônima:
+Para preservar a privacidade, os participantes são identificados de forma anônima:
 
 | Participante | Perfil | Data do teste |
 | :--- | :--- | :--- |
-| **P01** | *A definir* | *A definir* |
-| **P02** | *A definir* | *A definir* |
-| **P03** | *A definir* | *A definir* |
+| **P01** | Estudante do IFRN-CNAT | 12/11/2026 |
+| **P02** | | |
+| **P03** | | |
 
 ---
 
 ## 4. Metodologia
 
-As sessões de teste serão realizadas com o sistema em execução no navegador, em uma máquina preparada pela equipe. Cada participante receberá uma lista com tarefas específicas para executar de forma autônoma, sem auxílio direto dos integrantes. Durante o uso, a equipe observará e anotará dificuldades, falhas encontradas e comentários espontâneos. Ao final, cada participante responderá a um questionário de avaliação.
+As sessões de teste são realizadas com o sistema em execução no navegador, em uma máquina preparada pela equipe. Cada participante recebe uma lista com tarefas específicas para executar de forma autônoma, sem auxílio direto dos integrantes. Durante o uso, a equipe observa e anota dificuldades, falhas encontradas e comentários espontâneos. Ao final, cada participante responde a um questionário de avaliação.
 
 ---
 
@@ -49,7 +49,7 @@ As sessões de teste serão realizadas com o sistema em execução no navegador,
 
 ## 6. Questionário Aplicado
 
-Ao final das tarefas, os participantes responderão às seguintes perguntas:
+Ao final das tarefas, os participantes respondem às seguintes perguntas:
 
 1. Você conseguiu realizar todas as tarefas propostas?
 2. O sistema foi fácil de utilizar?
@@ -60,6 +60,12 @@ Ao final das tarefas, os participantes responderão às seguintes perguntas:
 7. Quais melhorias você sugeriria para o Mapa CNAT?
 8. Você utilizaria o Mapa CNAT no seu dia a dia?
 
+### Respostas Coletadas
+
+* **P01:** Conseguiu realizar todas as tarefas propostas e achou o sistema fácil de utilizar. Comentou que o fluxo de cadastro e login funciona bem, as informações dos blocos são claras e usaria a ferramenta no dia a dia.
+* **P02:** 
+* **P03:** 
+
 ---
 
 ## 7. Resultados dos Testes
@@ -68,28 +74,29 @@ Ao final das tarefas, os participantes responderão às seguintes perguntas:
 
 | Participante | Tarefas concluídas | Dificuldades encontradas |
 | :--- | :--- | :--- |
-| **P01** | *A preencher após o teste* | *A preencher após o teste* |
-| **P02** | *A preencher após o teste* | *A preencher após o teste* |
-| **P03** | *A preencher após o teste* | *A preencher após o teste* |
+| **P01** | 5/5 (T01 a T05) | Nenhuma dificuldade no cadastro/login. |
+| **P02** | | |
+| **P03** | | |
 
 ### 7.2 Problemas identificados (Bugs)
 
 | ID | Problema encontrado | Gravidade | Situação |
 | :--- | :--- | :--- | :--- |
-| **B01** | *Nenhum problema registrado até o momento* | - | - |
+
 
 ### 7.3 Sugestões de melhorias
 
-* *A preencher com base nas respostas dos participantes após a execução dos testes.*
+- **Filtros por categoria:** Adicionar opção para filtrar blocos por tipo (laboratórios, salas de aula, setores administrativos).
+- **Centralização automática no mapa:** Centralizar a visualização ao clicar em um marcador para evitar corte do balão nas bordas.
 
 ---
 
 ## 8. Análise Geral
 
-*A preencher após a realização das sessões de teste, consolidando os pontos positivos, dificuldades encontradas e prioridades para a próxima iteração.*
+No primeiro teste realizado (**P01**), o fluxo principal do **Mapa CNAT** mostrou-se estável, funcional e intuitivo, permitindo que o usuário concluísse todas as cinco tarefas propostas sem auxílio da equipe. Os pontos positivos destacados foram o bom funcionamento do cadastro/login e a clareza visual dos blocos do campus. (**B01**). Os demais campos serão complementados após a realização das sessões com os próximos participantes.
 
 ---
 
 ## 9. Conclusão
 
-*A preencher após a conclusão dos testes com usuários reais.*
+A primeira sessão de teste com usuário real permitiu validar o funcionamento das funcionalidades já implementadas na aplicação. Após a aplicação dos testes com os demais participantes (**P02** e **P03**), os novos dados serão incorporados para consolidar as prioridades da próxima iteração.
