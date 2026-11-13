@@ -12,6 +12,7 @@ urlpatterns = [
     path('mapa/editor/save', views.mapa_editor_data, name='mapa_editor_data'),
     path('mapa/search', views.name_search, name="name_search"),
     path('feedback/', views.feedback, name='feedback'),
+    path('banner/<int:banner_id>/image/', views.get_banner_image, name='banner_image'),
     path('', views.home, name='home'),
 ]
 

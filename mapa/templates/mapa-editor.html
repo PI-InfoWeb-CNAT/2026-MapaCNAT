@@ -5,7 +5,7 @@
 {% block title %}MapaCNAT | Explorar{% endblock %}
 
 {% block style %}
-<link rel="stylesheet" href="{% static 'css/mapa.css' %}">
+<link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
 <style>
     .custom-cursor {
         cursor: url("{% static 'img/cursor-pin.png' %}") 12 24, auto;
@@ -110,6 +110,7 @@
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
         const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
+        const bannerURL = "{% url 'banner_image' 0 %}";
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
     <script type="module" src="{% static 'js/mapa-editor.js' %}"></script>
