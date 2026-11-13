@@ -25,3 +25,4 @@
 8. [CDU 08 - Signup :white_check_mark:](cdu_08/README.md)
 9. [CDU 09 - Relatar Feedback :white_check_mark:](cdu_09/README.md)
 11. [CDU 11 - Vizualizar Banner :white_check_mark:](cdu_11/README.md)
+13. [CDU 13 - Pesquisar Local :white_check_mark:](cdu_13/README.md)
