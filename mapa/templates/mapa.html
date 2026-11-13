@@ -144,7 +144,24 @@
         const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' %}";
         let sharePlaceLat = "{{ lat }}";
         let sharePlaceLong = "{{ long }}";
+        let shareRender = "{{ r }}";
         const defaultImage = "{% static 'img/ifrn-logotipo.png' %}";
+
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            const xParam = params.get("x");
+            const yParam = params.get("y");
+
+            if (xParam !== null && yParam !== null) {
+                const x = parseFloat(xParam);
+                const y = parseFloat(yParam);
+
+                if (!isNaN(x) && !isNaN(y)) {
+                    window.initialCoordinates = { x, y };
+                    console.log("Coordenadas extraídas da URL:", window.initialCoordinates);
+                }
+            }
+        })();
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
     

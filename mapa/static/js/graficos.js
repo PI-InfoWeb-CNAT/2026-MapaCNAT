@@ -27,6 +27,7 @@ let entranceImagePath;
 let entranceTexture;
 
 let temporaryPin;
+let pinoSprite;
 let mapSprite;
 let userTexture;
 let mapTextures;
@@ -187,7 +188,7 @@ export function renderConnection(graphics, data) {
     let size = data.size;
 
     let points = data.points;
-    let radius = data.radius ? data.radius : 5;
+    let radius = data.radius ? data.radius : 15;
 
     if (points.length < 2) {
         return;
@@ -299,22 +300,6 @@ export function destroyPin(graphics) {
     }
 
     graphics.destroy({ children: true });
-}
-
-export function showTemporaryPin(coordinate) {
-    if (!temporaryPin) return;
-
-    renderPin(temporaryPin, {
-        coordinate: coordinate,
-        size: 1,
-        color: textColor,
-    });
-}
-
-export function hideTemporaryPin() {
-    if (!temporaryPin) return;
-
-    clearPin(temporaryPin);
 }
 
 /////////////////// Areas

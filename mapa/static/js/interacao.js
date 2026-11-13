@@ -1547,11 +1547,17 @@ class Actions {
         );
     }
 
-    static async openModal(name) {
+    static async openModal(name, data) {
         if (name == "share") {
             const url = new URL(window.location.origin + window.location.pathname);
 
             let geocoords = Localizacao.mapToGeographical(Editor.Self.coordinate.getIn("normal"));
+            if(data?.coords) {
+                geocoords = Localizacao.mapToGeographical(data.coords.getIn("normal"));
+            }
+            if(data) {
+                url.searchParams.set('r', data.render ? 1: 0);
+            }
             url.searchParams.set('lat', geocoords[0]);
             url.searchParams.set('long', geocoords[1]);
 
@@ -2064,7 +2070,6 @@ function initSearch() {
         });
     }
 
-    // clicar em qualquer parte da barra foca o campo
     searchHeader.addEventListener('click', (e) => {
         if (e.target !== searchField) searchField.focus();
     });
@@ -2073,7 +2078,6 @@ function initSearch() {
         if (field && e.target.tagName !== 'INPUT') field.querySelector('input').focus();
     });
 
-    // clicar fora da barra fecha a lista
     document.addEventListener('pointerdown', (e) => {
         if (searchForm.contains(e.target)) return;
         activeInput = null;
@@ -2081,7 +2085,6 @@ function initSearch() {
         syncExpansion();
     });
 
-    // Enter escolhe o primeiro resultado (em vez de recarregar a página)
     searchForm.addEventListener('submit', (e) => {
         e.preventDefault();
         if (currentResults[0]) pickResult(currentResults[0]);
@@ -2119,7 +2122,6 @@ function updateUrlParams(paramsObj) {
 }
 
 function goToPlace(place) {
-    Graficos.hideTemporaryPin();
     const targetPos = Graficos.getContainerPosForPoint(place.coordinate.pos);
     Graficos.animateTransform(targetPos.x, targetPos.y);
 }
@@ -2166,10 +2168,13 @@ export async function addListeners(map) {
     setInterval(hoverLoop, 1000 / 30);
 
     if(sharePlaceLat && sharePlaceLong) {
+
         let normalPoint = Localizacao.GeographicalToMap({x: sharePlaceLat, y: sharePlaceLong});
         let coord = Editor.newCoord(normalPoint[0], normalPoint[1], "normal");
-        Editor.TouchPin.setPos(coord);
-        Editor.TouchPin.setVisible(true);
+        if (!(shareRender == "0")) {
+            Editor.TouchPin.setPos(coord);
+            Editor.TouchPin.setVisible(true);
+        }
         goToPlace({coordinate: coord});
     }
 
@@ -2206,6 +2211,13 @@ export async function addListeners(map) {
 
         document.getElementById("banner-route").addEventListener("click", () => {
             if (bannerHeld()) Route.start(Holdable.object);
+        });
+
+        document.getElementById("banner-share").addEventListener("click", () => {
+            let coord = Holdable.object.coordinate;
+            if (bannerHeld()) {
+                Actions.openModal("share", {coords: coord, render: false});
+            }
         });
 
         userTab = document.getElementById("user-tab");
