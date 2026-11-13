@@ -1,86 +1,395 @@
+
 :root {
-    --page-margin: 50px;
+    --page-margin: clamp(20px, 3.3vw, 50px);
+
+    --blue-main: #285783;
+    --dark-green-main: #087313;
+    --light-green-main: #29c539;
+
+    --font-family: Arial, Helvetica, sans-serif;
 }
+
+* {
+    box-sizing: border-box;
+}
+
+html,
 body {
-    overflow-x: hidden;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+body {
+    overflow: hidden;
     min-height: 100vh;
+    min-height: 100dvh;
+
     background-position: center;
     background-repeat: no-repeat;
     background-size: cover;
 }
 
+/* Fundo */
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+
+    background-image:
+        radial-gradient(
+            circle at 150px 250px,
+            rgba(255, 255, 255, 1) 0,
+            rgba(255, 255, 255, .95) 300px,
+            rgba(255, 255, 255, 0) 600px
+        ),
+        var(--home-background);
+
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+/* Layout principal */
+
+.home-page {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+
+    overflow: hidden;
+}
+
+/* Header */
+
 header {
+    width: 100%;
+    padding: var(--page-margin);
+
     display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
 }
-header img {
-    margin: var(--page-margin);
-}
-header #autenticar {
-    margin: var(--page-margin) var(--page-margin) 0 auto;
+
+header .logo {
     display: block;
+    flex-shrink: 1;
+    min-width: 0;
 }
-header #autenticar button {
-    display: inline;
+
+header img {
+    display: block;
+    width: clamp(150px, 22vw, 300px);
+    max-width: 100%;
+    height: auto;
 }
-header button {
-    background-color: rgba(0, 0, 0, 0);
+
+#autenticar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+
+    margin-left: auto;
+}
+
+/* Botões */
+
+.botao {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+
+    padding: .65em 1.2em;
+
     border: 2px solid var(--dark-green-main);
     border-radius: 10px;
-    font-size: 1em;
-    padding: .5em 1em;
-}
-header a, header i {
+
+    background-color: white;
     color: var(--dark-green-main);
-}
-main button {
-    border: none;
-    border-radius: 10px;
-    padding: 1em 3em;
-    font-size: 1.2em;
-    background-color: var(--dark-green-main);
-    margin: var(--page-margin);
-}
-.botao {
-    display: flex;
-    
-}
-.botao a {
-    display: inline;
-    text-decoration: none;
+
     font-family: var(--font-family);
-}
-.botao:hover {
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+
+    white-space: nowrap;
     cursor: pointer;
+
+    transition: background-color .2s, color .2s;
 }
+
+.botao:hover {
+    background-color: var(--dark-green-main);
+    color: white;
+}
+
 .alt-botao {
     background-color: var(--dark-green-main);
-}
-.alt-botao a, .alt-botao i {
     color: white;
 }
-main a {
-    margin: 0 1em;
+
+.alt-botao:hover {
+    background-color: #055b0d;
 }
-main button a, main button i {
-    color: white;
+
+/* Conteúdo */
+
+main {
+    display: flex;
+    align-items: center;
+
+    width: 100%;
+    min-height: 0;
+    padding: 0 var(--page-margin);
 }
-main h1 {
-    font-size: 2.5em;
+
+.hero {
+    width: min(100%, 500px);
 }
-main h1, main p {
-    width: 400px;
-    margin: 25px var(--page-margin);
+
+.hero h1,
+.hero p {
     color: var(--blue-main);
     font-family: var(--font-family);
 }
+
+.hero h1 {
+    max-width: 450px;
+    margin: 0 0 20px;
+
+    font-size: clamp(1.8rem, 3vw, 2.5rem);
+    line-height: 1.2;
+    font-family: "Roboto", arial;
+}
+
+.hero p {
+    max-width: 430px;
+    margin: 0 0 35px;
+
+    font-size: clamp(.95rem, 1.2vw, 1.2rem);
+    line-height: 1.4;
+}
+
+.explorar {
+    min-width: 220px;
+    min-height: 55px;
+
+    background-color: var(--dark-green-main);
+    color: white;
+
+    font-size: 1.1rem;
+}
+
+.explorar:hover {
+    background-color: #055b0d;
+}
+
+/* Footer */
+
+footer {
+    width: 100%;
+    min-height: 65px;
+
+    padding: 12px var(--page-margin);
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+
+    background-color: var(--blue-main);
+    border-top: 1px solid rgba(40, 87, 131, .2);
+}
+
+.footer-info {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+
+    color: white;
+    font-size: .9rem;
+    font-family: "Roboto", Arial;
+}
+
+.separator {
+    color: white;
+}
+
+.footer-logos {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+}
+
+.footer-logos a {
+    display: flex;
+    align-items: center;
+
+    color: white;
+    font-size: 1.8rem;
+    text-decoration: none;
+
+    transition: color .2s;
+}
+
+.footer-logos a img {
+    filter: brightness(0) invert(1);
+    transition: filter .2s;
+}
+
+.footer-logos a:hover {
+    color: var(--light-green-main);
+}
+
+.footer-logos a:hover img {
+    filter: brightness(0) saturate(100%)
+            invert(76%) sepia(40%) saturate(600%)
+            hue-rotate(55deg) brightness(95%) contrast(90%);
+}
+
+.logo-diatinf {
+    display: block;
+    width: auto;
+    height: 38px;
+    max-width: 120px;
+    object-fit: contain;
+}
+
+/* Tablets */
+
 @media (max-width: 768px) {
     :root {
         --page-margin: 25px;
     }
-    header img {
-        width: 150px;
+
+    body::before {
+        background-image:
+            linear-gradient(
+                to bottom,
+                rgba(255, 255, 255, 1) 0,
+                rgba(255, 255, 255, .92) 180px,
+                rgba(255, 255, 255, .15) 600px
+            ),
+            var(--home-background);
+
+        background-position: center;
+        background-size: cover;
     }
-    main h1, main p {
-        width: 75vw;
+
+    header img {
+        width: clamp(130px, 30vw, 200px);
+    }
+
+    .hero {
+        width: min(100%, 450px);
+    }
+
+    footer {
+        min-height: 60px;
+    }
+}
+
+/* Celulares */
+
+@media (max-width: 480px) {
+    :root {
+        --page-margin: 16px;
+    }
+
+    header {
+        align-items: center;
+        gap: 8px;
+    }
+
+    header img {
+        width: clamp(110px, 34vw, 150px);
+    }
+
+    #autenticar {
+        gap: 6px;
+    }
+
+    #autenticar .botao {
+        padding: .55em .7em;
+        gap: 6px;
+        font-size: .8rem;
+    }
+
+    .hero h1 {
+        font-size: clamp(1.7rem, 7vw, 2.1rem);
+    }
+
+    .hero p {
+        font-size: .95rem;
+    }
+
+    .explorar {
+        min-width: 180px;
+    }
+
+    footer {
+        padding: 10px var(--page-margin);
+        gap: 10px;
+    }
+
+    .footer-info {
+        gap: 5px;
+        font-size: .7rem;
+    }
+
+    .footer-logos {
+        gap: 12px;
+    }
+
+    .footer-logos a {
+        font-size: 1.4rem;
+    }
+
+    .logo-diatinf {
+        height: 28px;
+        max-width: 75px;
+    }
+}
+
+/* Telas muito baixas */
+
+@media (max-height: 500px) {
+    header {
+        padding-top: 10px;
+        padding-bottom: 5px;
+    }
+
+    header img {
+        width: 130px;
+    }
+
+    .hero h1 {
+        font-size: 1.6rem;
+        margin-bottom: 10px;
+    }
+
+    .hero p {
+        margin-bottom: 12px;
+    }
+
+    .explorar {
+        min-height: 42px;
+    }
+
+    footer {
+        min-height: 45px;
+        padding-top: 5px;
+        padding-bottom: 5px;
     }
 }

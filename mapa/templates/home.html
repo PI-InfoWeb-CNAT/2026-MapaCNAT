@@ -1,56 +1,112 @@
-{% extends 'base.html' %}
 
+{% extends 'base.html' %}
 {% load static %}
 
 {% block title %}MapaCNAT{% endblock %}
 
-{% block style %}<link rel="stylesheet" type="text/css" href="{% static 'css/home.css' %}">{% endblock %}
+{% block style %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/home.css' %}">
+{% endblock %}
 
 {% block content %}
-<header>
-    <a href="{% url 'home' %}">
-        <img src="{% static 'img/logo.png' %}" width="300" alt="Logo do Mapa CNAT">
-    </a>
-    <div id="autenticar">
-        {% if is_authenticated %}
-        <button class="botao">
-            <i class="fa-solid fa-user" onclick="window.location.href = '{% url 'logout' %}'"></i>
-            <a href="{% url 'logout' %}">Sair</a>
-        </button>
-        {% else %}
-        <button class="botao" onclick="window.location.href = '{% url 'login' %}'">
-            <i class="fa-solid fa-user"></i>
-            <a href="{% url 'login' %}">Entrar</a>
-        </button>
-        <button class="botao alt-botao" onclick="window.location.href = '{% url 'register' %}'">
-            <i class="fa-solid fa-user"></i>
-            <a href="{% url 'register' %}">Cadastrar</a>
-        </button>
-        {% endif %}
-    </div>
-</header>
-<main>
-    <h1>
-        Explore o Campus com facilidade
-    </h1>
-    <p>
-        Com a ferramenta do Mapa CNAT, navegar o Campus se torna fácil e simples.
-    </p>
-    <button onclick="window.location.href = mapa;" class="botao">
-        <i class="fa-solid fa-map"></i>
-        <a href="{% url 'mapa' %}">Explorar</a>
-    </button>
-</main>
-<script>
-    let mapa = "{% url 'mapa' %}";
-    function setHomeBackground() {
-        if (window.visualViewport.width <= 768) {
-            document.body.style.backgroundImage = "linear-gradient(to bottom, #fff 0, rgba(255, 255, 255, .9) 70px, rgba(255, 255, 255, 0) 600px), url({% static 'img/cnat/bosque.png' %})";
-        } else {
-            document.body.style.backgroundImage = "radial-gradient(circle at 100px 250px, #fff 0, rgba(255, 255, 255, .9) 300px, rgba(255, 255, 255, 0) 600px), url({% static 'img/cnat/bosque.png' %})";
+
+<div class="home-page">
+
+    <header>
+        <a href="{% url 'home' %}" class="logo">
+            <img src="{% static 'img/logo.png' %}" alt="Logo do Mapa CNAT">
+        </a>
+
+        <nav id="autenticar">
+            {% if is_authenticated %}
+                <a class="botao" href="{% url 'logout' %}">
+                    <i class="fa-solid fa-user"></i>
+                    <span>Sair</span>
+                </a>
+            {% else %}
+                <a class="botao" href="{% url 'login' %}">
+                    <i class="fa-solid fa-user"></i>
+                    <span>Entrar</span>
+                </a>
+
+                <a class="botao alt-botao" href="{% url 'register' %}">
+                    <i class="fa-solid fa-user-plus"></i>
+                    <span>Cadastrar</span>
+                </a>
+            {% endif %}
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <h1>Explore o Campus com facilidade</h1>
+
+            <p>
+                Com a ferramenta do Mapa CNAT, navegar o Campus
+                se torna fácil e simples.
+            </p>
+
+            <a href="{% url 'mapa' %}" class="botao explorar">
+                <i class="fa-solid fa-map"></i>
+                <span>Explorar</span>
+            </a>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-info">
+            <span>Desenvolvido pelo IFRN</span>
+            <span class="separator">•</span>
+            <span>Mapa CNAT</span>
+        </div>
+
+        <div class="footer-logos">
+            <a href="https://github.com/PI-InfoWeb-CNAT/2026-MapaCNAT"
+               target="_blank"
+               rel="noopener noreferrer"
+               aria-label="Repositório do projeto">
+                <i class="fa-brands fa-github"></i>
+            </a>
+            
+            <a href="https://diatinf.ifrn.edu.br/"
+               target="_blank"
+               rel="noopener noreferrer"
+               aria-label="Página da DIATINF">
+                <img src="{% static 'img/diatinf.png' %}"
+                     alt="DIATINF"
+                     class="logo-diatinf">
+            </a>
+        </div>
+    </footer>
+    <script>
+        function setHomeBackground() {
+            if (window.innerWidth <= 768) {
+                document.body.style.backgroundImage = `
+                    linear-gradient(
+                        to bottom,
+                        rgba(255, 255, 255, 1) 0,
+                        rgba(255, 255, 255, .9) 70px,
+                        rgba(255, 255, 255, 0) 600px
+                    ),
+                    url("{% static 'img/cnat/bosque.jpeg' %}")
+                `;
+            } else {
+                document.body.style.backgroundImage = `
+                    radial-gradient(
+                        circle at 150px 250px,
+                        rgba(255, 255, 255, 1) 0,
+                        rgba(255, 255, 255, .95) 300px,
+                        rgba(255, 255, 255, 0) 600px
+                    ),
+                    url("{% static 'img/cnat/bosque.jpeg' %}")
+                `;
+            }
         }
-    }
-    setHomeBackground();
-    window.addEventListener("resize", setHomeBackground);
-</script>
+
+        setHomeBackground();
+
+        window.addEventListener("resize", setHomeBackground);
+    </script>
+</div>
+
 {% endblock %}
