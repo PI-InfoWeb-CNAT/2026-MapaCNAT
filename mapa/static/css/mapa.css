@@ -203,9 +203,9 @@ header {
 
 .search-element img {
     flex-shrink: 0;
-    width: 44px;
-    height: 44px;
-    object-fit: contain;
+    width: 44px !important;
+    height: 44px !important;
+    object-fit: cover;
     background-color: #f2f2f2;
 }
 
@@ -530,8 +530,9 @@ header {
     height: 200px;
     margin: 0;
     background-color: #e0e0e0;
-    background-size: cover;
+    background-size:cover;
     background-position: center;
+    background-repeat: no-repeat;
     font-family: inherit;
     cursor: pointer;
     transition: background-color 0.2s;

@@ -1954,7 +1954,7 @@ function renderSearchList() {
             html += '<li class="no-results">Nenhum resultado</li>';
         } else {
             html += currentResults.map((item, index) => {
-                let imageSrc = defaultImage;
+                let imageSrc = defaultIconImage;
 
                 if (item.image instanceof Blob) {
                     imageSrc = URL.createObjectURL(item.image);
@@ -1965,7 +1965,7 @@ function renderSearchList() {
 
                 return `
                     <li class="search-element" data-index="${index}">
-                        <img src="${imageSrc}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultImage}';">
+                        <img src="${imageSrc}" alt="${item.title}" onerror="this.onerror=null; this.src='${defaultIconImage}';">
                         <aside class="search-element-description">
                             <h3>${item.title}</h3>
                             <p>${item.description}</p>
