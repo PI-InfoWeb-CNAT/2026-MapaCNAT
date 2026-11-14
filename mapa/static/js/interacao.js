@@ -934,6 +934,12 @@ export function WaitButtonClick(buttonElements) {
     });
 }
 
+function waitForTransition(element) {
+  return new Promise((resolve) => {
+    element.addEventListener('transitionend', resolve, { once: true });
+  });
+}
+
 class Actions {
     static actionStack = [];
     static actionStackReferencial = {};
@@ -1598,9 +1604,15 @@ class Actions {
         this.pinDoneMode(hasAreas);
     }
 
-    static openBanner(obj) {
+    static async openBanner(obj) {
         if (Holdable.type === "banner" && Holdable.object === obj &&
             !bannerTab.classList.contains("hidden")) return;
+            
+        if (!bannerTab.classList.contains("hidden")) {
+            this.closeBanner();
+            await waitForTransition(bannerTab);
+        }
+        
 
         this.saveBanner();
 
@@ -1611,7 +1623,7 @@ class Actions {
         bannerTab.classList.remove("hidden");
     }
 
-    static closeBanner() {
+    static async closeBanner() {
         bannerTab.classList.add("hidden");
 
         this.saveBanner();
@@ -1619,6 +1631,7 @@ class Actions {
         if (Holdable.type === "banner") {
             Holdable.set(false);
         }
+        await waitForTransition(bannerTab);
         showImage(null);
     }
 
