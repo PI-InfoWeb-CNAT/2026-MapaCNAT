@@ -876,6 +876,7 @@ class Pointer {
             Holdable.phantomObject.updateGraphics();
         }
         Route.redraw();
+        moveTo
         Graficos.updateMap();
     }
 }
@@ -2005,7 +2006,7 @@ function pickResult(item) {
         const point = { ref: item.ref, title: item.title };
         Route.setPoint(target === routeOrigin ? 'origin' : 'destination', point);
     } else {
-        goToPlace(item.ref);
+        goToPlace(item.ref, 2);
         Actions.openBanner(item.ref);
         searchField.blur();
     }
@@ -2292,9 +2293,9 @@ function updateUrlParams(paramsObj) {
   window.history.replaceState({}, '', url);
 }
 
-function goToPlace(place) {
-    const targetPos = Graficos.getContainerPosForPoint(place.coordinate.pos);
-    Graficos.animateTransform(targetPos.x, targetPos.y);
+function goToPlace(place, zoomVal) {
+    Graficos.animateTransform({point: place.coordinate.getIn("normal"), zoom: zoomVal});
+    zoom = zoomVal;
 }
 
 export async function addListeners(map) {
@@ -2349,7 +2350,7 @@ export async function addListeners(map) {
             Editor.TouchPin.setPos(coord);
             Editor.TouchPin.setVisible(true);
         }
-        goToPlace({coordinate: coord});
+        goToPlace({coordinate: coord}, 2);
     }
 
     if (page == "main") {

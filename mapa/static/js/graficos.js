@@ -38,6 +38,7 @@ export let minZoom, maxZoom;
 let zoomStep;
 
 let smoothTransform = false;
+let transformFrame = 0;
 let updating = false;
 export let zoom = 1;
 export let scaleFactor = 1;
@@ -45,44 +46,6 @@ export let scaleFactor = 1;
 export let imageSize;
 
 export let groups;
-
-export function getContainerPosForPoint(worldPos, screenTarget) {
-    // 1. Get current scale and rotation of mapContainer
-    const scaleX = mapContainer.scale?.x ?? mapContainer.scaleX ?? 1;
-    const scaleY = mapContainer.scale?.y ?? mapContainer.scaleY ?? 1;
-    const rotation = mapContainer.rotation || 0;
-
-    // 2. Default screen target to the center of the viewport if not specified
-    const target = screenTarget || {
-        x: window.visualViewport.width / 2,
-        y: window.visualViewport.height / 2,
-    };
-
-    // 3. Apply scale
-    const scaledX = worldPos.x * scaleX;
-    const scaledY = worldPos.y * scaleY;
-
-    // 4. Apply container rotation to the scaled point
-    // (Uses your Transformacao.rotatePoint if available, otherwise pure math)
-    let rotatedX, rotatedY;
-
-    if (typeof Transformacao !== "undefined" && Transformacao.rotatePoint) {
-        const rotated = Transformacao.rotatePoint(scaledX, scaledY, rotation);
-        rotatedX = rotated.x;
-        rotatedY = rotated.y;
-    } else {
-        const cos = Math.cos(rotation);
-        const sin = Math.sin(rotation);
-        rotatedX = scaledX * cos - scaledY * sin;
-        rotatedY = scaledX * sin + scaledY * cos;
-    }
-
-    // 5. Calculate container offset to align local point with target screen position
-    return {
-        x: target.x - rotatedX,
-        y: target.y - rotatedY,
-    };
-}
 
 export function getNormalizedCoordinates(pos) {
     const localPoint = mapContainer.toLocal(pos);
@@ -901,126 +864,92 @@ export function highlight(activeGroups) {
     }
 }
 
-export function smoothRotation(r) {
-    if (!smoothTransform) {
-        smoothTransform = true;
+const TAU = Math.PI * 2;
+const normalizeAngle = (a) => a - TAU * Math.round(a / TAU);   // → [-π, π]
 
-        let time = 0;
-        const initialRotation = mapContainer.rotation;
+const screenCenter = () => ({ x: app.screen.width / 2, y: app.screen.height / 2 });
 
-        let diff = r - initialRotation;
-
-        diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
-        if (diff < -Math.PI) diff += 2 * Math.PI;
-
-        const shortestTargetRotation = initialRotation + diff;
-
-        let containerPos = { x: mapContainer.x, y: mapContainer.y };
-
-        const transform = setInterval(() => {
-            time += 1000 / 60;
-            let t = Math.min(time / 500, 1);
-            let interpolation = t * t * (3 - 2 * t);
-
-            Rotation(
-                initialRotation +
-                    (shortestTargetRotation - initialRotation) * interpolation,
-            );
-            let center = {
-                x: window.visualViewport.width / 2,
-                y: window.visualViewport.height / 2,
-            };
-            let pivo = Transformacao.rotatePoint(
-                containerPos.x - center.x,
-                containerPos.y - center.y,
-                mapContainer.rotation - initialRotation,
-            );
-            pivo = { x: pivo.x + center.x, y: pivo.y + center.y };
-            Position(pivo.x, pivo.y);
-            if (time >= 500) {
-                smoothTransform = false;
-                clearInterval(transform);
-
-                mapContainer.rotation =
-                    ((mapContainer.rotation + Math.PI) % (2 * Math.PI)) -
-                    Math.PI;
-            }
-        }, 1000 / 60);
-    }
+// screen = pos + R(rot) · (scale · point)
+function worldToScreen(p, pos, scale, rot) {
+    const r = Transformacao.rotatePoint(p.x * scale, p.y * scale, rot);
+    return { x: pos.x + r.x, y: pos.y + r.y };
 }
 
-export function animateTransform(
-    targetX,
-    targetY,
-    targetScaleX,
-    targetScaleY,
-    targetRotation,
-    duration = 500,
+function screenToWorld(s, pos, scale, rot) {
+    const r = Transformacao.rotatePoint(s.x - pos.x, s.y - pos.y, -rot);
+    return { x: r.x / scale, y: r.y / scale };
+}
+
+/** Container position that puts `worldPos` at `screenTarget` for a given scale and rotation. */
+export function getContainerPosForPoint(
+    worldPos,
+    screenTarget,
+    scale = zoom,
+    rotation = mapContainer.rotation,
 ) {
-    if (smoothTransform) return;
+    const target = screenTarget ?? screenCenter();
+    const r = Transformacao.rotatePoint(worldPos.x * scale, worldPos.y * scale, rotation);
+    return { x: target.x - r.x, y: target.y - r.y };
+}
+
+/** Stops a running animation, leaving the map where it is. Call it when the user takes over. */
+export function cancelTransform() {
+    if (transformFrame) cancelAnimationFrame(transformFrame);
+    transformFrame = 0;
+    smoothTransform = false;
+}
+
+export function animateTransform({ point, screen, zoom: targetZoom, rotation: targetRotation, duration = 500 } = {}) {
+    if (!mapContainer) return;
+    cancelTransform();                      // a new request retargets from where the map is now
     smoothTransform = true;
 
-    // 1. Capture initial transform states
-    const initialX = mapContainer.x;
-    const initialY = mapContainer.y;
-    const initialScaleX = mapContainer.scale?.x ?? mapContainer.scaleX ?? 1;
-    const initialScaleY = mapContainer.scale?.y ?? mapContainer.scaleY ?? 1;
-    const initialRotation = mapContainer.rotation ?? 0;
+    const startZoom = zoom;
+    const startRotation = mapContainer.rotation;
+    const startPos = { x: mapContainer.x, y: mapContainer.y };
 
-    // 2. Fall back to current values if target parameters are omitted, null, or undefined
-    const finalX = targetX ?? initialX;
-    const finalY = targetY ?? initialY;
-    const finalScaleX = targetScaleX ?? initialScaleX;
-    const finalScaleY = targetScaleY ?? initialScaleY;
-    const finalRotation = targetRotation ?? initialRotation;
+    const endZoom = Math.min(Math.max(targetZoom ?? startZoom, minZoom), maxZoom);
+    const endRotation = startRotation + normalizeAngle((targetRotation ?? startRotation) - startRotation);
 
-    // 3. Shortest rotation path using finalRotation
-    let diff = finalRotation - initialRotation;
-    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
-    if (diff < -Math.PI) diff += 2 * Math.PI;
-    const shortestTargetRotation = initialRotation + diff;
+    // the anchor is pinned to a screen position that slides from where it is now to `target`
+    const target = screen ?? screenCenter();
+    const anchor = point ?? screenToWorld(target, startPos, startZoom, startRotation);
+    const startScreen = worldToScreen(anchor, startPos, startZoom, startRotation);
 
-    let time = 0;
-    const frameRate = 1000 / 60;
+    const startTime = performance.now();
 
-    const transformTimer = setInterval(() => {
-        time += frameRate;
-        const t = Math.min(time / duration, 1);
+    const step = (now) => {
+        const raw = duration <= 0 ? 1 : (now - startTime) / duration;
+        const t = Math.min(Math.max(raw, 0), 1);
+        const e = t * t * (3 - 2 * t);
 
-        const interpolation = t * t * (3 - 2 * t);
+        const z = startZoom + (endZoom - startZoom) * e;
+        const rot = startRotation + (endRotation - startRotation) * e;
+        const at = {
+            x: startScreen.x + (target.x - startScreen.x) * e,
+            y: startScreen.y + (target.y - startScreen.y) * e,
+        };
 
-        // 4. Interpolate toward target (or remain constant if defaulted)
-        const currentX = initialX + (finalX - initialX) * interpolation;
-        const currentY = initialY + (finalY - initialY) * interpolation;
-        const currentScaleX =
-            initialScaleX + (finalScaleX - initialScaleX) * interpolation;
-        const currentScaleY =
-            initialScaleY + (finalScaleY - initialScaleY) * interpolation;
-        const currentRotation =
-            initialRotation +
-            (shortestTargetRotation - initialRotation) * interpolation;
+        if (z !== zoom) Zoom(z);            // real Zoom(): keeps `zoom`, pins, labels, references in sync
+        Rotation(rot);
+        const pos = getContainerPosForPoint(anchor, at, z, rot);
+        Position(pos.x, pos.y);             // clamped to the map bounds
 
-        Position(currentX, currentY);
-        Rotation(currentRotation);
-
-        if (typeof zoom === "function") {
-            zoom(currentScaleX, currentScaleY);
-        } else if (typeof Scale === "function") {
-            Scale(currentScaleX, currentScaleY);
-        } else if (mapContainer.scale) {
-            mapContainer.scale.x = currentScaleX;
-            mapContainer.scale.y = currentScaleY;
-        } else {
-            mapContainer.scaleX = currentScaleX;
-            mapContainer.scaleY = currentScaleY;
+        if (t < 1) {
+            transformFrame = requestAnimationFrame(step);
+            return;
         }
 
-        if (time >= duration) {
-            smoothTransform = false;
-            clearInterval(transformTimer);
+        transformFrame = 0;
+        smoothTransform = false;
+        Rotation(normalizeAngle(mapContainer.rotation));
+        if (endZoom !== startZoom) updateMap();
+    };
 
-            mapContainer.rotation =
-                ((mapContainer.rotation + Math.PI) % (2 * Math.PI)) - Math.PI;
-        }
-    }, frameRate);
+    transformFrame = requestAnimationFrame(step);
+}
+
+/** Compass button: rotate around the screen center. */
+export function smoothRotation(r) {
+    animateTransform({ rotation: r });
 }
