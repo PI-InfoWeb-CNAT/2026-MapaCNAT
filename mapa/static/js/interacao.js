@@ -107,6 +107,13 @@ const EditorModes = Object.freeze({
 
 let editorMode = EditorModes.FREE;
 
+function isMobileDevice() {
+  if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
+    return navigator.userAgentData.mobile;
+  }
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
 export function setContext(context) {
     page = context.page;
     minZoom = Graficos.minZoom;
@@ -261,7 +268,7 @@ function placeMarker(coord) {
     Editor.TouchPin.setVisible(true);
     const g = Localizacao.mapToGeographical(coord.pos);
     if (!Array.isArray(g) || !Number.isFinite(g[0]) || !Number.isFinite(g[1])) return;
-    updateUrlParams({ r: undefined, lat: g[0], long: g[1] });
+    updateUrlParams({ showpin: undefined, lat: g[0], long: g[1] });
 }
 
 function startLongPress(x, y) {
@@ -855,6 +862,10 @@ class Pointer {
     static wheel(e) {
         e.preventDefault();
 
+        if(Graficos.smoothTransform) {
+            return;
+        }
+
         const mX = e.offsetX;
         const mY = e.offsetY;
 
@@ -876,7 +887,6 @@ class Pointer {
             Holdable.phantomObject.updateGraphics();
         }
         Route.redraw();
-        moveTo
         Graficos.updateMap();
     }
 }
@@ -934,10 +944,17 @@ export function WaitButtonClick(buttonElements) {
     });
 }
 
-function waitForTransition(element) {
-  return new Promise((resolve) => {
-    element.addEventListener('transitionend', resolve, { once: true });
-  });
+async function waitForTransition(element, timeout = 1000) {
+    // getAnimations() força o recálculo de estilo, então já enxerga
+    // a transição que acabou de ser iniciada pela troca de classe
+    const running = element.getAnimations();
+    if (running.length === 0) return;
+
+    await Promise.race([
+        // allSettled: resolve quando todas terminam, mesmo se alguma for cancelada
+        Promise.allSettled(running.map((a) => a.finished)),
+        new Promise((resolve) => setTimeout(resolve, timeout)), // rede de segurança
+    ]);
 }
 
 class Actions {
@@ -1604,34 +1621,38 @@ class Actions {
         this.pinDoneMode(hasAreas);
     }
 
+    static bannerToken = 0;
+
     static async openBanner(obj) {
         if (Holdable.type === "banner" && Holdable.object === obj &&
             !bannerTab.classList.contains("hidden")) return;
-            
+
         if (!bannerTab.classList.contains("hidden")) {
-            this.closeBanner();
-            await waitForTransition(bannerTab);
+            const closing = this.closeBanner();
+            const token = this.bannerToken;
+            await closing;
+            if (token !== this.bannerToken) return; // outra ação ocorreu durante a espera
         }
-        
+
+        this.bannerToken++; // invalida qualquer closeBanner ainda pendente
 
         this.saveBanner();
-
         resetDisplayImage();
         Holdable.set(obj, "banner", { img: obj.banner.image || false });
-
         this.restoreBanner(obj);
         bannerTab.classList.remove("hidden");
     }
 
     static async closeBanner() {
+        const wasHidden = bannerTab.classList.contains("hidden");
+        const token = ++this.bannerToken;
+
         bannerTab.classList.add("hidden");
-
         this.saveBanner();
+        if (Holdable.type === "banner") Holdable.set(false);
 
-        if (Holdable.type === "banner") {
-            Holdable.set(false);
-        }
-        await waitForTransition(bannerTab);
+        if (!wasHidden) await waitForTransition(bannerTab); // só espera se havia o que animar
+        if (token !== this.bannerToken) return;             // foi reaberto/fechado de novo
         showImage(null);
     }
 
@@ -1685,42 +1706,51 @@ class Actions {
 
     static async openModal(name, data) {
         if (name == "share") {
-            const url = new URL(window.location.origin + window.location.pathname);
-
-            let geocoords = Localizacao.mapToGeographical(Editor.Self.coordinate.getIn("normal"));
-            if(data?.coords) {
-                geocoords = Localizacao.mapToGeographical(data.coords.getIn("normal"));
-            }
-            
-            if (!Array.isArray(geocoords) || !Number.isFinite(geocoords[0]) || !Number.isFinite(geocoords[1])) {
-                toaster.show({ text: "Falha ao comparilhar" });
-                return;
-            }
-            
-            if(data) {
-                url.searchParams.set('r', data.render ? 1: 0);
-            }
-            url.searchParams.set('lat', geocoords[0]);
-            url.searchParams.set('long', geocoords[1]);
-
-            // window.history.replaceState({}, '', url);
+            const shareData = data.shareData;
 
             Modals.modal.open({
                 title: 'Compartilhar página',
                 size: 'sm',
                 html: `
                 <div class="share-social-grid">
-                    <button type="button" class="social-btn" data-platform="whatsapp">💬 WhatsApp</button>
-                    <button type="button" class="social-btn" data-platform="instagram">📸 Instagram</button>
+                    <button type="button" class="social-btn" data-platform="whatsapp">
+                        <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/whatsapp.svg" width="16" height="16" alt="WhatsApp">
+                        WhatsApp
+                    </button>
+
+                    <button type="button" class="social-btn" data-platform="instagram">
+                        <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/instagram.svg" width="16" height="16" alt="Instagram">
+                        Instagram
+                    </button>
                 </div>
                 <div class="share-link-box">
-                    <input type="text" id="share-input" value="${url.toString()}" readonly />
+                    <input type="text" id="share-input" value="${shareData.url.toString()}" readonly />
                     <button type="button" id="btn-copy-share" class="btn-copy">Copiar</button>
                 </div>
                 `,
                 onMount(body) {
                 const btnCopy = body.querySelector('#btn-copy-share');
                 const input = body.querySelector('#share-input');
+
+                document.querySelectorAll('.social-btn').forEach(button => {
+                button.addEventListener('click', async () => {
+                    const platform = button.getAttribute('data-platform');
+
+                    if (platform === 'whatsapp') {
+                        const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareData.text + ' ' + shareData.url)}`;
+                        window.open(whatsappUrl, '_blank');
+                        
+                        } else if (platform === 'instagram') {
+                            try {
+                                await navigator.clipboard.writeText(shareData.url);
+                                Toasts.toaster.show({text: "Link copiado!"});
+                                window.open('https://www.instagram.com/', '_blank');
+                            } catch (err) {
+                                console.error('Failed to copy text: ', err);
+                            }
+                        }
+                    });
+                });
 
                 btnCopy.addEventListener('click', async () => {
                     await navigator.clipboard.writeText(input.value);
@@ -1773,6 +1803,21 @@ class Actions {
         }
     }
 
+    static async shareFeature(shareData) {
+        if (isMobileDevice() && navigator.share) {
+            try {
+                await navigator.share(shareData);
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('Error sharing:', err);
+                }
+            }
+        } else {
+            if (bannerHeld()) {
+                Actions.openModal("share", {shareData: shareData});
+            }
+        }
+    }
 }
 function getCookie(name) {
     let cookieValue = null;
@@ -2292,18 +2337,32 @@ function initSearch() {
     document.getElementById("route-swap").addEventListener('click', () => Route.swap());
 }
 
-function updateUrlParams(paramsObj) {
-  const url = new URL(window.location.href);
-
-  for (const [key, value] of Object.entries(paramsObj)) {
-    if (value === null || value === undefined) {
-      url.searchParams.delete(key);
-    } else {
-      url.searchParams.set(key, value);
+function updateUrlParams(paramsObj, specialUrl) {
+    let url = specialUrl;
+    let winUrl = false;
+    if(!specialUrl) {
+        winUrl = true;
+        url = new URL(window.location.href);
     }
-  }
 
-  window.history.replaceState({}, '', url);
+    for (const [key, value] of Object.entries(paramsObj)) {
+        if (value === null || value === undefined) {
+            url.searchParams.delete(key);
+        } else {
+            url.searchParams.set(key, value);
+        }
+    }
+    if (winUrl) {
+        window.history.replaceState({}, '', url);
+    }
+}
+
+function buildURL(url, param) {
+    const newUrl = new URL(url);
+    
+    updateUrlParams(param, newUrl);
+
+    return newUrl;
 }
 
 function goToPlace(place, zoomVal) {
@@ -2401,18 +2460,48 @@ export async function addListeners(map) {
             if (bannerHeld()) Route.start(Holdable.object);
         });
 
-        document.getElementById("banner-share").addEventListener("click", () => {
+        document.getElementById("banner-share").addEventListener("click", async () => {
             let coord = Holdable.object.coordinate;
-            if (bannerHeld()) {
-                Actions.openModal("share", {coords: coord, render: false});
+            
+            let geocoords = Localizacao.mapToGeographical(coord.getIn("normal"));
+            
+            if (!Array.isArray(geocoords) || !Number.isFinite(geocoords[0]) || !Number.isFinite(geocoords[1])) {
+                Toasts.toaster.show({ text: "Falha ao comparilhar." });
+                return;
             }
+
+            let url = buildURL(window.location.origin + window.location.pathname, {showpin: 0, lat: geocoords[0], long: geocoords[1]});
+            
+            const shareData = {
+                title: 'Venha aqui!',
+                text: 'Olha só esse lugar!',
+                url: url
+            };
+            Actions.shareFeature(shareData);
         });
 
         userTab = document.getElementById("user-tab");
         shareLocation = document.getElementById("share-location");
         shareLocation.addEventListener("click", async () => {
             const status = await Localizacao.requestLocation();
-            if (status === "granted") Actions.openModal("share");
+            if (status === "granted") {
+                let geocoords = Localizacao.mapToGeographical(Editor.Self.coordinate.getIn("normal"));
+                
+                if (!Array.isArray(geocoords) || !Number.isFinite(geocoords[0]) || !Number.isFinite(geocoords[1])) {
+                    Toasts.toaster.show({ text: "Falha ao comparilhar." });
+                    return;
+                }
+
+                let url = buildURL(window.location.origin + window.location.pathname, {showpin: 0, lat: geocoords[0], long: geocoords[1]});
+
+                const shareData = {
+                    title: 'Venha ver onde eu estou!',
+                    text: 'Olha só onde eu estou!',
+                    url: url
+                };
+
+                Actions.shareFeature(shareData);
+            }
             else reportLocationFailure(status, 'Localização desativada: não é possível compartilhá-la.');
         });
 

@@ -7,7 +7,7 @@ from mapa.models.banner import Banner
 def mapa(request: Any):
     lat = request.GET.get('lat')
     long = request.GET.get('long')
-    render = request.GET.get('r')
+    render = request.GET.get('showpin')
     context = {"r": 0}
     if lat and long:
         context["lat"] = lat

@@ -37,7 +37,7 @@ let gl;
 export let minZoom, maxZoom;
 let zoomStep;
 
-let smoothTransform = false;
+export let smoothTransform = false;
 let transformFrame = 0;
 let updating = false;
 export let zoom = 1;
