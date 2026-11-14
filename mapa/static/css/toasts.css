@@ -1,27 +1,38 @@
+/* centered at the bottom: the container spans the full width and centers its children,
+   so the toast's own transform stays free for the enter/exit animation */
 #toast-container {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--body-margin, 20px) + var(--safe-bottom, 0px));
   display: flex;
   flex-direction: column-reverse;
+  align-items: center;
   gap: 10px;
+  padding: 0 calc(var(--body-margin, 20px) + var(--safe-left, 0px)) 0 calc(var(--body-margin, 20px) + var(--safe-right, 0px));
+  box-sizing: border-box;
   z-index: 99999;
-  pointer-events: none; 
+  pointer-events: none;
 }
 
 .toast {
   pointer-events: auto;
-  background: #222;
-  color: #fff;
-  padding: 16px 20px;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-  font-family: sans-serif;
-  font-size: 14px;
+  box-sizing: border-box;
   min-width: 260px;
+  max-width: min(92vw, 400px);
+  padding: 14px 20px;
+  border: 1px solid #eee;
+  border-radius: 16px;                           /* same radius as the modal / bottom sheet */
+  background: white;
+  color: #222;
+  box-shadow: 0 10px 10px rgba(0, 0, 0, 0.25);   /* same shadow as .app-modal */
+  font-family: var(--font-family, sans-serif);
+  font-size: 0.95em;
+  font-weight: 500;
+  line-height: 1.4;
   opacity: 0;
   transform: translateY(20px);
-  transition: opacity 0.3s cubic-bezier(0.2, 0, 0.1, 1), transform 0.3s cubic-bezier(0.2, 0, 0.1, 1);
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .toast.visible {
@@ -44,15 +55,15 @@
 .toast-progress-wrap {
   width: 100%;
   height: 4px;
-  background: rgba(255,255,255,0.2);
-  border-radius: 2px;
   margin-top: 10px;
+  border-radius: 2px;
+  background: #eee;                              /* light track, since the toast is now white */
   overflow: hidden;
 }
 
 .toast-progress-bar {
   height: 100%;
-  background: #4caf50;
   width: 0%;
+  background: green;                             /* same green as the buttons */
   transition: width 0.2s ease;
 }
