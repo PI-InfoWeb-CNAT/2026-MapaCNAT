@@ -1501,7 +1501,7 @@ export class Connection {
         let ms = this.hoverTime * 1000;
         let t = this.hover * (1000 / 30) / ms;
         t = ease(t);
-        this.size = 10 + t * 5;
+        this.size = 4 + t * 5;
         this.updateGraphics();
     }
     
