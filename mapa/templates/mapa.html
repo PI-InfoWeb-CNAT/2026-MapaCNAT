@@ -8,6 +8,10 @@
 <link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
 {% endblock %}
 
+{% block meta %}
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{% endblock %}
+
 {% block content %}
 <main id="app-layout">
     <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
@@ -64,7 +68,7 @@
 
         <div id="map"></div>
 
-        <button class="padding icon" id="orientation"><i class="fa-solid fa-compass"></i></button>
+        <button class="padding icon" id="orientation"><img src="{% static 'img/compass.png' %}" alt="Bússola"></button>
 
         <div id="user-tab" class="collapsed">
             <img id="user-avatar" src="{% static 'img/default-user.png' %}" alt="Foto do usuário">

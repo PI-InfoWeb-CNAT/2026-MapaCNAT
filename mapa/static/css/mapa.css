@@ -1,20 +1,137 @@
-body {
-    overflow: hidden !important;
+/* ==========================================================================
+   mapa.css: main map page + editor
+
+   1. Tokens & base
+   2. Layout & map
+   3. Search & routes
+   4. Sidebar
+   5. Map controls
+   6. Banner
+   7. User tab
+   8. Modals & share
+   9. Editor UI
+   10. Responsive (mobile)
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. Tokens & base
+   ========================================================================== */
+
+:root {
+    /* 100dvh follows the visible viewport on mobile (browser bars collapse/expand);
+       100vh is the fallback for browsers without dvh. */
+    --app-height: 100vh;
+
+    /* Only non-zero with <meta name="viewport" content="..., viewport-fit=cover"> */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
 }
+
+@supports (height: 100dvh) {
+    :root { --app-height: 100dvh; }
+}
+
+html,
+body {
+    height: 100%;
+    overflow: hidden !important;
+    overscroll-behavior: none;   /* no pull-to-refresh / bar jiggle while dragging the map */
+}
+
 canvas {
     width: 100%;
     height: 100%;
     object-fit: contain;
 }
-#map {
-    position: static;
-    top: 0;
-    left: 0;
+
+.hidden {
+    display: none !important;
+}
+
+
+/* ==========================================================================
+   2. Layout & map
+   ========================================================================== */
+
+#app-layout {
+    display: flex;
     width: 100vw;
-    height: 100vh;
-    background-color: gray;
-    z-index: 1;
+    height: var(--app-height);
+    overflow: hidden;
+}
+
+#map-container {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--app-height);
+    --user-tab-height: 0px;   /* set from JS while the user tab is open */
+}
+
+#map {
+    width: 100vw;
+    height: var(--app-height);
     background-color: #EEE8DC;
+}
+
+/* no blue tap flash on the map UI */
+#map-container,
+#map-container * {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* the map itself: pointer events handle pan/pinch/long-press */
+#map,
+#map canvas {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+}
+
+#map canvas:focus {
+    outline: none;
+}
+
+
+/* ==========================================================================
+   3. Search & routes
+   ========================================================================== */
+
+header {
+    position: absolute;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    gap: 1em;
+    box-sizing: border-box;
+    background-color: transparent;
+    margin:
+        calc(var(--body-margin) + var(--safe-top))
+        calc(var(--body-margin) + var(--safe-right))
+        var(--body-margin)
+        calc(var(--body-margin) + var(--safe-left));
+}
+
+/* same width for the default search bar and the route card */
+#map-container header {
+    width: min(500px, calc(100% - 2 * var(--body-margin) - var(--safe-left) - var(--safe-right)));
+}
+
+#search {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    padding: 0 15px;
+    font-size: 1.2em;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 25px;
 }
 
 #search img {
@@ -22,22 +139,6 @@ canvas {
     margin-right: .5em;
 }
 
-#search {
-    background-color: white;
-    font-size: 1.2em;
-    border: 1px solid #ccc;
-    flex-grow: 1;
-    margin-right: 1em;
-    
-    display: flex;
-    flex-direction: column;
-
-    box-sizing: border-box; 
-    
-    padding: 0 15px;
-    border-radius: 25px;
-
-}
 #search-header {
     display: flex;
     align-items: center;
@@ -45,57 +146,215 @@ canvas {
 }
 
 #search input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    margin-left: 10px;
     border: none;
     outline: none;
+    background: transparent;
     font-size: 1em;
     font-family: var(--font-family);
-    width: 400px;
-    background: transparent;
-    margin-left: 10px;
 }
 
 #options {
-    width: 50px;
-    height: 50px;
-    box-sizing: border-box;
-    
-    font-size: 1.2em;
     flex-shrink: 0;
-    
     display: flex;
     align-items: center;
     justify-content: center;
-    
-    border: none;
-    cursor: pointer;
-    background-color: white;
-
-    border-radius: 25px;
-}
-
-header {
-    position: absolute;
-    display: flex;
-    align-items: top; 
+    width: 50px;
+    height: 50px;
     box-sizing: border-box;
-    background-color: transparent;
-    z-index: 2;
-    margin: var(--body-margin);
+    border: none;
+    border-radius: 25px;
+    background-color: white;
+    font-size: 1.2em;
+    cursor: pointer;
 }
+
+/* results list */
+#search-expansion {
+    max-height: calc(var(--app-height) * 0.55);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+#search-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 15px 0;
+    padding: 0;
+    list-style: none;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.search-element {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-radius: 5px;
+}
+
+.search-element:hover {
+    background-color: #eee;
+    cursor: pointer;
+}
+
+.search-element img {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+    background-color: #f2f2f2;
+}
+
+.search-element-description {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.search-element-description h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 500;
+    line-height: 1.2;
+    color: #111;
+}
+
+.search-element-description p {
+    margin: 3px 0 0;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.2;
+    color: #767676;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* "Sua localização" shortcut in the list */
+.search-element-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    background-color: #f2f2f2;
+    color: green;
+}
+
+.no-results {
+    padding: 4px 0;
+    font-size: 14px;
+    color: #767676;
+}
+
+/* route mode */
+#route-fields {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 0;
+}
+
+.route-inputs {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.route-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 42px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    background-color: #f3f3f3;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    cursor: text;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.route-field:focus-within {
+    background-color: white;
+    border-color: green;
+}
+
+.route-dot {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+    margin: 0 3px;
+    border: 2.5px solid #555;
+    border-radius: 50%;
+}
+
+.route-field--destination i {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    color: #d93025;
+}
+
+/* overrides the plain search input inside route fields */
+#search .route-field input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+    font-size: 0.85em;
+}
+
+.route-icon-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #444;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.route-icon-btn:hover {
+    background-color: #eee;
+}
+
+#route-swap i {
+    transform: rotate(90deg);
+}
+
+
+/* ==========================================================================
+   4. Sidebar
+   ========================================================================== */
 
 .sidebar {
     position: fixed;
     top: 0;
     right: -300px;
-    width: 300px;
-    height: 100vh;
-    background-color: white;
-    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
-    z-index: 9999; 
-    transition: right 0.3s ease-in-out;
+    z-index: 9999;
     display: flex;
     flex-direction: column;
+    width: 300px;
+    height: var(--app-height);
     box-sizing: border-box;
+    padding: var(--safe-top) 0 var(--safe-bottom);
+    background-color: white;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
+    transition: right 0.3s ease-in-out;
 }
 
 .sidebar.active {
@@ -107,10 +366,10 @@ header {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100vw;
-    height: 100vh;
-    background-color: rgba(0, 0, 0, 0.5);
     z-index: 9998;
+    width: 100vw;
+    height: var(--app-height);
+    background-color: rgba(0, 0, 0, 0.5);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease-in-out;
@@ -133,16 +392,17 @@ header {
     margin: 0;
     font-family: var(--font-family, sans-serif);
 }
+
 .sidebar-header h3 a {
     color: #333;
 }
 
 #close-sidebar {
-    background: none;
+    padding: 5px 10px;
     border: none;
+    background: none;
     font-size: 1.5em;
     cursor: pointer;
-    padding: 5px 10px;
 }
 
 .sidebar-links {
@@ -156,15 +416,15 @@ header {
     align-items: center;
     padding: 15px 25px;
     text-decoration: none;
-    color: #333;
     font-family: var(--font-family, sans-serif);
     font-size: 1.1em;
+    color: #333;
     transition: background 0.2s ease;
 }
 
 .sidebar-links a i {
-    margin-right: 15px;
     width: 20px;
+    margin-right: 15px;
     text-align: center;
 }
 
@@ -172,141 +432,72 @@ header {
     background-color: #f5f5f5;
     color: #000;
 }
-#orientation {
-    position: fixed;
-    bottom: var(--body-margin);
-    right: var(--body-margin);
 
-    border-radius: 25px;
-}
+
+/* ==========================================================================
+   5. Map controls
+   ========================================================================== */
+
 .icon {
-    width: 50px;
-    height: 50px;
-    box-sizing: border-box;
-    
-    font-size: 1.2em;
     flex-shrink: 0;
-    
     display: flex;
     align-items: center;
     justify-content: center;
-    
+    width: 50px;
+    height: 50px;
+    box-sizing: border-box;
     border: none;
-    cursor: pointer;
     background-color: white;
-}
-
-#logo-wrapper {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-}
-#editor-logo {
-    width: 56px;
-    margin: var(--body-margin);
-    margin-bottom: 0;
-}
-
-#editor-modes {
-    position: fixed;
-    justify-content: center;
-    left:0;
-    top:0;
-    background-color: white;
-    height: 100%;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-}
-
-#pin-mode {
-    position: fixed;
-    left: calc(var(--body-margin) * 5 + 56px);
-    bottom: var(--body-margin);
-}
-#pin-mode button {
-    margin: 0 !important;
-}
-#editor-modes hr {
-    border: none;
-    height: 2px;
-    margin: var(--body-margin);
-    background-color: rgb(182, 182, 182);
-}
-
-.editor-button {
-    margin: 0 var(--body-margin);
-    border-radius: 5px;
-}
-.editor-button:first-child {
-    margin-top:var(--body-margin);
-}
-.mode-active {
-    background-color: #aaa;
-}
-#submit {
-    position: fixed;
-    left: 0;
-    bottom: 0;
-}
-.hidden {
-    display: none !important;
-}
-.modal-form {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.form-group label {
-    font-size: 0.9em;
-    color: #444;
-}
-
-.form-group input {
-    padding: 8px 12px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 1em;
-}
-
-.modal-submit-btn {
-    background-color: #000;
-    color: #fff;
-    border: none;
-    padding: 10px;
-    font-size: 1em;
-    border-radius: 4px;
+    font-size: 1.2em;
     cursor: pointer;
-    font-weight: bold;
-    transition: background 0.2s;
 }
 
-.modal-submit-btn:hover {
-    background-color: #333;
-}
-.button-list {
-    background-color: #ddd;
-    border-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-
-    margin: var(--body-margin);
-    height: calc(100vh - 2 * 56px - 4 * var(--body-margin));
+/* base rule (editor, where the compass is not inside #map-container) */
+#orientation {
+    position: fixed;
+    right: calc(var(--body-margin) + var(--safe-right));
+    bottom: calc(var(--body-margin) + var(--safe-bottom));
+    border-radius: 25px;
 }
 
+/* main page: sits above the OS nav bar, and rides on top of the user tab when open
+   (--user-tab-height already includes the safe-area padding, hence max()) */
+#map-container #orientation {
+    position: absolute;
+    bottom: calc(var(--body-margin) + max(var(--safe-bottom), var(--user-tab-height)));
+    transition: bottom 0.3s ease;
+}
+
+#orientation img {
+    width: 150%;
+    height: 150%;
+}
+
+
+/* ==========================================================================
+   6. Banner
+   ========================================================================== */
+
+/* container: right-hand panel (desktop). Hidden = slid out of the way. */
 #screen-ui {
     position: absolute;
+    right: 0;
     display: flex;
     flex-direction: row;
-    right: 0;
-    height: 100vh;
+    flex: 0 0 500px;
+    height: var(--app-height);
+    transition: margin-right 0.3s ease;
 }
+
+.main-ui {
+    position: relative !important;
+}
+
+#screen-ui.hidden {
+    display: block !important;   /* keeps the slide animation (plain .hidden is display:none) */
+    margin-right: -500px;
+}
+
 #screen-ui > article:first-of-type {
     display: flex;
     flex-direction: column;
@@ -314,24 +505,14 @@ header {
     box-sizing: border-box;
 }
 
-#save {
-    flex-shrink: 0;
-}
-#expand-banner {
-    height: 150px !important;
-
-    margin-top: auto;
-    margin-bottom: auto; 
-    flex-shrink: 0;
-}
 #banner {
     width: 500px;
-    background-color: white;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-    padding: 0;
     box-sizing: border-box;
+    padding: 0;
     overflow-y: auto;
+    background-color: white;
     font-family: var(--font-family, sans-serif);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 .banner-form {
@@ -339,20 +520,21 @@ header {
     flex-direction: column;
 }
 
+/* image (editor defaults) */
 .image-upload-wrapper {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 200px;
     margin: 0;
     background-color: #e0e0e0;
     background-size: cover;
     background-position: center;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    font-family: inherit;
     cursor: pointer;
     transition: background-color 0.2s;
-    font-family: inherit;
 }
 
 .image-upload-wrapper:hover {
@@ -364,25 +546,43 @@ header {
 }
 
 .image-upload-label {
-    color: #333;
-    font-weight: 600;
-    font-size: 0.95em;
-    pointer-events: none;
-    background-color: rgba(255, 255, 255, 0.85);
     padding: 8px 16px;
     border-radius: 20px;
+    background-color: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
     font-family: inherit;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    font-size: 0.95em;
+    font-weight: 600;
+    color: #333;
+    pointer-events: none;
 }
 
+#banner .banner-image-container {
+    width: 100%;
+    height: 200px;
+    overflow: hidden;
+    background-color: #e0e0e0;
+}
+
+#banner .banner-image-container img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* content (editor defaults) */
 .banner-content {
-    padding: var(--body-margin, 15px);
     display: flex;
     flex-direction: column;
+    padding: var(--body-margin, 15px);
 }
 
 .editable-title {
     width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
     border: none;
     outline: none;
     background: transparent;
@@ -390,82 +590,93 @@ header {
     font-size: 1.5em;
     font-weight: bold;
     color: #222;
-    padding: 0;
-    margin: 0;
-    box-sizing: border-box;
 }
 
 .editable-title::placeholder {
-    color: #888;
     font-weight: bold;
+    color: #888;
 }
 
 .banner-divider {
-    border: none;
     height: 1px;
-    background-color: #e0e0e0;
     margin: 12px 0;
+    border: none;
+    background-color: #e0e0e0;
 }
 
 .editable-description {
     width: 100%;
+    min-height: 100px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
     border: none;
     outline: none;
     background: transparent;
+    resize: none;
     font-family: inherit;
     font-size: 1em;
     font-weight: normal;
-    color: #444;
-    padding: 0;
-    margin: 0;
-    resize: none;
-    box-sizing: border-box;
     line-height: 1.4;
-    min-height: 100px;
+    color: #444;
 }
 
 .editable-description::placeholder {
-    color: #999;
     font-weight: normal;
-}
-#banner.banner-view {
-    background-color: white;
+    color: #999;
 }
 
-/* Imagem */
+/* view mode (main page): read-only card over the image */
 #banner.banner-view .image-upload-wrapper {
-    height: 240px;
-    cursor: default;
-    position: relative;
     z-index: 0;
+    height: 240px;
     background-color: #e6e1d6;
+    cursor: default;
 }
 
 #banner.banner-view .image-upload-wrapper:hover {
-    background-color: #e6e1d6; /* sem efeito de hover, é só visualização */
+    background-color: #e6e1d6;   /* no hover effect, it is only a preview */
 }
 
-/* Cartão de conteúdo sobrepondo a imagem */
 #banner.banner-view .banner-content {
     position: relative;
     z-index: 1;
     margin-top: -24px;
     padding: 24px 22px 32px;
-    background-color: white;
     border-radius: 12px 12px 0 0;
+    background-color: white;
 }
 
-/* Título */
 #banner.banner-view .editable-title {
     font-size: 1.6em;
     font-weight: 700;
     line-height: 1.25;
     color: #1a1a1a;
-    cursor: default;
     text-overflow: ellipsis;
+    cursor: default;
 }
 
-/* Botões de ação */
+#banner.banner-view .banner-divider {
+    margin: 22px 0 18px;
+}
+
+#banner.banner-view .editable-description {
+    overflow: hidden;
+    font-size: 1em;
+    line-height: 1.6;
+    color: #444;
+    cursor: default;
+}
+
+/* the description grows with its text where supported */
+@supports (field-sizing: content) {
+    #banner.banner-view .editable-description {
+        field-sizing: content;
+        min-height: 0;
+    }
+}
+
+/* actions */
 .banner-actions {
     display: flex;
     gap: 10px;
@@ -516,14 +727,9 @@ header {
     background-color: rgba(0, 128, 0, 0.08);
 }
 
-/* Divisor */
-#banner.banner-view .banner-divider {
-    margin: 22px 0 18px;
-}
-
-/* Seção "Sobre" */
+/* "Sobre" section (hidden when there is no description) */
 .banner-section-title {
-    margin: 0 0 8px 0;
+    margin: 0 0 8px;
     font-size: 0.75em;
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -531,148 +737,14 @@ header {
     color: #888;
 }
 
-/* esconde a seção quando não há descrição */
 .banner-section:has(.editable-description:placeholder-shown) {
     display: none;
 }
 
-#banner.banner-view .editable-description {
-    font-size: 1em;
-    line-height: 1.6;
-    color: #444;
-    cursor: default;
-    overflow: hidden;
-}
 
-/* a descrição cresce conforme o texto (onde o navegador suporta) */
-@supports (field-sizing: content) {
-    #banner.banner-view .editable-description {
-        field-sizing: content;
-        min-height: 0;
-    }
-}
-
-#app-layout {
-    display: flex;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-}
-
-#map-container {
-    position: relative;
-    flex: 1 1 auto;
-    height: 100vh;
-    min-width: 0;
-    --user-tab-height: 0px;
-}
-
-#map-container header {
-    width: 500px;
-}
-
-#map-container #orientation {
-    position: absolute;
-    bottom: var(--body-margin);
-    right: var(--body-margin);
-}
-
-.main-ui {
-    position: relative !important;
-}
-#screen-ui {
-    height: 100vh;
-    flex: 0 0 500px;
-    transition: margin-right 0.3s ease;
-}
-
-#screen-ui.hidden {
-    display: block !important;
-    margin-right: -500px;
-}
-
-#banner .banner-image-container {
-    width: 100%;
-    height: 200px;
-    overflow: hidden;
-    background-color: #e0e0e0;
-}
-
-#banner .banner-image-container img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-}
-.modal-button {
-    background-color: white;
-    color: green;
-    border: none;
-    padding: 1em;
-}
-.modal-button:hover {
-    cursor: pointer;
-}
-.modal-button-main {
-    background-color: green;
-    color: white;
-    border-radius: 15px;
-}
-
-#search-list {
-  list-style: none;
-  padding: 0;
-  margin: 15px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-.search-element {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-radius: 5px;
-}
-.search-element:hover {
-    background-color: #eee;
-    cursor: pointer;
-}
-
-.search-element img {
-  width: 44px;
-  height: 44px;
-  object-fit: contain;
-  background-color: #f2f2f2;
-  flex-shrink: 0;
-}
-
-.search-element-description {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.search-element-description h3 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 500;
-  color: #111111;
-  line-height: 1.2;
-}
-
-.search-element-description p {
-  margin: 3px 0 0 0;
-  font-size: 14px;
-  color: #767676;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
-
-
+/* ==========================================================================
+   7. User tab
+   ========================================================================== */
 
 #user-tab {
     position: absolute;
@@ -684,29 +756,27 @@ header {
     align-items: center;
     gap: 20px;
     box-sizing: border-box;
-    padding: 20px 30px;
+    padding: 20px 30px calc(20px + var(--safe-bottom));
     background-color: white;
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
     font-family: var(--font-family, sans-serif);
-
     transform: translateY(0);
     transition: transform 0.3s ease, visibility 0.3s;
 }
 
-/* Hidden: slides down off-screen. Not using .hidden because
-   it has display:none !important, which would kill the animation. */
+/* slides down off-screen (not .hidden: display:none would kill the animation) */
 #user-tab.collapsed {
     transform: translateY(100%);
     visibility: hidden;
 }
 
 #user-avatar {
+    flex-shrink: 0;
     width: 80px;
     height: 80px;
     border-radius: 50%;
     object-fit: cover;
     background-color: #ddd;
-    flex-shrink: 0;
 }
 
 #user-info {
@@ -715,24 +785,24 @@ header {
 }
 
 #user-info h3 {
-    margin: 0 0 6px 0;
+    margin: 0 0 6px;
     font-size: 1.2em;
 }
 
 #user-info p {
-    margin: 2px 0 0 0;
+    margin: 2px 0 0;
     font-size: 0.9em;
     color: #444;
 }
 
 #share-location {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 10px;
-    flex-shrink: 0;
+    padding: 14px 24px;
     border: none;
     border-radius: 30px;
-    padding: 14px 24px;
     background-color: green;
     color: white;
     font-family: inherit;
@@ -746,195 +816,323 @@ header {
     background-color: #006400;
 }
 
-/* Compass rides on top of the tab and moves with it */
-#map-container #orientation {
-    bottom: calc(var(--body-margin) + var(--user-tab-height));
-    transition: bottom 0.3s ease;
-}
 
-@media (max-width: 700px) {
-    #user-tab { flex-wrap: wrap; }
-    #share-location { width: 100%; justify-content: center; }
-}
+/* ==========================================================================
+   8. Modals & share
+   ========================================================================== */
 
-
-/* --- Share Modal Inner Content --- */
-.share-social-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.social-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 12px 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  transition: background 0.2s, transform 0.1s;
-}
-
-.social-btn:hover {
-  background: #e5e7eb;
-  transform: translateY(-2px);
-}
-
-.social-icon {
-  font-size: 22px;
-  line-height: 1;
-}
-
-.share-link-box {
-  display: flex;
-  align-items: center;
-  background: #f9fafb;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  padding: 4px 4px 4px 12px;
-  gap: 8px;
-}
-
-.share-link-box input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  color: #4b5563;
-  outline: none;
-  min-width: 0; /* Prevents flex input from overflowing the box */
-  text-overflow: ellipsis;
-}
-
-.btn-copy {
-  background: #111827;
-  color: #ffffff;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-  white-space: nowrap;
-}
-
-.btn-copy:hover {
-  background: #374151;
-}
-
-.btn-copy.copied {
-  background: #16a34a;
-}
-
-
-
-#route-fields {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 0;
-}
-
-.route-inputs {
-    flex: 1;
-    min-width: 0;
+.modal-form {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 15px;
 }
 
-.route-field {
+.form-group {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 42px;
-    padding: 0 12px;
-    box-sizing: border-box;
-    background-color: #f3f3f3;
-    border: 2px solid transparent;
-    border-radius: 12px;
-    cursor: text;
-    transition: background-color 0.2s, border-color 0.2s;
+    flex-direction: column;
+    gap: 5px;
 }
 
-.route-field:focus-within {
-    background-color: white;
-    border-color: green;
-}
-
-.route-dot {
-    width: 10px;
-    height: 10px;
-    box-sizing: border-box;
-    border: 2.5px solid #555;
-    border-radius: 50%;
-    flex-shrink: 0;
-    margin: 0 3px;
-}
-
-.route-field--destination i {
-    width: 16px;
-    text-align: center;
-    color: #d93025;
-    flex-shrink: 0;
-}
-
-/* sobrescreve o width: 400px do input da busca normal */
-#search .route-field input[type="search"] {
-    flex: 1;
-    min-width: 0;
-    width: auto;
-    margin: 0;
-    font-size: 0.85em;
-}
-
-.route-icon-btn {
-    width: 36px;
-    height: 36px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
+.form-group label {
+    font-size: 0.9em;
     color: #444;
-    font-size: 0.85em;
+}
+
+.form-group input {
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em;
+}
+
+.modal-submit-btn {
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    background-color: #000;
+    color: #fff;
+    font-size: 1em;
+    font-weight: bold;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background 0.2s;
 }
 
-.route-icon-btn:hover {
-    background-color: #eee;
+.modal-submit-btn:hover {
+    background-color: #333;
 }
 
-#route-swap i {
-    transform: rotate(90deg);
-}
-
-/* item "Sua localização" na lista */
-.search-element-icon {
-    width: 44px;
-    height: 44px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: #f2f2f2;
+.modal-button {
+    padding: 1em;
+    border: none;
+    background-color: white;
     color: green;
 }
 
-.no-results {
-    color: #767676;
-    font-size: 14px;
-    padding: 4px 0;
+.modal-button:hover {
+    cursor: pointer;
+}
+
+.modal-button-main {
+    border-radius: 15px;
+    background-color: green;
+    color: white;
+}
+
+/* share modal */
+.share-social-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.social-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #f3f4f6;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.social-btn:hover {
+    background: #e5e7eb;
+    transform: translateY(-2px);
+}
+
+.social-icon {
+    font-size: 22px;
+    line-height: 1;
+}
+
+.share-link-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 4px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    background: #f9fafb;
+}
+
+.share-link-box input {
+    flex: 1;
+    min-width: 0;   /* keeps the flex input from overflowing the box */
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 13px;
+    color: #4b5563;
+    text-overflow: ellipsis;
+}
+
+.btn-copy {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    background: #111827;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-copy:hover {
+    background: #374151;
+}
+
+.btn-copy.copied {
+    background: #16a34a;
+}
+
+
+/* ==========================================================================
+   9. Editor UI
+   ========================================================================== */
+
+#logo-wrapper {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+#editor-logo {
+    width: 56px;
+    margin: var(--body-margin);
+    margin-bottom: 0;
+}
+
+#editor-modes {
+    position: fixed;
+    top: 0;
+    left: 0;
+    justify-content: center;
+    height: 100%;
+    background-color: white;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+#editor-modes hr {
+    height: 2px;
+    margin: var(--body-margin);
+    border: none;
+    background-color: rgb(182, 182, 182);
+}
+
+.editor-button {
+    margin: 0 var(--body-margin);
+    border-radius: 5px;
+}
+
+.editor-button:first-child {
+    margin-top: var(--body-margin);
+}
+
+.mode-active {
+    background-color: #aaa;
+}
+
+#pin-mode {
+    position: fixed;
+    left: calc(var(--body-margin) * 5 + 56px);
+    bottom: var(--body-margin);
+}
+
+#pin-mode button {
+    margin: 0 !important;
+}
+
+.button-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    height: calc(100vh - 2 * 56px - 4 * var(--body-margin));
+    margin: var(--body-margin);
+    border-radius: 10px;
+    background-color: #ddd;
+}
+
+#submit {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+}
+
+#save {
+    flex-shrink: 0;
+}
+
+#expand-banner {
+    flex-shrink: 0;
+    height: 150px !important;
+    margin-top: auto;
+    margin-bottom: auto;
+}
+
+
+/* ==========================================================================
+   10. Responsive (mobile)
+   ========================================================================== */
+
+@media (max-width: 700px) {
+    :root {
+        --sheet-height: min(calc(var(--app-height) * 0.6), 520px);
+    }
+
+    /* search: 16px inputs stop iOS from zooming on focus */
+    #search {
+        padding: 0 12px;
+        font-size: 1em;
+    }
+
+    #search-header {
+        height: 46px;
+    }
+
+    #options {
+        width: 46px;
+        height: 46px;
+    }
+
+    #search input[type="search"],
+    #search .route-field input[type="search"] {
+        font-size: 16px;
+    }
+
+    #search-expansion {
+        max-height: calc(var(--app-height) * 0.5);
+    }
+
+    /* menu */
+    .sidebar {
+        width: min(300px, 85vw);
+    }
+
+    /* banner: side panel becomes a bottom sheet (main page only) */
+    #screen-ui.main-ui {
+        position: fixed !important;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 5;
+        flex: none;
+        height: var(--sheet-height);
+        margin-right: 0;
+        transition: transform 0.3s ease, visibility 0.3s;
+    }
+
+    #screen-ui.main-ui.hidden {
+        margin-right: 0;
+        transform: translateY(100%);
+        visibility: hidden;
+    }
+
+    #banner {
+        width: 100%;
+        padding-bottom: var(--safe-bottom);
+        border-radius: 16px 16px 0 0;
+        filter: drop-shadow(0 -2px 8px rgba(0, 0, 0, 0.25));
+    }
+
+    #banner.banner-view .image-upload-wrapper {
+        height: 160px;
+    }
+
+    #banner.banner-view .banner-content {
+        padding: 20px 16px 24px;
+    }
+
+    /* compass rides above the sheet (the sheet's height already covers the safe area) */
+    #app-layout:has(#screen-ui.main-ui:not(.hidden)) #map-container #orientation {
+        bottom: calc(var(--body-margin) + var(--sheet-height));
+    }
+
+    /* "you are here" tab */
+    #user-tab {
+        flex-wrap: wrap;
+        gap: 14px;
+        padding: 14px 16px calc(14px + var(--safe-bottom));
+        border-radius: 16px 16px 0 0;
+    }
+
+    #user-avatar {
+        width: 56px;
+        height: 56px;
+    }
+
+    #share-location {
+        justify-content: center;
+        width: 100%;
+        padding: 12px 18px;
+    }
 }

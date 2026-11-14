@@ -9,6 +9,7 @@ let connectionContainer;
 let areasContainer;
 let pinContainer;
 let app;
+let compassButton;
 
 let avatarSize = 20;
 
@@ -283,6 +284,7 @@ export function renderPin(graphics, data) {
     graphics.x = pos.x;
     graphics.y = pos.y;
     graphics.scale.set(size / zoom);
+    graphics.rotation = -mapContainer.rotation;
 }
 export function clearPin(graphics) {
     graphics.visible = false;
@@ -623,6 +625,9 @@ export function destroyTouchPin(graphics) {
 
 export function setContext(context) {
     page = context.page;
+    if(page == "main") {
+        compassButton = document.getElementById("orientation");
+    }
     color = context.blank_color;
     textColor = context.text_color;
 
@@ -636,8 +641,9 @@ export function setContext(context) {
 
 export async function main() {
     app = new PIXI.Application();
+    const mapEl = document.getElementById("map");
     await app.init({
-        resizeTo: window,
+        resizeTo: mapEl,
         antialias: true,
         backgroundColor: color,
         resolution: window.devicePixelRatio || 1,
@@ -661,6 +667,12 @@ export async function main() {
     mapContainer.addChild(mapSprite);
 
     imageSize = { width: mapSprite.width, height: mapSprite.height };
+
+    new ResizeObserver(() => {
+        const { width, height } = mapEl.getBoundingClientRect();
+        app.renderer.resize(width, height);
+        updateMap();
+    }).observe(mapEl);
 
     minZoom =
         Math.max(app.screen.width, app.screen.height) /
@@ -854,8 +866,11 @@ export function setZoom(z) {
 
 function Rotation(r) {
     mapContainer.rotation = r;
-    for (const child of textContainer.children) {
+    for (const child of pinContainer.children) {
         child.rotation = -r;
+    }
+    if(compassButton) {
+        compassButton.children[0].style.transform = `rotate(${r}rad)`;
     }
 }
 

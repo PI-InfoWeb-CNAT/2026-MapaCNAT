@@ -18,9 +18,14 @@ let mapInterface;
 let mapContainer;
 let hoverMap;
 let defaultImageFile;
-let ableToMark;
 
-let shareIdResolved;
+const DOUBLE_CLICK_MS = 350;
+const DOUBLE_CLICK_DIST = 24;
+const LONG_PRESS_MS = 500;
+
+let lastTap = null;
+let longPressTimer = 0;
+let longPressFired = false;
 
 let currentObjectURL = null;
 
@@ -40,6 +45,7 @@ let expanded = false;
 let currentResults = [];
 let currentQuery = '';
 let activeImageUrls = [];
+let originPlaceholder = '';
 
 let userTab;
 let shareLocation;
@@ -64,10 +70,11 @@ let minZoom, maxZoom;
 let zoomStep;
 let zoom = Graficos.zoom;
 
-let clicking = false;
+let leftClicking = false;
+let rightClicking = false;
 let touching = false;
 
-let mapStartX, mapStartY;
+let mapStartX, mapStartY, mapStartAngle;
 let clickX, clickY;
 let touchX, touchY;
 let pendingTemporaryPinCoordinate;
@@ -76,6 +83,13 @@ let startMidX, startMidY;
 let startDistance, startAngle;
 let startZoom, startRotation;
 let startOffsetX, startOffsetY;
+let rotateOffsetX = 0, rotateOffsetY = 0;
+
+let pressedTarget = null;
+let pinching = false;
+let pendingMainMove = null;
+let mainMoveRaf = 0;
+let cursorState = "";
 
 let hoverSet = new Set();
 let hoverTargetSet = new Set();
@@ -180,6 +194,92 @@ class Task {
 
 const hasEnabledAreas = (b) => !!b && b.areas.some((a) => a.enabled);
 
+function passedDragThreshold(e) {
+    const limit = e.pointerType === "touch" ? 10 : 4;
+    return Math.hypot(e.clientX - clickX, e.clientY - clickY) >= limit;
+}
+
+function setCursor(c) {
+    if (c !== cursorState) {
+        cursorState = c;
+        mapObj.style.cursor = c;
+    }
+}
+
+function pickMainTarget(coord) {
+    return (
+        Editor.Self.getOverlappingPin(coord) ||
+        Editor.Referencer.getOverlappingDotPins(coord) ||
+        Editor.Buildings.getOverlappingAreas(coord)?.building ||
+        Editor.Buildings.getOverlappingPins(coord) ||
+        null
+    );
+}
+
+// At most one map update per frame, no matter how often pointermove fires
+function scheduleMainMove(e) {
+    pendingMainMove = { clientX: e.clientX, clientY: e.clientY };
+    if (mainMoveRaf) return;
+    mainMoveRaf = requestAnimationFrame(() => {
+        mainMoveRaf = 0;
+        const m = pendingMainMove;
+        pendingMainMove = null;
+        if (m) applyMainMove(m);
+    });
+}
+
+function flushMainMove() {
+    if (mainMoveRaf) {
+        cancelAnimationFrame(mainMoveRaf);
+        mainMoveRaf = 0;
+    }
+    if (pendingMainMove) {
+        const m = pendingMainMove;
+        pendingMainMove = null;
+        applyMainMove(m);
+    }
+}
+
+function applyMainMove(m) {
+    if (rightClicking) {
+        const delta = (m.clientX - clickX) / 300;
+        Graficos.setRotation(mapStartAngle + delta);
+        const p = Transformacao.rotatePoint(rotateOffsetX, rotateOffsetY, delta);
+        Graficos.setPosition(clickX + p.x, clickY + p.y);
+    } else if (leftClicking) {
+        Pointer.defaultMove(m);
+    } else {
+        const pin = pickMainTarget(Editor.newCoord(m.clientX, m.clientY, "screen"));
+        hoverTargetSet = new Set();
+        if (pin) hoverTargetSet.add(pin);
+        setCursor(pin ? "pointer" : "default");
+    }
+}
+
+function placeMarker(coord) {
+    Editor.TouchPin.setPos(coord);
+    Editor.TouchPin.setVisible(true);
+    const g = Localizacao.mapToGeographical(coord.pos);
+    if (!Array.isArray(g) || !Number.isFinite(g[0]) || !Number.isFinite(g[1])) return;
+    updateUrlParams({ r: undefined, lat: g[0], long: g[1] });
+}
+
+function startLongPress(x, y) {
+    clearLongPress();
+    longPressTimer = setTimeout(() => {
+        longPressTimer = 0;
+        if (moved || pinching || !leftClicking) return;
+        longPressFired = true;
+        navigator.vibrate?.(20);
+        placeMarker(Editor.newCoord(x, y, "screen"));
+    }, LONG_PRESS_MS);
+}
+
+function clearLongPress() {
+    clearTimeout(longPressTimer);
+    longPressTimer = 0;
+}
+
 class Touch {
     constructor() {
         throw new Error("Classe estática. Não instancie.");
@@ -187,12 +287,11 @@ class Touch {
 
     static begin(e) {
         touching = true;
-        if (e.touches.length == 1) {
-            const touch = e.touches[0];
-            touchX = touch.clientX;
-            touchY = touch.clientY;
-            mapStartX = Graficos.mapContainer.x;
-            mapStartY = Graficos.mapContainer.y;
+        if (e.touches.length >= 2) {
+            clearLongPress();
+            pinching = true;
+            moved = true;            // cancels any pending tap
+            pressedTarget = null;
         }
         if (e.touches.length == 2) {
             const a = e.touches[0];
@@ -210,6 +309,7 @@ class Touch {
     }
 
     static step(e) {
+        if (!touching || e.touches.length != 2) return;
         if (!touching) return;
         if (e.touches.length == 1) {
             let touch = e.touches[0];
@@ -251,7 +351,10 @@ class Touch {
     }
 
     static end(e) {
-        touching = false;
+        if (e.touches.length === 0) {
+            touching = false;
+            pinching = false;
+        }
     }
 }
 
@@ -277,41 +380,34 @@ class Pointer {
     }
 
     static down(e) {
+        if (!e.isPrimary || pinching) return;
+
         clickX = e.clientX;
         clickY = e.clientY;
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
-        clicking = true;
+        mapStartAngle = Graficos.mapContainer.rotation;
+        rotateOffsetX = mapStartX - clickX;
+        rotateOffsetY = mapStartY - clickY;
+
+        if (e.button === 0) leftClicking = true;
+        else if (e.button === 2) rightClicking = true;
+
+        if (e.target === mapObj) mapObj.setPointerCapture?.(e.pointerId);
+
         moved = false;
+        pressedTarget = null;
         pendingTemporaryPinCoordinate = null;
         pendingMapTarget = null;
 
         if (page == "main") {
-            ableToMark = true;
-            let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-            let pin = Editor.Self.getOverlappingPin(coord);
-            if (!pin) {
-                pin = Editor.Referencer.getOverlappingDotPins(coord);
+            if (e.button === 0) {
+                pressedTarget = pickMainTarget(Editor.newCoord(clickX, clickY, "screen"));
+                if (!pressedTarget && e.pointerType !== "mouse") startLongPress(clickX, clickY);
             }
-            if(!pin) {
-                pin = Editor.Buildings.getOverlappingAreas(coord)?.building;
-            }
-            if(!pin) {
-                pin = Editor.Buildings.getOverlappingPins(coord);
-            }
-
-            if (pin.selfPin) {
-                Actions.openUser(pin);
-            } else if (pin) {
-                Actions.openBanner(pin);
-            } else {
-                if (!bannerTab.classList.contains("hidden") && !userTab.classList.contains("hidden")) {
-                    ableToMark = false;
-                }
-                Actions.closeBanner();
-                Actions.closeUser();
-            }
+            return;
         } else if (page == "editor") {
+            if (e.button !== 0) return;
             if (editorMode == EditorModes.REFERENCE) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
                 let overlap = Editor.Referencer.getOverlappingDots(
@@ -425,33 +521,28 @@ class Pointer {
     }
 
     static move(e) {
+        if (!e.isPrimary || pinching) return;
         moved = true;
-        hoverTargetSet = new Set();
+        clearLongPress();
+        
         if (page == "main") {
-            let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-            let pin = Editor.Self.getOverlappingPin(coord);
-            if (!pin) {
-                pin = Editor.Referencer.getOverlappingDotPins(coord);
-                if(!pin) {
-                    pin = Editor.Buildings.getOverlappingAreas(coord)?.building;
-                    if(!pin) {
-                        pin = Editor.Buildings.getOverlappingPins(coord);
-                    }
+            if (leftClicking || rightClicking) {
+                if (!moved) {
+                    if (!passedDragThreshold(e)) return;
+                    moved = true;
+                    hoverTargetSet = new Set();   // un-highlight whatever was hovered
+                    setCursor("default");
                 }
             }
+            scheduleMainMove(e);
+            return;
+        }
 
-            if(pin) {
-                hoverTargetSet.add(pin);
-                mapObj.style.cursor = "pointer";
-            } else {
-                mapObj.style.cursor = "default";
-
-                if (!clicking) return;
-                Pointer.defaultMove(e);
-            }
-        } else if (page == "editor") {
+        hoverTargetSet = new Set();
+        
+        if (page == "editor") {
             if (editorMode == EditorModes.FREE) {
-                if (!clicking) return;
+                if (!leftClicking) return;
                 Pointer.defaultMove(e);
             } else if (editorMode == EditorModes.REFERENCE) {
                 if (Holdable.object) {
@@ -500,7 +591,7 @@ class Pointer {
                     if (overlap) {
                         hoverTargetSet.add(overlap);
                     } else {
-                        if (!clicking) return;
+                        if (!leftClicking) return;
                         Pointer.defaultMove(e);
                     }
                 }
@@ -522,7 +613,7 @@ class Pointer {
                 } else if (overlapAreas) {
                     hoverTargetSet.add(overlapAreas);
                 } else {
-                    if (!clicking) return;
+                    if (!leftClicking) return;
                     Pointer.defaultMove(e);
                 }
             } else if (editorMode == EditorModes.CONSTRUCTION) {
@@ -640,7 +731,7 @@ class Pointer {
                         screenEnd.convertTo("normal");
                         area.move(screenStart, screenEnd);
                     } else {
-                        if (!clicking) return;
+                        if (!leftClicking) return;
                         Pointer.defaultMove(e);
                     }
                 }
@@ -653,43 +744,62 @@ class Pointer {
                 } else if (overlapPins) {
                     hoverTargetSet.add(overlapPins);
                 } else {
-                    if (!clicking) return;
+                    if (!leftClicking) return;
                     Pointer.defaultMove(e);
                 }
             } else {
-                if (!clicking) return;
+                if (!leftClicking) return;
                 Pointer.defaultMove(e);
             }
         }
     }
 
     static up(e) {
-        const wasClicking = clicking;
-        clicking = false;
+        const wasRightClicking = rightClicking;
+        if (!e.isPrimary) return;
+        if (page == "main") flushMainMove();
+        
+        const wasLeftClicking = leftClicking;
+        if (e.button === 0) leftClicking = false;
+        else if (e.button === 2) rightClicking = false;
+
+        if (pinching) {
+            clearLongPress();
+            pressedTarget = null;
+            return;
+        }
 
         if (page == "main") {
-            if (moved || !wasClicking) return;
+            clearLongPress();
+            const pressed = pressedTarget;
+            pressedTarget = null;
 
-            let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-            let pin = Editor.Self.getOverlappingPin(coord);
-            if (!pin) {
-                pin = Editor.Referencer.getOverlappingDotPins(coord);
-            }
-            if(!pin) {
-                pin = Editor.Buildings.getOverlappingAreas(coord)?.building;
-            }
-            if(!pin) {
-                pin = Editor.Buildings.getOverlappingPins(coord);
-            }
+            if (longPressFired) { longPressFired = false; return; }   // the hold already placed the pin
+            if (moved || !wasLeftClicking) return;
 
-            if (pin || !ableToMark) {
+            if (pressed) {
+                lastTap = null;
+                if (pressed.selfPin) Actions.openUser(pressed);
+                else Actions.openBanner(pressed);
                 return;
             }
-            Editor.TouchPin.setPos(coord);
-            Editor.TouchPin.setVisible(true);
-            let geographical = Localizacao.mapToGeographical(coord.pos);
-            updateUrlParams({ lat: geographical[0], long: geographical[1]});
 
+            // tap on empty map: closes panels, never places a pin by itself
+            Actions.closeBanner();
+            Actions.closeUser();
+
+            if (e.pointerType !== "mouse") return;   // touch uses long press instead
+
+            const now = performance.now();
+            if (lastTap &&
+                now - lastTap.t <= DOUBLE_CLICK_MS &&
+                Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) <= DOUBLE_CLICK_DIST) {
+                lastTap = null;
+                placeMarker(Editor.newCoord(e.clientX, e.clientY, "screen"));
+            } else {
+                lastTap = { t: now, x: e.clientX, y: e.clientY };
+            }
+            return;
         } else if (page == "editor") {
             if (editorMode == EditorModes.REFERENCE) {
                 if (Holdable.object) {
@@ -733,6 +843,13 @@ class Pointer {
                 }
             }
         }
+    }
+    static cancel() {
+        clearLongPress();
+        leftClicking = false;
+        rightClicking = false;
+        moved = true;          // a cancelled gesture must never count as a tap
+        pressedTarget = null;
     }
 
     static wheel(e) {
@@ -1481,6 +1598,9 @@ class Actions {
     }
 
     static openBanner(obj) {
+        if (Holdable.type === "banner" && Holdable.object === obj &&
+            !bannerTab.classList.contains("hidden")) return;
+
         this.saveBanner();
 
         resetDisplayImage();
@@ -1525,6 +1645,8 @@ class Actions {
             setDisplayImage(b.image);
         } else if (page == "main" && defaultImageFile) {
             showImage(defaultImageFile);
+        } else if (page == "main") {
+            showImage(defaultImage);
         }
 
         bannerTitle.value = b.title || "";
@@ -1555,13 +1677,19 @@ class Actions {
             if(data?.coords) {
                 geocoords = Localizacao.mapToGeographical(data.coords.getIn("normal"));
             }
+            
+            if (!Array.isArray(geocoords) || !Number.isFinite(geocoords[0]) || !Number.isFinite(geocoords[1])) {
+                toaster.show({ text: "Falha ao comparilhar" });
+                return;
+            }
+            
             if(data) {
                 url.searchParams.set('r', data.render ? 1: 0);
             }
             url.searchParams.set('lat', geocoords[0]);
             url.searchParams.set('long', geocoords[1]);
 
-            window.history.replaceState({}, '', url);
+            // window.history.replaceState({}, '', url);
 
             Modals.modal.open({
                 title: 'Compartilhar página',
@@ -1883,11 +2011,24 @@ function pickResult(item) {
     }
 }
 
-function pickSelf() {
+function reportLocationFailure(status, deniedText = 'Localização desativada: não é possível traçar rota a partir da sua posição.') {
+    if (status === 'denied') {
+        Toasts.toaster.show({ text: deniedText });
+    } else if (status !== 'dismissed') {
+        Toasts.toaster.show({ text: 'Não foi possível obter sua localização.' });
+    }
+}
+
+async function pickSelf() {
     activeInput = null;
     expanded = false;
     syncExpansion();
-    Route.setPoint('origin', selfPoint());
+
+    const status = await Localizacao.requestLocation();
+    if (!Route.active) return;
+
+    if (status === 'granted') Route.setPoint('origin', selfPoint());
+    else reportLocationFailure(status);
 }
 
 function nearestNodeId(coordinate, nodes) {
@@ -1931,7 +2072,9 @@ class Route {
     static origin = null;       // { ref, title, self? }
     static destination = null;  // { ref, title }
 
-    static start(place) {
+    static locationRequestId = 0;
+
+    static async start(place) {
         const title = bannerTitle.value.trim() || 'Destino';
         const wasActive = this.active;
 
@@ -1943,12 +2086,31 @@ class Route {
         routeDestination.value = title;
 
         if (!wasActive) {
-            this.origin = selfPoint();
-            routeOrigin.value = this.origin ? this.origin.title : '';
-            if (!this.origin) routeOrigin.focus();
+            this.origin = null;
+            routeOrigin.value = '';
+            this.update();
+            await this.useMyLocation();
+            return;
         }
-
         this.update();
+    }
+
+    static async useMyLocation() {
+        const id = ++this.locationRequestId;
+        routeOrigin.placeholder = 'Obtendo sua localização…';
+
+        const status = await Localizacao.requestLocation();
+        routeOrigin.placeholder = originPlaceholder;
+
+        // route closed, or the user picked an origin by hand while we waited
+        if (id !== this.locationRequestId || !this.active || this.origin) return;
+
+        if (status === 'granted') {
+            this.setPoint('origin', selfPoint());
+        } else {
+            reportLocationFailure(status);
+            routeOrigin.focus();
+        }
     }
 
     static stop() {
@@ -2049,6 +2211,15 @@ function initSearch() {
 
     routeFields = document.getElementById("route-fields");
     routeOrigin = document.getElementById("route-origin");
+    originPlaceholder = routeOrigin.placeholder;
+
+    Localizacao.onPermissionChange((state) => {
+        if (state === 'granted' || !Route.active || !Route.origin?.self) return;
+        Route.clearPoint('origin');
+        routeOrigin.value = '';
+        reportLocationFailure(state === 'denied' ? 'denied' : 'unavailable');
+    });
+
     routeDestination = document.getElementById("route-destination");
 
     search = createSearch(Editor.queryBanner, (results, query) => {
@@ -2132,6 +2303,7 @@ export async function addListeners(map) {
     map.addEventListener("pointermove", Pointer.move);
     document.addEventListener("pointerup", Pointer.up);
     map.addEventListener("wheel", Pointer.wheel, { passive: false });
+    document.addEventListener("pointercancel", Pointer.cancel);
 
     map.addEventListener("touchstart", Touch.begin, { passive: false });
     map.addEventListener("touchmove", Touch.step, { passive: false });
@@ -2146,6 +2318,8 @@ export async function addListeners(map) {
     bannerTab = document.getElementById("banner");
 
     hoverLoop = () => {
+        if (hoverSet.size === 0 && hoverTargetSet.size === 0) return;
+
         for(const obj of hoverTargetSet) {
             obj.hoverAdd();
             if (!hoverSet.has(obj)) {
@@ -2222,8 +2396,10 @@ export async function addListeners(map) {
 
         userTab = document.getElementById("user-tab");
         shareLocation = document.getElementById("share-location");
-        shareLocation.addEventListener("click", async (e) => {
-            Actions.openModal("share");
+        shareLocation.addEventListener("click", async () => {
+            const status = await Localizacao.requestLocation();
+            if (status === "granted") Actions.openModal("share");
+            else reportLocationFailure(status, 'Localização desativada: não é possível compartilhá-la.');
         });
 
         Editor.load();
@@ -2253,7 +2429,7 @@ export async function addListeners(map) {
         document.addEventListener("keydown", (e) => {
             if (Modals.modal.dialog.open) return;
             if (e.target.closest?.("input, textarea, [contenteditable]")) return;
-            if (clicking || (Holdable.object && Holdable.type !== "banner")) return;
+            if (leftClicking || (Holdable.object && Holdable.type !== "banner")) return;
 
             const isModifierPressed = e.ctrlKey || e.metaKey;
 

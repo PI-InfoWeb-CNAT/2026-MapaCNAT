@@ -600,6 +600,7 @@ export class Self {
     static selfPin = true;
     static location = "";
     static onSince = null;
+    // static active = false;
 
     static buildData() {
         return {
@@ -638,7 +639,7 @@ export class Self {
 
         let textSize = this.graphics;
 
-        if (!this.graphics) {
+        if (!this.graphics || !this.online) {
             return false;
         }
         const minX = textSize.x - textSize.children[0].width * textSize.scale.x / 2;
