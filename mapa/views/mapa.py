@@ -8,7 +8,10 @@ def mapa(request: Any):
     lat = request.GET.get('lat')
     long = request.GET.get('long')
     render = request.GET.get('showpin')
-    context = {"r": 0}
+    context = {
+        "user": request.user,
+        "r": 0
+    }
     if lat and long:
         context["lat"] = lat
         context["long"] = long

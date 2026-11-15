@@ -5,7 +5,9 @@
    2. Reset & base
    3. Utilities
    4. Buttons (shared by home, login and modals)
-   5. Forms (shared by register and modals)
+   5. Forms (fields: input and textarea inside .form-group)
+   6. Icon buttons (circle: map search, sidebar, modals)
+   7. Alerts (login, feedback)
    ========================================================================== */
 
 
@@ -27,6 +29,7 @@
     --gray-50: #f3f3f3;               /* field background */
     --gray-100: #eee;                 /* dividers, icon-button hover */
     --gray-300: #ccc;                 /* field borders */
+    --gray-500: #767676;              /* muted text, placeholders (WCAG AA on white) */
     --gray-700: #444;                 /* secondary text */
     --gray-900: #222;                 /* main text */
     --overlay: rgba(0, 0, 0, 0.5);    /* modal / sidebar backdrop */
@@ -100,6 +103,19 @@ select {
     padding: 10px;
     border-radius: var(--radius-md);
     filter: drop-shadow(var(--shadow-sm));
+}
+
+
+/* visually hidden, still read by screen readers */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    border: 0;
 }
 
 
@@ -199,7 +215,7 @@ select {
 
 
 /* ==========================================================================
-   5. Forms (shared by register and modals)
+   5. Forms (fields: input and textarea inside .form-group)
    ========================================================================== */
 
 .form-group {
@@ -214,9 +230,8 @@ select {
 }
 
 /* gray fill, turns white with a green border on focus */
-.form-group input {
-    height: 42px;
-    padding: 0 12px;
+.form-group input,
+.form-group textarea {
     border: 2px solid transparent;
     border-radius: var(--radius-sm);
     background-color: var(--gray-50);
@@ -226,7 +241,110 @@ select {
     transition: background-color var(--duration-fast), border-color var(--duration-fast);
 }
 
-.form-group input:focus {
+.form-group input {
+    height: 42px;
+    padding: 0 12px;
+}
+
+.form-group textarea {
+    min-height: 120px;
+    padding: 12px;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+    color: var(--gray-500);
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
     background-color: var(--white);
     border-color: var(--dark-green-main);
+}
+
+
+/* ==========================================================================
+   6. Icon buttons (circle: map search, sidebar, modals)
+   Pages add only the glyph size (font-size).
+   ========================================================================== */
+
+.icon-btn,
+.route-icon-btn,
+.app-modal-close {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--gray-700);
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.icon-btn:hover,
+.route-icon-btn:hover,
+.app-modal-close:hover {
+    background-color: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.icon-btn:focus-visible,
+.route-icon-btn:focus-visible,
+.app-modal-close:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+
+/* ==========================================================================
+   7. Alerts (login, feedback)
+   Level classes: .alert-success, .alert-danger / .alert-error, .alert-info.
+   Anything else is neutral. An optional <i> icon goes before the text.
+   ========================================================================== */
+
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-left: 4px solid var(--blue-main);
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+    color: var(--gray-900);
+    font-size: 0.9rem;
+    line-height: 1.4;
+    text-align: left;
+}
+
+.alert i {
+    flex-shrink: 0;
+    margin-top: 0.15em;
+}
+
+.alert-info i {
+    color: var(--blue-main);
+}
+
+.alert-success {
+    border-left-color: var(--dark-green-main);
+    background: var(--green-tint);
+}
+
+.alert-success i {
+    color: var(--dark-green-main);
+}
+
+.alert-danger,
+.alert-error {
+    border-left-color: var(--danger-main);
+    background: var(--danger-tint);
+    color: var(--danger-main);
 }

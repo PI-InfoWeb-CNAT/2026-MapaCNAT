@@ -16,24 +16,41 @@
 <main id="app-layout">
     <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
-    <div id="sidebar" class="sidebar">
+    <div id="sidebar" class="sidebar" aria-label="Menu">
         <div class="sidebar-header">
-            <h3><a href="{% url 'home' %}">Menu</a></h3>
-            <button id="close-sidebar" aria-label="Close menu">
+            <h3>
+                <a href="{% url 'home' %}">
+                    <img src="{% static 'img/logo-pequeno.png' %}" alt="">
+                    <span>Menu</span>
+                </a>
+            </h3>
+            <button id="close-sidebar" class="icon-btn" aria-label="Fechar menu">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
+
         <nav class="sidebar-links">
+            {% if user.is_staff or user.is_superuser %}
+            <span class="sidebar-section-title">Equipe</span>
+            <a href="{% url 'admin' %}"><i class="fa-solid fa-user-shield"></i> Administração</a>
+            <a href="{% url 'mapa_editor' %}"><i class="fa-solid fa-map"></i> Editor</a>
+            <span class="sidebar-section-title">Geral</span>
+            {% endif %}
             <a href="{% url 'feedback' %}"><i class="fa-solid fa-comment"></i> Relatar Feedback</a>
         </nav>
+
+        <div class="sidebar-footer">
+            <strong>Mapa CNAT</strong>
+            IFRN Natal-Central
+        </div>
     </div>
 
     <div id="map-container">
         <header>
             <form id="search" class="padding" action="" method="get" role="search">
                 <div id="search-header">
-                    <img src="{% static 'img/logo-pequeno.png' %}">
-                    <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
+                    <a href="{% url 'home' %}"><img src="{% static 'img/logo-pequeno.png' %}" alt="Mapa CNAT"></a>
+                    <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass"></i></label>
                     <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." autocomplete="off">
                 </div>
 
@@ -63,7 +80,7 @@
                     <ol id="search-list"></ol>
                 </div>
             </form>
-            <button class="padding" id="options"><i class="fa-solid fa-bars"></i></button>
+            <button class="padding" id="options" aria-label="Abrir menu"><i class="fa-solid fa-bars"></i></button>
         </header>
 
         <div id="map"></div>
@@ -79,7 +96,7 @@
                 <p>No IF desde: <strong id="user-since">—</strong></p>
             </div>
 
-            <button type="button" id="share-location">
+            <button type="button" id="share-location" class="botao alt-botao">
                 <i class="fa-solid fa-location-arrow"></i>
                 <span>Compartilhar localização atual</span>
             </button>
@@ -110,11 +127,11 @@
                         readonly>
 
                     <div class="banner-actions">
-                        <button type="button" class="banner-action banner-action--primary" id="banner-route">
+                        <button type="button" class="botao alt-botao banner-action" id="banner-route">
                             <i class="fa-solid fa-diamond-turn-right"></i>
                             <span>Rotas</span>
                         </button>
-                        <button type="button" class="banner-action banner-action--secondary" id="banner-share">
+                        <button type="button" class="botao banner-action" id="banner-share">
                             <i class="fa-solid fa-share-nodes"></i>
                             <span>Compartilhar</span>
                         </button>

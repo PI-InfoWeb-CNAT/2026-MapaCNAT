@@ -15,6 +15,10 @@ from django.conf import settings
 
 @login_required
 def mapa_editor(request: Any):
+    if not request.user.is_staff:
+        template = loader.get_template('404.html')
+        return HttpResponse(template.render())
+
     template = loader.get_template('mapa-editor.html')
     return HttpResponse(template.render())
 

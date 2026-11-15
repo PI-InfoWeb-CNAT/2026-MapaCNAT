@@ -1,5 +1,8 @@
 import * as Transformacao from "./transformacao.js";
 import * as Editor from "./editor.js";
+import { SvgTileEngine } from "./mapTiling.js";
+
+let tiles;
 
 export let map;
 export let mapContainer;
@@ -29,9 +32,7 @@ let entranceTexture;
 
 let temporaryPin;
 let pinoSprite;
-let mapSprite;
 let userTexture;
-let mapTextures;
 let gl;
 
 export let minZoom, maxZoom;
@@ -39,7 +40,7 @@ let zoomStep;
 
 export let smoothTransform = false;
 let transformFrame = 0;
-let updating = false;
+
 export let zoom = 1;
 export let scaleFactor = 1;
 
@@ -122,16 +123,8 @@ export function destroyReference(graphics) {
     referenceContainer.removeChild(graphics.point);
     referenceContainer.removeChild(graphics.door);
 
-    graphics.point.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true,
-    });
-    graphics.door.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true,
-    });
+    graphics.point.destroy();
+    graphics.door.destroy();
 }
 
 /////////////////// Connection
@@ -257,11 +250,7 @@ export function destroyPin(graphics) {
     pinContainer.removeChild(graphics);
 
     for (const child of graphics.children) {
-        child.destroy({
-            children: true,
-            texture: true,
-            baseTexture: true,
-        });
+        child.destroy();
     }
 
     graphics.destroy({ children: true });
@@ -533,11 +522,7 @@ export function destroySelfPin(graphics) {
     pinContainer.removeChild(graphics);
     
     for (const child of graphics.children) {
-        child.destroy({
-            children: true,
-            texture: true,
-            baseTexture: true
-        });
+        child.destroy();
     }
 
     graphics.destroy({ children: true });
@@ -574,11 +559,7 @@ export function destroyTouchPin(graphics) {
     pinContainer.removeChild(graphics);
     
     for (const child of graphics.children) {
-        child.destroy({
-            children: true,
-            texture: true,
-            baseTexture: true
-        });
+        child.destroy();
     }
 
     graphics.destroy({ children: true });
@@ -619,22 +600,26 @@ export async function main() {
     mapContainer = new PIXI.Container();
     app.stage.addChild(mapContainer);
 
+    tiles = new SvgTileEngine({
+        container: mapContainer,
+        svgUrl: mapImagePath,
+        background: color,
+        getScreenSize: () => ({ width: app.screen.width, height: app.screen.height }),
+        getZoomRange: () => ({ min: minZoom, max: maxZoom }),
+        maxTextureSize: gl?.getParameter(gl.MAX_TEXTURE_SIZE) ?? 4096,
+    });
+
+    imageSize = await tiles.load(); // { width, height } vindos do SVG
+
+    await tiles.start();
+
     mapContainer.x = app.screen.width / 2;
     mapContainer.y = app.screen.height / 2;
-
-    const texture = await PIXI.Assets.load(mapImagePath);
-    mapSprite = PIXI.Sprite.from(texture);
-    mapSprite.anchor.set(0.5);
-    mapSprite.x = 0;
-    mapSprite.y = 0;
-    mapContainer.addChild(mapSprite);
-
-    imageSize = { width: mapSprite.width, height: mapSprite.height };
 
     new ResizeObserver(() => {
         const { width, height } = mapEl.getBoundingClientRect();
         app.renderer.resize(width, height);
-        updateMap();
+        tiles?.requestUpdate();
     }).observe(mapEl);
 
     minZoom =
@@ -701,67 +686,10 @@ export function nodeText(text, configuration) {
     textContainer.addChild(nodeLabel);
 }
 
-function ceilPowerOf2(x) {
-    return x <= 0 ? 1 : Math.pow(2, Math.ceil(Math.log2(x)));
-}
-function floorPowerOf2(x) {
-    return x <= 0 ? 1 : Math.pow(2, Math.floor(Math.log2(x)));
-}
+export async function loadMapScales() {}
 
-export async function loadMapScales() {
-    const svgText = await fetch(mapImagePath).then((r) => r.text());
-    const mapBlob = new Blob([svgText], { type: "image/svg+xml" });
-    const mapUrl = URL.createObjectURL(mapBlob);
-    const img = new Image();
-
-    mapTextures = {};
-
-    img.onload = () => {
-        for (const scale of [0.125, 0.25, 0.5, 1, 2, 4, 8]) {
-            let key = `image-${scale}`;
-            if (!localStorage.getItem(key)) {
-                continue;
-            }
-            const longestSide = Math.max(img.width, img.height);
-            const maxRenderZoom =
-                gl.getParameter(gl.MAX_TEXTURE_SIZE) / longestSide;
-            let currentFactor = Math.min(
-                floorPowerOf2(maxRenderZoom),
-                Math.max(minZoom, scale * window.devicePixelRatio),
-            );
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width * currentFactor;
-            canvas.height = img.height * currentFactor;
-
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            localStorage.setItem(key, PIXI.Texture.from(canvas));
-        }
-    };
-
-    img.src = mapUrl;
-}
-
-async function updateMapTexture() {
-    const longestSide = Math.max(imageSize.width, imageSize.height);
-    const maxRenderZoom = gl.getParameter(gl.MAX_TEXTURE_SIZE) / longestSide;
-    let currentFactor = Math.min(
-        ceilPowerOf2(maxRenderZoom),
-        Math.max(minZoom, zoom * window.devicePixelRatio),
-    );
-
-    let scale = ceilPowerOf2(currentFactor);
-    mapSprite.texture =
-        localStorage.getItem(`image-${scale}`) || mapSprite.texture;
-    mapSprite.scale.set(imageSize.width / mapSprite.texture.width);
-}
-
-export async function updateMap() {
-    if (updating) return;
-    updating = true;
-    await updateMapTexture();
-    updating = false;
+export function updateMap() {
+    tiles?.requestUpdate();
 }
 
 function clampPos() {
@@ -785,6 +713,7 @@ function Position(x, y) {
     mapContainer.x = x;
     mapContainer.y = y;
     clampPos();
+    tiles?.requestUpdate();
 }
 
 export function setPosition(x, y) {
@@ -819,6 +748,7 @@ function Zoom(z) {
     }
 
     clampPos();
+    tiles?.requestUpdate();
 }
 
 export function setZoom(z) {
@@ -844,11 +774,9 @@ export function setRotation(r) {
 }
 
 export function editorFocus(value) {
-    mapSprite.alpha = 1;
-    if (value) {
-        mapSprite.alpha = 0.5;
-    }
+    tiles?.setDimmed(value); // antes: mapSprite.alpha = value ? 0.5 : 1
 }
+
 export function highlight(activeGroups) {
     if (activeGroups === true) {
         for (const group of Object.values(groups)) {
