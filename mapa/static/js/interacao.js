@@ -293,6 +293,9 @@ class Touch {
     }
 
     static begin(e) {
+        if(Graficos.smoothTransform) {
+            return;
+        }
         touching = true;
         if (e.touches.length >= 2) {
             clearLongPress();
@@ -317,6 +320,11 @@ class Touch {
 
     static step(e) {
         if (!touching || e.touches.length != 2) return;
+
+        if(Graficos.smoothTransform) {
+            return;
+        }
+
         if (!touching) return;
         if (e.touches.length == 1) {
             let touch = e.touches[0];
@@ -388,6 +396,10 @@ class Pointer {
 
     static down(e) {
         if (!e.isPrimary || pinching) return;
+
+        if(Graficos.smoothTransform) {
+            return;
+        }
 
         clickX = e.clientX;
         clickY = e.clientY;
@@ -529,8 +541,14 @@ class Pointer {
 
     static move(e) {
         if (!e.isPrimary || pinching) return;
+        
+        if(Graficos.smoothTransform) {
+            return;
+        }
+
         moved = true;
         clearLongPress();
+
         
         if (page == "main") {
             if (leftClicking || rightClicking) {

@@ -1,17 +1,192 @@
+/* ==========================================================================
+   global.css: tokens, reset and shared components
+
+   1. Tokens
+   2. Reset & base
+   3. Utilities
+   4. Buttons (shared by home and modals)
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. Tokens
+   ========================================================================== */
+
 :root {
-    --body-margin: 1em;
+    /* Brand */
     --blue-main: #315882;
-    --green-main: #50B846;
-    --dark-green-main: #12680b;
+    --green-main: #50B846;            /* light green: highlights and hovers on dark backgrounds */
+    --dark-green-main: #12680b;       /* dark green: primary actions, borders, focus */
+    --dark-green-hover: #0e520a;
+    --green-tint: rgba(18, 104, 11, 0.08);    /* hover of secondary buttons */
+    --green-focus: rgba(18, 104, 11, 0.35);   /* focus ring */
+
+    /* Neutrals */
+    --white: #fff;
+    --gray-50: #f3f3f3;               /* field background */
+    --gray-100: #eee;                 /* dividers, icon-button hover */
+    --gray-300: #ccc;                 /* field borders */
+    --gray-700: #444;                 /* secondary text */
+    --gray-900: #222;                 /* main text */
+    --overlay: rgba(0, 0, 0, 0.5);    /* modal / sidebar backdrop */
+
+    /* Typography */
     --font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+
+    /* Shape */
+    --body-margin: 1em;
+    --radius-sm: 12px;                /* form fields */
+    --radius-md: 16px;                /* cards, modals, bottom sheets */
+    --radius-pill: 999px;             /* buttons */
+
+    /* Shadows */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.25);
+
+    /* Motion */
+    --duration-press: 0.1s;
+    --duration-fast: 0.2s;
+    --duration-base: 0.3s;
+
+    /* Viewport: 100dvh follows the visible viewport on mobile (browser bars collapse/expand);
+       100vh is the fallback for browsers without dvh. */
+    --app-height: 100vh;
+
+    /* Only non-zero with <meta name="viewport" content="..., viewport-fit=cover"> */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
 }
+
+@supports (height: 100dvh) {
+    :root { --app-height: 100dvh; }
+}
+
+
+/* ==========================================================================
+   2. Reset & base
+   ========================================================================== */
+
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
+
+body {
+    font-family: var(--font-family);
+}
+
+/* form controls do not inherit the font by default */
+button,
+input,
+textarea,
+select {
+    font-family: inherit;
+}
+
+
+/* ==========================================================================
+   3. Utilities
+   ========================================================================== */
+
 .padding {
     padding: 10px;
-    border-radius: 15px;
-    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
+    border-radius: var(--radius-md);
+    filter: drop-shadow(var(--shadow-sm));
+}
+
+
+/* ==========================================================================
+   4. Buttons (shared by home and modals)
+
+   Base geometry for every button, then two variants:
+   secondary = white with a green border, primary = filled green.
+   The primary group comes last so it wins when a button has both classes
+   (e.g. .botao.alt-botao, .modal-button.modal-button-main).
+   Page files only add layout (sizes, spacing, nowrap).
+   ========================================================================== */
+
+.botao,
+.alt-botao,
+.explorar,
+.modal-button,
+.modal-button-main,
+.modal-submit-btn,
+.social-btn,
+.btn-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    gap: 8px;
+    padding: 12px 16px;
+    border: 1.5px solid var(--dark-green-main);
+    border-radius: var(--radius-pill);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        background-color var(--duration-fast),
+        border-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-press);
+}
+
+/* secondary */
+.botao,
+.modal-button,
+.social-btn {
+    background-color: var(--white);
+    color: var(--dark-green-main);
+}
+
+.botao:hover,
+.modal-button:hover,
+.social-btn:hover {
+    background-color: var(--green-tint);
+}
+
+/* primary */
+.alt-botao,
+.explorar,
+.modal-button-main,
+.modal-submit-btn,
+.btn-copy {
+    background-color: var(--dark-green-main);
+    color: var(--white);
+}
+
+.alt-botao:hover,
+.explorar:hover,
+.modal-button-main:hover,
+.modal-submit-btn:hover,
+.btn-copy:hover {
+    background-color: var(--dark-green-hover);
+    border-color: var(--dark-green-hover);
+}
+
+.botao:active,
+.alt-botao:active,
+.explorar:active,
+.modal-button:active,
+.modal-button-main:active,
+.modal-submit-btn:active,
+.social-btn:active,
+.btn-copy:active {
+    transform: scale(0.97);
+}
+
+.botao:focus-visible,
+.alt-botao:focus-visible,
+.explorar:focus-visible,
+.modal-button:focus-visible,
+.modal-button-main:focus-visible,
+.modal-submit-btn:focus-visible,
+.social-btn:focus-visible,
+.btn-copy:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
 }
