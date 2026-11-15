@@ -3,7 +3,7 @@
    Colors, radii, shadows, font and buttons come from global.css.
 
    1. Modal shell
-   2. Forms
+   2. Forms (field look: global.css, section 5)
    3. Buttons (layout only; look is in global.css, section 4)
    4. Share modal
    ========================================================================== */
@@ -150,7 +150,7 @@
 
 
 /* ==========================================================================
-   2. Forms
+   2. Forms (field look: global.css, section 5)
    ========================================================================== */
 
 .modal-form {
@@ -159,39 +159,8 @@
   gap: 16px;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+/* .form-group (label + input): global.css, section 5 */
 
-.form-group label {
-  font-size: 0.9em;
-  color: var(--gray-700);
-}
-
-/* gray fill, turns white with a green border on focus */
-.form-group input {
-  box-sizing: border-box;
-  height: 42px;
-  padding: 0 12px;
-  border: 2px solid transparent;
-  border-radius: var(--radius-sm);
-  background-color: var(--gray-50);
-  font-size: 1em;
-  color: var(--gray-900);
-  outline: none;
-  transition: background-color var(--duration-fast), border-color var(--duration-fast);
-}
-
-.form-group input:focus {
-  background-color: var(--white);
-  border-color: var(--dark-green-main);
-}
-
-.modal-actions {
-  margin-top: 16px;
-}
 
 /* ==========================================================================
    3. Buttons (layout only; look is in global.css, section 4)

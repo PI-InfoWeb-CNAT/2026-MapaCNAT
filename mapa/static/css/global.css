@@ -4,7 +4,8 @@
    1. Tokens
    2. Reset & base
    3. Utilities
-   4. Buttons (shared by home and modals)
+   4. Buttons (shared by home, login and modals)
+   5. Forms (shared by register and modals)
    ========================================================================== */
 
 
@@ -18,7 +19,7 @@
     --green-main: #50B846;            /* light green: highlights and hovers on dark backgrounds */
     --dark-green-main: #12680b;       /* dark green: primary actions, borders, focus */
     --dark-green-hover: #0e520a;
-    --green-tint: rgba(18, 104, 11, 0.08);    /* hover of secondary buttons */
+    --green-tint: rgba(18, 104, 11, 0.08);    /* soft green wash on white surfaces (e.g. success alerts) */
     --green-focus: rgba(18, 104, 11, 0.35);   /* focus ring */
 
     /* Neutrals */
@@ -29,6 +30,10 @@
     --gray-700: #444;                 /* secondary text */
     --gray-900: #222;                 /* main text */
     --overlay: rgba(0, 0, 0, 0.5);    /* modal / sidebar backdrop */
+
+    /* Feedback */
+    --danger-main: #b3261e;
+    --danger-tint: #fdecea;
 
     /* Typography */
     --font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -99,10 +104,10 @@ select {
 
 
 /* ==========================================================================
-   4. Buttons (shared by home and modals)
+   4. Buttons (shared by home, login and modals)
 
    Base geometry for every button, then two variants:
-   secondary = white with a green border, primary = filled green.
+   secondary = white with a green border (fills green on hover), primary = filled green.
    The primary group comes last so it wins when a button has both classes
    (e.g. .botao.alt-botao, .modal-button.modal-button-main).
    Page files only add layout (sizes, spacing, nowrap).
@@ -146,7 +151,8 @@ select {
 .botao:hover,
 .modal-button:hover,
 .social-btn:hover {
-    background-color: var(--green-tint);
+    background-color: var(--dark-green-main);   /* opaque: stays visible over photos */
+    color: var(--white);
 }
 
 /* primary */
@@ -189,4 +195,38 @@ select {
 .btn-copy:focus-visible {
     outline: 3px solid var(--green-focus);
     outline-offset: 2px;
+}
+
+
+/* ==========================================================================
+   5. Forms (shared by register and modals)
+   ========================================================================== */
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-size: 0.9em;
+    color: var(--gray-700);
+}
+
+/* gray fill, turns white with a green border on focus */
+.form-group input {
+    height: 42px;
+    padding: 0 12px;
+    border: 2px solid transparent;
+    border-radius: var(--radius-sm);
+    background-color: var(--gray-50);
+    font-size: 1em;
+    color: var(--gray-900);
+    outline: none;
+    transition: background-color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.form-group input:focus {
+    background-color: var(--white);
+    border-color: var(--dark-green-main);
 }

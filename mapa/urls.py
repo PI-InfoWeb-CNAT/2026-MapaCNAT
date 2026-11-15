@@ -5,9 +5,11 @@ from . import views
 
 urlpatterns = [
     path('mapa/', views.mapa, name='mapa'),
-    path('login/', views.login, name='login'),
-    path('logout/', views.logout, name='logout'),
-    path('register/', views.register, name='register'),
+    path('auth/login/', views.login, name='login'),
+    path('auth/register/', views.register, name='register'),
+    path('auth/logout/', views.logout, name='logout'),
+    # path('auth/suap/callback/', views.suap_callback, name='suap_callback'),
+    path('auth/google/callback/', views.google_callback, name='google_callback'),
     path('mapa/editor/', views.mapa_editor, name='mapa_editor'),
     path('mapa/editor/save', views.mapa_editor_data, name='mapa_editor_data'),
     path('mapa/editor/load', views.mapa_data_load, name='mapa_editor_load'),

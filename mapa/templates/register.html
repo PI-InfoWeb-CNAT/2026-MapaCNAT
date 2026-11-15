@@ -1,45 +1,84 @@
+{% extends 'base.html' %}
+
+{% load socialaccount %}
+
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cadastro</title>
+{% block title %}MapaCNAT - register{% endblock %}
 
-    <link rel="stylesheet" type="text/css" href="{% static 'css/register.css' %}">
+{% block style %}<link rel="stylesheet" type="text/css" href="{% static 'css/auth.css' %}">{% endblock %}
 
-    <link rel="stylesheet" type="text/css"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-</head>
-    <body>
+{% block content %}
 
-        <form class="card" method="POST" action="">
+<body class="login-page" style="--login-background: url('{% static 'img/cnat/arvores.jpeg' %}')">
 
-            <h1>CADASTRO</h1>
+    <main class="login-card">
 
-            {% if message is not None %}
-                <div class="alert alert-{{ message.type }} campo">{{ message.text }}</div>
-            {% endif %}
+        <img class="login-logo" src="{% static 'img/logo-pequeno.png' %}" alt="Mapa CNAT">
 
+        <h1>Criar conta</h1>
+        <p>Use sua conta institucional para acessar o Mapa CNAT.</p>
+
+        {% if message is not None %}
+            <div class="alert alert-{{ message.type }}" role="alert">{{ message.text }}</div>
+        {% endif %}
+
+        <form class="login-form" method="post">
             {% csrf_token %}
+
             {% for f in form %}
                 <div class="form-group campo">
-            {{ f.label }}
-            {{ f }}
-            {% for error in f.errors %}
-                <div class="invalid-feedback" style="display: initial;">{{ error }}</div>
+                    {{ f.label_tag }}
 
-            {% endfor %}
+                    {% if f.field.widget.input_type == 'password' %}
+                        <div class="password-wrapper">
+                            {{ f }}
+                            <button type="button" class="password-toggle" aria-label="Mostrar senha" aria-pressed="false">
+                                <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    {% else %}
+                        {{ f }}
+                    {% endif %}
+
+                    {% for error in f.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
                 </div>
             {% endfor %}
 
-            <button class="btn">CRIAR CONTA</button>
-
-            <div class="logo">
-                <img src="{% static 'img/logo-pequeno.png' %}" alt="Logo">
-            </div>
-
+            <button class="botao login-action" type="submit">Criar conta</button>
         </form>
-    </body>
-</html>
+
+        <div class="login-divider"><span>ou</span></div>
+
+        <div class="login-actions">
+            <a class="botao login-action" href="{% provider_login_url 'google' %}">
+                <i class="fa-brands fa-google"></i>
+                Continuar com o Google
+            </a>
+        </div>
+
+        <a class="login-switch" href="{% url 'login' %}">Já tenho uma conta</a>
+
+    </main>
+
+    <script>
+        document.querySelectorAll('.password-toggle').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const input = btn.previousElementSibling;
+                const icon = btn.querySelector('i');
+                const isHidden = input.type === 'password';
+
+                input.type = isHidden ? 'text' : 'password';
+                btn.setAttribute('aria-pressed', String(isHidden));
+                btn.setAttribute('aria-label', isHidden ? 'Ocultar senha' : 'Mostrar senha');
+
+                icon.classList.toggle('fa-eye', !isHidden);
+                icon.classList.toggle('fa-eye-slash', isHidden);
+            });
+        });
+    </script>
+
+</body>
+{% endblock %}

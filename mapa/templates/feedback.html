@@ -8,7 +8,10 @@
 {% block content %}
   <header class="topbar">
     <div class="topbar__inner">
-      <a href="{% url 'home' %}" class="topbar__back" aria-label="Voltar">
+      <a href="{% url 'home' %}"
+        onclick="if (document.referrer.startsWith(window.location.origin)) { event.preventDefault(); history.back(); }"
+        class="topbar__back"
+        aria-label="Voltar">
         <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
           <path d="M15 4 7 12l8 8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>

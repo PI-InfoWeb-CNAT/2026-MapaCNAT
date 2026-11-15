@@ -1,60 +1,85 @@
+{% extends 'base.html' %}
+
+{% load socialaccount %}
+
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
-    <link rel="stylesheet" type="text/css" href="{% static 'css/login.css' %}">
-    <link rel="stylesheet" type="text/css"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-</head>
-<body>
+{% block title %}MapaCNAT - login{% endblock %}
 
-    <form class="login-box" method="POST" action="">
+{% block style %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/auth.css' %}">
+{% endblock %}
 
-        <h2>LOGIN</h2>
+{% block content %}
+<body class="login-page" style="--login-background: url('{% static 'img/cnat/arvores.jpeg' %}')">
+
+    <main class="login-card">
+
+        <img class="login-logo" src="{% static 'img/logo-pequeno.png' %}" alt="Mapa CNAT">
+
+        <h1>Entrar</h1>
+        <p>Escolha como você quer acessar o Mapa CNAT.</p>
 
         {% if message is not None %}
-            <div class="alert alert-{{ message.type }}">{{ message.text }}</div>
+            <div class="alert alert-{{ message.type }}" role="alert">{{ message.text }}</div>
         {% endif %}
 
-        {% csrf_token %}
-        {% for f in form %}
-            <div class="form-group input-group">
-        {{ f.label }}
-        {{ f }}
-        {% for error in f.errors %}
-            <div class="invalid-feedback" style="display: initial;">{{ error }}</div>
+        <form class="login-form" method="post">
+            {% csrf_token %}
 
-        {% endfor %}
-            </div>
-        {% endfor %}
+            {% for f in form %}
+                <div class="form-group campo">
+                    {{ f.label_tag }}
 
-        <!-- <div class="input-group">
-            <label>EMAIL</label>
-            <input type="email" placeholder="seu.nome@email.com">
+                    {% if f.field.widget.input_type == 'password' %}
+                        <div class="password-wrapper">
+                            {{ f }}
+                            <button type="button" class="password-toggle" aria-label="Mostrar senha" aria-pressed="false">
+                                <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    {% else %}
+                        {{ f }}
+                    {% endif %}
+
+                    {% for error in f.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+
+            <button class="botao login-action" type="submit">Entrar</button>
+        </form>
+
+        <div class="login-divider"><span>ou</span></div>
+
+        <div class="login-actions">
+            <a class="botao login-action" href="{% provider_login_url 'google' %}">
+                <i class="fa-brands fa-google"></i>
+                Entrar com o Google
+            </a>
         </div>
 
-        <div class="input-group">
-            <label>SENHA</label>
+        <a class="login-switch" href="{% url 'register' %}">Não tenho uma conta</a>
 
-            <div class="password">
-                <input type="password" placeholder="Sua senha ultra-secreta">
-                <button type="button">
-                    <i class="fa-regular fa-eye"></i>
-                </button>
-            </div>
-        </div> -->
+    </main>
 
-        <button class="btn-login">ENTRAR</button>
+    <script>
+        document.querySelectorAll('.password-toggle').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const input = btn.previousElementSibling;
+                const icon = btn.querySelector('i');
+                const isHidden = input.type === 'password';
 
-        <div class="logo">
-            <img src="{% static 'img/logo-pequeno.png' %}" alt="Logo">
-        </div>
+                input.type = isHidden ? 'text' : 'password';
+                btn.setAttribute('aria-pressed', String(isHidden));
+                btn.setAttribute('aria-label', isHidden ? 'Ocultar senha' : 'Mostrar senha');
 
-    </form>
+                icon.classList.toggle('fa-eye', !isHidden);
+                icon.classList.toggle('fa-eye-slash', isHidden);
+            });
+        });
+    </script>
 
 </body>
-</html>
+{% endblock %}
