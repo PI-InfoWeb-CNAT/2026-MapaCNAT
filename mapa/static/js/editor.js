@@ -540,18 +540,7 @@ export class TouchPin {
     static getOverlappingPin(coordinate) {
         let pos = coordinate.getIn("normal");
 
-        let textSize = this.graphics;
-
-        if (!this.graphics) {
-            return false;
-        }
-        const minX = textSize.x - textSize.children[0].width * textSize.scale.x / 2;
-        const maxX = textSize.x - textSize.children[0].width * textSize.scale.x / 2 + textSize.width;
-        const minY = textSize.y - textSize.children[0].height * textSize.scale.y;
-        const maxY = textSize.y;
-
-
-        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+        if (Graficos.collisionTest(this.graphics, pos)) {
             return this;
         }
 
@@ -637,18 +626,7 @@ export class Self {
     static getOverlappingPin(coordinate) {
         let pos = coordinate.getIn("normal");
 
-        let textSize = this.graphics;
-
-        if (!this.graphics || !this.online) {
-            return false;
-        }
-        const minX = textSize.x - textSize.children[0].width * textSize.scale.x / 2;
-        const maxX = textSize.x - textSize.children[0].width * textSize.scale.x / 2 + textSize.width;
-        const minY = textSize.y - textSize.children[0].height * textSize.scale.y;
-        const maxY = textSize.y;
-
-
-        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+        if (Graficos.collisionTest(this.graphics, pos)) {
             return this;
         }
 
@@ -937,19 +915,12 @@ export class Referencer {
         const references = Object.values(this.references).toReversed();
 
         for (const reference of references) {
-            let textSize = reference.graphics;
-
+            let graphics = reference.graphics;
             if(!reference.name) {
                 continue;
             }
 
-            const minX = textSize.x - textSize.children[1].width * textSize.scale.x / 2;
-            const maxX = textSize.x - textSize.children[1].width * textSize.scale.x / 2 + textSize.width;
-            const minY = textSize.y - textSize.children[1].height * textSize.scale.y;
-            const maxY = textSize.y;
-
-
-            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+            if (Graficos.collisionTest(graphics, pos)) {
                 if (!all) {
                     return reference;
                 }
@@ -1145,15 +1116,7 @@ export class Buildings {
         const buildings = Object.values(this.buildings).toReversed();
 
         for (const building of buildings) {
-            let textSize = building.graphics;
-
-            const minX = textSize.x - textSize.children[1].width * textSize.scale.x / 2;
-            const maxX = textSize.x - textSize.children[1].width * textSize.scale.x / 2 + textSize.width;
-            const minY = textSize.y - textSize.children[1].height * textSize.scale.y;
-            const maxY = textSize.y;
-
-
-            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+            if (Graficos.collisionTest(building.graphics, pos)) {
                 if (!all) {
                     return building;
                 }

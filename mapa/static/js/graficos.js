@@ -666,6 +666,22 @@ export async function main() {
     };
 }
 
+export function collisionTest(sprite, localPoint) {
+    if (!sprite || !sprite.visible || !sprite.children?.length) return false;
+
+    for (const child of sprite.children) {
+        if (!child.visible) continue;
+
+        const p = child.toLocal(localPoint, mapContainer);
+        const bounds = child.getLocalBounds();
+
+        if (bounds.rectangle.contains(p.x, p.y)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 export function nodeText(text, configuration) {
     const nodeLabel = new PIXI.Text({
         text: text,

@@ -33,6 +33,7 @@
             {% if user.is_staff or user.is_superuser %}
             <span class="sidebar-section-title">Equipe</span>
             <a href="{% url 'painel_hub' %}"><i class="fa-solid fa-user-shield"></i> Administração</a>
+            <a href="{% url 'mapa_editor' mapa.pk %}"><i class="fa-solid fa-map"></i> Editor</a>
             <span class="sidebar-section-title">Geral</span>
             {% endif %}
             <a href="{% url 'feedback' %}"><i class="fa-solid fa-comment"></i> Relatar Feedback</a>
