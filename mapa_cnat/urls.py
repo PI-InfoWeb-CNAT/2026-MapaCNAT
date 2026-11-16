@@ -22,7 +22,7 @@ urlpatterns = [
     path('accounts/', include('allauth.urls')),
 ]
 
-if settings.DEBUG:
-    urlpatterns += [
-        path('admin/', admin.site.urls),
-    ]
+# if settings.DEBUG:
+urlpatterns += [
+    path('admin/', admin.site.urls),
+]
