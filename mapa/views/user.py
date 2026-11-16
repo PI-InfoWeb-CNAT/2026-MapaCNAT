@@ -1,16 +1,30 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
+from mapa.forms.auth import LoginForm, RegisterForm
 from django.http import JsonResponse
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core import signing
-from mapa.forms.auth import LoginForm, RegisterForm
 from django.contrib.auth.decorators import login_required
 
 def logout(request):
     auth_logout(request)
     return redirect('/')
+
+# def login(request):
+#     message = None
+#     if request.user.is_authenticated:
+#         return redirect('/')
+
+#     context = {
+#         'message': message,
+#         'title': 'Login',
+#         'button_text': 'Entrar',
+#         'link_text': 'Registrar',
+#         'link_href': '/register',
+#     }
+#     return render(request, template_name='login.html', context=context, status=200)
 
 def login(request):
     loginForm = LoginForm()
@@ -40,7 +54,6 @@ def login(request):
     }
     return render(request, template_name='login.html', context=context, status=200)
 
-
 def register(request):
     registerForm = RegisterForm()
     message = None
@@ -60,13 +73,13 @@ def register(request):
                 message = {'type': 'danger', 'text': 'Já existe um usuário com este e-mail!'}
             else:
                 try:
-                    validate_password(password)
+                    validate_password(password, user=User(username=username, email=email))
                 except ValidationError as e:
                     registerForm.add_error('password', e)
                 else:
                     user = User.objects.create_user(username=username, email=email, password=password)
-                    auth_login(request, authenticate(request, email=email, password=password))
-                    return redirect('/')
+                    auth_login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+                    return redirect('/mapa')
 
     context = {
         'form': registerForm,
@@ -78,17 +91,22 @@ def register(request):
     }
     return render(request, template_name='register.html', context=context, status=200)
 
+def suap_callback(request):
+    return
+
+def google_callback(request):
+    return JsonResponse({
+        "url_completa_recebida": request.build_absolute_uri(),
+        "protocolo": request.scheme,
+        "codigo_google": request.GET.get("code"),
+        "erro": request.GET.get("error"),
+        "todos_parametros": dict(request.GET),
+    })
 
 @login_required
 def generate_token_endpoint(request):
-    """
-    GET /api/share/generate/
-    Generates a token for the currently logged-in user.
-    """
-    # Grab the ID of the user making the request
     user_id = request.user.id 
     
-    # Create the secure signed token
     token = signing.dumps({'uid': user_id})
     
     return JsonResponse({
@@ -98,17 +116,12 @@ def generate_token_endpoint(request):
 
 
 def resolve_token_endpoint(request):
-    """
-    GET /api/share/resolve/?token=eyJ1...
-    Reads the token from the URL and validates it.
-    """
     token = request.GET.get('token')
     
     if not token:
         return JsonResponse({'error': 'Missing token parameter'}, status=400)
         
     try:
-        # Enforce the 30-day expiration (2592000 seconds)
         data = signing.loads(token, max_age=2592000)
         
         return JsonResponse({

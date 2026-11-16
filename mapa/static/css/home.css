@@ -1,37 +1,38 @@
+/* ==========================================================================
+   home.css: landing page
+   Colors, radii, shadows, font and buttons come from global.css.
+
+   1. Base & background
+   2. Layout
+   3. Header
+   4. Main
+   5. Footer
+   6. Responsive
+   7. Intro animation
+   ========================================================================== */
 
 :root {
     --page-margin: clamp(20px, 3.3vw, 50px);
-
-    --blue-main: #285783;
-    --dark-green-main: #087313;
-    --light-green-main: #29c539;
-
-    --font-family: Arial, Helvetica, sans-serif;
 }
 
-* {
-    box-sizing: border-box;
-}
+
+/* ==========================================================================
+   1. Base & background
+   ========================================================================== */
 
 html,
 body {
     width: 100%;
     height: 100%;
-    margin: 0;
     overflow: hidden;
 }
 
 body {
-    overflow: hidden;
-    min-height: 100vh;
-    min-height: 100dvh;
-
+    min-height: var(--app-height);
     background-position: center;
     background-repeat: no-repeat;
     background-size: cover;
 }
-
-/* Fundo */
 
 body::before {
     content: "";
@@ -53,12 +54,14 @@ body::before {
     background-size: cover;
 }
 
-/* Layout principal */
+
+/* ==========================================================================
+   2. Layout
+   ========================================================================== */
 
 .home-page {
     width: 100%;
-    height: 100vh;
-    height: 100dvh;
+    height: var(--app-height);
 
     display: grid;
     grid-template-rows: auto 1fr auto;
@@ -66,7 +69,10 @@ body::before {
     overflow: hidden;
 }
 
-/* Header */
+
+/* ==========================================================================
+   3. Header
+   ========================================================================== */
 
 header {
     width: 100%;
@@ -101,48 +107,15 @@ header img {
     margin-left: auto;
 }
 
-/* Botões */
-
+/* look of the buttons: global.css (section 4) */
 .botao {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-
-    padding: .65em 1.2em;
-
-    border: 2px solid var(--dark-green-main);
-    border-radius: 10px;
-
-    background-color: white;
-    color: var(--dark-green-main);
-
-    font-family: var(--font-family);
-    font-size: 1rem;
-    font-weight: 600;
-    text-decoration: none;
-
     white-space: nowrap;
-    cursor: pointer;
-
-    transition: background-color .2s, color .2s;
 }
 
-.botao:hover {
-    background-color: var(--dark-green-main);
-    color: white;
-}
 
-.alt-botao {
-    background-color: var(--dark-green-main);
-    color: white;
-}
-
-.alt-botao:hover {
-    background-color: #055b0d;
-}
-
-/* Conteúdo */
+/* ==========================================================================
+   4. Main
+   ========================================================================== */
 
 main {
     display: flex;
@@ -160,7 +133,6 @@ main {
 .hero h1,
 .hero p {
     color: var(--blue-main);
-    font-family: var(--font-family);
 }
 
 .hero h1 {
@@ -169,7 +141,6 @@ main {
 
     font-size: clamp(1.8rem, 3vw, 2.5rem);
     line-height: 1.2;
-    font-family: "Roboto", arial;
 }
 
 .hero p {
@@ -184,17 +155,13 @@ main {
     min-width: 220px;
     min-height: 55px;
 
-    background-color: var(--dark-green-main);
-    color: white;
-
     font-size: 1.1rem;
 }
 
-.explorar:hover {
-    background-color: #055b0d;
-}
 
-/* Footer */
+/* ==========================================================================
+   5. Footer
+   ========================================================================== */
 
 footer {
     width: 100%;
@@ -208,7 +175,6 @@ footer {
     gap: 20px;
 
     background-color: var(--blue-main);
-    border-top: 1px solid rgba(40, 87, 131, .2);
 }
 
 .footer-info {
@@ -217,13 +183,12 @@ footer {
     flex-wrap: wrap;
     gap: 10px;
 
-    color: white;
+    color: var(--white);
     font-size: .9rem;
-    font-family: "Roboto", Arial;
 }
 
 .separator {
-    color: white;
+    color: var(--white);
 }
 
 .footer-logos {
@@ -236,26 +201,28 @@ footer {
     display: flex;
     align-items: center;
 
-    color: white;
+    color: var(--white);
     font-size: 1.8rem;
     text-decoration: none;
 
-    transition: color .2s;
+    transition: color var(--duration-fast);
 }
 
 .footer-logos a img {
     filter: brightness(0) invert(1);
-    transition: filter .2s;
+    transition: filter var(--duration-fast);
 }
 
 .footer-logos a:hover {
-    color: var(--light-green-main);
+    color: var(--green-main);
 }
 
+/* filters cannot use variables: this chain paints a black image #50B846 (--green-main).
+   If --green-main changes, this value has to be recalculated. */
 .footer-logos a:hover img {
     filter: brightness(0) saturate(100%)
-            invert(76%) sepia(40%) saturate(600%)
-            hue-rotate(55deg) brightness(95%) contrast(90%);
+            invert(81%) sepia(90%) saturate(682%)
+            hue-rotate(47deg) brightness(81%) contrast(73%);
 }
 
 .logo-diatinf {
@@ -265,6 +232,11 @@ footer {
     max-width: 120px;
     object-fit: contain;
 }
+
+
+/* ==========================================================================
+   6. Responsive
+   ========================================================================== */
 
 /* Tablets */
 
@@ -300,7 +272,7 @@ footer {
     }
 }
 
-/* Celulares */
+/* Phones */
 
 @media (max-width: 480px) {
     :root {
@@ -362,7 +334,7 @@ footer {
     }
 }
 
-/* Telas muito baixas */
+/* Very short screens */
 
 @media (max-height: 500px) {
     header {
@@ -395,18 +367,16 @@ footer {
 }
 
 
+/* ==========================================================================
+   7. Intro animation (fade up)
+   ========================================================================== */
 
-/* =================================
-   INTRODUÇÃO — ANIMAÇÃO FADE UP
-================================= */
-
-/* Só esconde os elementos quando o JS estiver ativo */
+/* only hides the elements when JS is active */
 .intro-ready .intro-item {
     opacity: 0;
     transform: translateY(25px);
 }
 
-/* Estado animado */
 .intro-ready .intro-item.show {
     animation: fadeUp .7s ease forwards;
 }
@@ -423,7 +393,7 @@ footer {
     }
 }
 
-/* Respeita usuários que preferem movimento reduzido */
+/* respects users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {
     .intro-ready .intro-item,
     .intro-ready .intro-item.show {

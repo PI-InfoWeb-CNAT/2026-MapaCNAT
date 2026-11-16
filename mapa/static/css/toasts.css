@@ -1,3 +1,12 @@
+/* ==========================================================================
+   toasts.css
+   Every rule is scoped to .toast, except #toast-container: an id-only selector
+   for the element that holds the toasts, so it matches nothing else.
+
+   Categories (data-category set by toasts.js): warn | error | success | none.
+   Each one only sets the --toast-* variables below.
+   ========================================================================== */
+
 /* centered at the bottom: the container spans the full width and centers its children,
    so the toast's own transform stays free for the enter/exit animation */
 #toast-container {
@@ -15,15 +24,18 @@
   pointer-events: none;
 }
 
+/* ---------- base ---------- */
+
 .toast {
   pointer-events: auto;
   box-sizing: border-box;
   min-width: 260px;
   max-width: min(92vw, 400px);
-  padding: 14px 20px;
-  border: 1px solid #eee;
+  padding: 14px 16px;
+  border: 1px solid var(--toast-border, #eee);
+  border-left: var(--toast-accent-w, 1px) solid var(--toast-accent, var(--toast-border, #eee));
   border-radius: 16px;                           /* same radius as the modal / bottom sheet */
-  background: white;
+  background: var(--toast-bg, #fff);
   color: #222;
   box-shadow: 0 10px 10px rgba(0, 0, 0, 0.25);   /* same shadow as .app-modal */
   font-family: var(--font-family, sans-serif);
@@ -32,7 +44,11 @@
   line-height: 1.4;
   opacity: 0;
   transform: translateY(20px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease,
+    background-color 0.3s ease,
+    border-color 0.3s ease;
 }
 
 .toast.visible {
@@ -45,25 +61,154 @@
   transform: translateY(20px);
 }
 
-@keyframes toastEnter {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* toasts with buttons get a fixed width so the grid does not get cramped */
+.toast.has-extra {
+  width: min(92vw, 400px);
 }
 
-.toast-progress-wrap {
+/* ---------- categories ---------- */
+
+.toast[data-category="warn"] {
+  --toast-bg: #fffbea;                           /* very light yellow */
+  --toast-border: #f0dca0;
+  --toast-accent: #e0a800;                       /* same amber as .is-manutencao */
+  --toast-accent-w: 4px;
+  --toast-icon-bg: #fff3cd;
+  --toast-icon-fg: #7a5600;
+}
+
+.toast[data-category="error"] {
+  --toast-bg: #fff6f5;                           /* very light red */
+  --toast-border: #f3c9c5;
+  --toast-accent: var(--danger-main, #b3261e);
+  --toast-accent-w: 4px;
+  --toast-icon-bg: var(--danger-tint, #fdecea);
+  --toast-icon-fg: var(--danger-main, #b3261e);
+}
+
+.toast[data-category="success"] {
+  --toast-bg: #f4faf3;                           /* very light green */
+  --toast-border: #cfe6cc;
+  --toast-accent: var(--dark-green-main, #12680b);
+  --toast-accent-w: 4px;
+  --toast-icon-bg: #e0f0de;
+  --toast-icon-fg: var(--dark-green-main, #12680b);
+}
+
+/* none: no variables, so it keeps the plain white look from the base rule */
+
+/* ---------- structure (icon + title + message) ---------- */
+
+.toast .toast-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* icon tile: same shape as the sidebar icons */
+.toast .toast-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm, 12px);
+  background: var(--toast-icon-bg);
+  color: var(--toast-icon-fg);
+  font-size: 0.95rem;
+}
+
+.toast .toast-body {
+  min-width: 0;
+}
+
+/* a lone line of text lines up with the middle of the icon */
+.toast .toast-icon + .toast-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 36px;
+}
+
+.toast .toast-title {
+  display: block;
+  color: var(--gray-900, #222);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.toast .toast-text {
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* with a title, the text becomes the secondary line */
+.toast .toast-title + .toast-text {
+  margin-top: 4px;
+  color: var(--gray-700, #444);
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.toast .toast-extra {
+  margin-top: 14px;
+}
+
+/* row 1: "Ver construções" (full width); row 2: Cancelar | Salvar */
+.toast .toast-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.toast .toast-actions .modal-button {
   width: 100%;
-  height: 4px;
-  margin-top: 10px;
-  border-radius: 2px;
-  background: #eee;                              /* light track, since the toast is now white */
-  overflow: hidden;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  font-size: 0.9rem;
+  white-space: nowrap;
 }
 
-.toast-progress-bar {
-  height: 100%;
+.toast .toast-actions .toast-ver {
+  grid-column: 1 / -1;
+}
+
+/* ---------- progress (follows the category: green by default, red on failure) ---------- */
+
+.toast .toast-progress {
+  min-width: 240px;
+}
+
+.toast .toast-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.toast .toast-progress-track {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.toast .toast-progress-bar {
   width: 0%;
-  background: green;                             /* same green as the buttons */
-  transition: width 0.2s ease;
+  height: 100%;
+  background: var(--toast-accent, var(--dark-green-main, #12680b));
+  transition: width 0.25s ease, background-color 0.3s ease;
+}
+
+.toast .toast-progress-status {
+  margin-top: 8px;
+  color: var(--gray-700, #444);
+  font-size: 0.78rem;
+  font-weight: 400;
 }

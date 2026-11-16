@@ -1,0 +1,291 @@
+/* ==========================================================================
+   landmarker.css: campo de 3 pontos (mapa geográfico + explorador de SVG)
+   Usa os tokens do global.css e do painel.css.
+   ========================================================================== */
+
+.landmarker {
+    gap: 10px;
+}
+
+.lm-label {
+    color: var(--gray-700);
+    font-size: .9em;
+    font-weight: 600;
+}
+
+/* ---- seletor dos 3 pontos ---- */
+
+.lm-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+}
+
+.lm-slot {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px 5px 6px;
+
+    border: 1.5px solid var(--gray-300);
+    border-radius: var(--radius-pill);
+    background: var(--white);
+
+    color: var(--gray-700);
+    font: inherit;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.lm-slot:hover {
+    border-color: var(--dark-green-main);
+}
+
+.lm-slot.is-ativo {
+    border-color: var(--dark-green-main);
+    box-shadow: 0 0 0 3px var(--green-tint);
+    color: var(--dark-green-main);
+}
+
+.lm-slot:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+.lm-num {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--gray-100);
+    color: var(--gray-700);
+    font-size: .75rem;
+    font-weight: 700;
+}
+
+.lm-slot.is-ativo .lm-num {
+    background: var(--blue-main);
+    color: var(--white);
+}
+
+.lm-slot.is-completo .lm-num {
+    background: var(--dark-green-main);
+    color: var(--white);
+}
+
+.lm-chip {
+    padding: 1px 7px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.lm-chip.is-ok {
+    background: var(--green-tint);
+    color: var(--dark-green-main);
+}
+
+/* ---- painéis lado a lado ---- */
+
+.lm-panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.lm-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    background: var(--white);
+}
+
+.lm-pane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 8px 0 12px;
+
+    border-bottom: 1px solid var(--gray-100);
+    color: var(--gray-700);
+    font-size: .85rem;
+    font-weight: 600;
+}
+
+.lm-zoom {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.lm-zoom .icon-btn {
+    width: 30px;
+    height: 30px;
+    font-size: .8rem;
+}
+
+.lm-geo,
+.lm-svg {
+    position: relative;
+    height: clamp(260px, 42vh, 420px);
+}
+
+.lm-geo {
+    z-index: 0;                 /* mantém os controles do Leaflet abaixo do modal */
+    background: var(--gray-50);
+}
+
+/* ---- explorador do SVG ---- */
+
+.lm-svg {
+    overflow: hidden;
+    cursor: crosshair;
+    touch-action: none;
+    user-select: none;
+
+    background-color: var(--gray-50);
+    background-image:
+        linear-gradient(var(--gray-100) 1px, transparent 1px),
+        linear-gradient(90deg, var(--gray-100) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.lm-svg:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: -3px;
+}
+
+.lm-svg.is-arrastando {
+    cursor: grabbing;
+}
+
+.lm-stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+
+.lm-stage img {
+    display: block;
+    max-width: none;
+    background: var(--white);
+    pointer-events: none;
+    user-select: none;
+}
+
+.lm-vazio {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+
+    color: var(--gray-500);
+    font-size: .85rem;
+    text-align: center;
+    pointer-events: none;
+}
+
+.lm-vazio[hidden] {
+    display: none;
+}
+
+/* ---- marcadores (SVG e Leaflet compartilham .lm-dot) ---- */
+
+.lm-dot {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border: 2px solid var(--white);
+    border-radius: 50%;
+    background: var(--dark-green-main);
+    box-shadow: var(--shadow-sm);
+    color: var(--white);
+    font-size: .78rem;
+    font-weight: 700;
+}
+
+.is-ativo .lm-dot {
+    background: var(--blue-main);
+}
+
+/* no SVG o marcador tem tamanho constante, independente do zoom */
+.lm-pin {
+    position: absolute;
+    width: 0;
+    height: 0;
+    transform: scale(var(--inv, 1));
+    pointer-events: none;
+}
+
+.lm-pin .lm-dot {
+    position: absolute;
+    top: -13px;
+    left: -13px;
+}
+
+.lm-geo-pin {
+    background: none;
+    border: 0;
+}
+
+/* ---- status e ações ---- */
+
+.lm-status {
+    min-height: 1.3em;
+    color: var(--gray-700);
+    font-size: .85rem;
+    line-height: 1.4;
+}
+
+.lm-status.is-ok {
+    color: var(--dark-green-main);
+}
+
+.lm-status.is-erro {
+    color: var(--danger-main);
+}
+
+.lm-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.lm-acoes .modal-button {
+    padding: 6px 14px;
+    font-size: .85rem;
+}
+
+@media (max-width: 760px) {
+    .lm-panes {
+        grid-template-columns: 1fr;
+    }
+
+    .lm-geo,
+    .lm-svg {
+        height: clamp(240px, 38vh, 340px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lm-slot {
+        transition: none;
+    }
+}

@@ -1,5 +1,8 @@
 import * as Transformacao from "./transformacao.js";
 import * as Editor from "./editor.js";
+import { SvgTileEngine } from "./mapTiling.js";
+
+let tiles;
 
 export let map;
 export let mapContainer;
@@ -29,9 +32,7 @@ let entranceTexture;
 
 let temporaryPin;
 let pinoSprite;
-let mapSprite;
 let userTexture;
-let mapTextures;
 let gl;
 
 export let minZoom, maxZoom;
@@ -39,13 +40,26 @@ let zoomStep;
 
 export let smoothTransform = false;
 let transformFrame = 0;
-let updating = false;
+
 export let zoom = 1;
 export let scaleFactor = 1;
 
 export let imageSize;
 
 export let groups;
+
+
+
+const DIM_ALPHA = 0.25;
+
+function asDisplayObjects(item) {
+    if (!item) return [];
+    if (item instanceof PIXI.Container) return [item];
+    if (typeof item === "object") {
+        return Object.values(item).filter((v) => v instanceof PIXI.Container);
+    }
+    return [];
+}
 
 export function getNormalizedCoordinates(pos) {
     const localPoint = mapContainer.toLocal(pos);
@@ -122,16 +136,8 @@ export function destroyReference(graphics) {
     referenceContainer.removeChild(graphics.point);
     referenceContainer.removeChild(graphics.door);
 
-    graphics.point.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true,
-    });
-    graphics.door.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true,
-    });
+    graphics.point.destroy();
+    graphics.door.destroy();
 }
 
 /////////////////// Connection
@@ -257,11 +263,7 @@ export function destroyPin(graphics) {
     pinContainer.removeChild(graphics);
 
     for (const child of graphics.children) {
-        child.destroy({
-            children: true,
-            texture: true,
-            baseTexture: true,
-        });
+        child.destroy();
     }
 
     graphics.destroy({ children: true });
@@ -533,11 +535,7 @@ export function destroySelfPin(graphics) {
     pinContainer.removeChild(graphics);
     
     for (const child of graphics.children) {
-        child.destroy({
-            children: true,
-            texture: true,
-            baseTexture: true
-        });
+        child.destroy();
     }
 
     graphics.destroy({ children: true });
@@ -574,11 +572,7 @@ export function destroyTouchPin(graphics) {
     pinContainer.removeChild(graphics);
     
     for (const child of graphics.children) {
-        child.destroy({
-            children: true,
-            texture: true,
-            baseTexture: true
-        });
+        child.destroy();
     }
 
     graphics.destroy({ children: true });
@@ -588,7 +582,7 @@ export function destroyTouchPin(graphics) {
 
 export function setContext(context) {
     page = context.page;
-    if(page == "main") {
+    if (page == "main") {
         compassButton = document.getElementById("orientation");
     }
     color = context.blank_color;
@@ -596,10 +590,39 @@ export function setContext(context) {
 
     zoomStep = context.scroll_ratio;
 
-    mapImagePath = mapImage;
+    const separator = mapImage.includes("?") ? "&" : "?";
+    mapImagePath = `${mapImage}${separator}v=${Date.now()}`;
+
     pinImagePath = pinImage;
     userImagePath = defaultUserImage;
     entranceImagePath = entranceImage;
+}
+
+const MAX_ZOOM_METERS = 20;   // largura geográfica visível no zoom máximo
+const FALLBACK_MAX_ZOOM = 3;  // se `metrics` não estiver disponível
+
+function computeZoomLimits() {
+    const sw = app.screen.width;
+    const sh = app.screen.height;
+
+    // mapa inteiro visível (rotação 0)
+    minZoom = Math.min(sw / imageSize.width, sh / imageSize.height);
+
+    // lado menor da tela cobrindo MAX_ZOOM_METERS metros
+    const upm = typeof metrics !== "undefined" ? metrics?.unitsPerMeter : NaN;
+    maxZoom = Number.isFinite(upm) && upm > 0
+        ? Math.min(sw, sh) / (MAX_ZOOM_METERS * upm)
+        : FALLBACK_MAX_ZOOM;
+
+    // nunca deixa o máximo abaixo do mínimo (mapa minúsculo ou métrica estranha)
+    maxZoom = Math.max(maxZoom, minZoom);
+}
+
+function applyZoomLimits() {
+    computeZoomLimits();
+    if (!pinContainer) return;   // containers ainda não existem (resize durante a inicialização)
+    const clamped = Math.min(Math.max(zoom, minZoom), maxZoom);
+    if (clamped !== zoom) Zoom(clamped);
 }
 
 export async function main() {
@@ -619,28 +642,32 @@ export async function main() {
     mapContainer = new PIXI.Container();
     app.stage.addChild(mapContainer);
 
+    tiles = new SvgTileEngine({
+        container: mapContainer,
+        svgUrl: mapImagePath,
+        background: color,
+        getScreenSize: () => ({ width: app.screen.width, height: app.screen.height }),
+        getZoomRange: () => ({ min: minZoom, max: maxZoom }),
+        maxTextureSize: gl?.getParameter(gl.MAX_TEXTURE_SIZE) ?? 4096,
+    });
+
+    imageSize = await tiles.load(); // { width, height } vindos do SVG
+
+    computeZoomLimits();            // antes de start(): a camada base usa o minZoom
+
+    await tiles.start();
+
     mapContainer.x = app.screen.width / 2;
     mapContainer.y = app.screen.height / 2;
 
-    const texture = await PIXI.Assets.load(mapImagePath);
-    mapSprite = PIXI.Sprite.from(texture);
-    mapSprite.anchor.set(0.5);
-    mapSprite.x = 0;
-    mapSprite.y = 0;
-    mapContainer.addChild(mapSprite);
-
-    imageSize = { width: mapSprite.width, height: mapSprite.height };
-
     new ResizeObserver(() => {
         const { width, height } = mapEl.getBoundingClientRect();
+        if (!width || !height) return;
+        if (Math.abs(width - app.screen.width) < 1 && Math.abs(height - app.screen.height) < 1) return;
         app.renderer.resize(width, height);
-        updateMap();
+        applyZoomLimits();
+        tiles?.requestUpdate();
     }).observe(mapEl);
-
-    minZoom =
-        Math.max(app.screen.width, app.screen.height) /
-        Math.max(imageSize.width, imageSize.height);
-    maxZoom = 3;
     
     const pinoTexture = await PIXI.Assets.load(pinImagePath);
     pinoSprite = PIXI.Sprite.from(pinoTexture);
@@ -677,6 +704,79 @@ export async function main() {
         REFERENCES: referenceContainer,
         PINS: pinContainer,
     };
+
+    Zoom(minZoom);
+
+}
+
+/////////////////// Collision (pins)
+
+// O pin é um container com position, rotation e escala uniforme; os filhos (sprite/texto)
+// são estáticos. Então os retângulos deles são calculados uma vez, em espaço local do pin,
+// e o ponto de consulta é levado para esse espaço com seno/cosseno. Sem toLocal, sem alocação.
+const HIT = Symbol("pinHit");
+let _lastRot = 0, _cos = 1, _sin = 0;
+
+function getHit(gfx) {
+    let hit = gfx[HIT];
+    if (hit) return hit;
+
+    const rects = [];
+    let reach = 0;
+    let ready = true;
+
+    for (const c of gfx.children) {
+        if (!c.anchor) continue;                              // máscara (Graphics) não é alvo
+        const w = c.width, h = c.height;
+        if (!(w > 0 && h > 0)) { ready = false; continue; }   // textura ainda não carregou
+        const x0 = c.x - c.anchor.x * w;
+        const y0 = c.y - c.anchor.y * h;
+        rects.push(x0, y0, x0 + w, y0 + h);
+        reach = Math.max(
+            reach,
+            Math.hypot(
+                Math.max(Math.abs(x0), Math.abs(x0 + w)),
+                Math.max(Math.abs(y0), Math.abs(y0 + h)),
+            ),
+        );
+    }
+
+    hit = { rects, reach };
+    if (ready) gfx[HIT] = hit;                                // só guarda em cache se estiver completo
+    return hit;
+}
+
+/** Alcance do pin (unidades locais, escala 1) a partir da âncora. */
+export function pinReach(gfx) {
+    return gfx ? getHit(gfx).reach : 0;
+}
+
+/** `p` está no espaço do mapContainer (o mesmo de getNormalizedCoordinates). */
+export function collisionTest(gfx, p) {
+    if (!gfx || gfx.destroyed || !gfx.visible) return false;
+
+    const s = gfx.scale.x;
+    if (!(s > 0)) return false;
+
+    const { rects } = getHit(gfx);
+    if (rects.length === 0) return false;
+
+    const r = gfx.rotation;
+    if (r !== _lastRot) {                                     // todos os pins giram igual: cos/sin em cache
+        _lastRot = r;
+        _cos = Math.cos(r);
+        _sin = Math.sin(r);
+    }
+
+    // inverso de: mundo = pos + R(r) · (s · local)
+    const dx = p.x - gfx.x, dy = p.y - gfx.y;
+    const lx = (_cos * dx + _sin * dy) / s;
+    const ly = (-_sin * dx + _cos * dy) / s;
+
+    for (let i = 0; i < rects.length; i += 4) {
+        if (lx >= rects[i] && lx <= rects[i + 2] && ly >= rects[i + 1] && ly <= rects[i + 3]) return true;
+    }
+    return false;
 }
 
 export function nodeText(text, configuration) {
@@ -701,67 +801,10 @@ export function nodeText(text, configuration) {
     textContainer.addChild(nodeLabel);
 }
 
-function ceilPowerOf2(x) {
-    return x <= 0 ? 1 : Math.pow(2, Math.ceil(Math.log2(x)));
-}
-function floorPowerOf2(x) {
-    return x <= 0 ? 1 : Math.pow(2, Math.floor(Math.log2(x)));
-}
+export async function loadMapScales() {}
 
-export async function loadMapScales() {
-    const svgText = await fetch(mapImagePath).then((r) => r.text());
-    const mapBlob = new Blob([svgText], { type: "image/svg+xml" });
-    const mapUrl = URL.createObjectURL(mapBlob);
-    const img = new Image();
-
-    mapTextures = {};
-
-    img.onload = () => {
-        for (const scale of [0.125, 0.25, 0.5, 1, 2, 4, 8]) {
-            let key = `image-${scale}`;
-            if (!localStorage.getItem(key)) {
-                continue;
-            }
-            const longestSide = Math.max(img.width, img.height);
-            const maxRenderZoom =
-                gl.getParameter(gl.MAX_TEXTURE_SIZE) / longestSide;
-            let currentFactor = Math.min(
-                floorPowerOf2(maxRenderZoom),
-                Math.max(minZoom, scale * window.devicePixelRatio),
-            );
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width * currentFactor;
-            canvas.height = img.height * currentFactor;
-
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            localStorage.setItem(key, PIXI.Texture.from(canvas));
-        }
-    };
-
-    img.src = mapUrl;
-}
-
-async function updateMapTexture() {
-    const longestSide = Math.max(imageSize.width, imageSize.height);
-    const maxRenderZoom = gl.getParameter(gl.MAX_TEXTURE_SIZE) / longestSide;
-    let currentFactor = Math.min(
-        ceilPowerOf2(maxRenderZoom),
-        Math.max(minZoom, zoom * window.devicePixelRatio),
-    );
-
-    let scale = ceilPowerOf2(currentFactor);
-    mapSprite.texture =
-        localStorage.getItem(`image-${scale}`) || mapSprite.texture;
-    mapSprite.scale.set(imageSize.width / mapSprite.texture.width);
-}
-
-export async function updateMap() {
-    if (updating) return;
-    updating = true;
-    await updateMapTexture();
-    updating = false;
+export function updateMap() {
+    tiles?.requestUpdate();
 }
 
 function clampPos() {
@@ -785,6 +828,7 @@ function Position(x, y) {
     mapContainer.x = x;
     mapContainer.y = y;
     clampPos();
+    tiles?.requestUpdate();
 }
 
 export function setPosition(x, y) {
@@ -819,6 +863,7 @@ function Zoom(z) {
     }
 
     clampPos();
+    tiles?.requestUpdate();
 }
 
 export function setZoom(z) {
@@ -844,24 +889,43 @@ export function setRotation(r) {
 }
 
 export function editorFocus(value) {
-    mapSprite.alpha = 1;
-    if (value) {
-        mapSprite.alpha = 0.5;
-    }
+    tiles?.setDimmed(value); // antes: mapSprite.alpha = value ? 0.5 : 1
 }
-export function highlight(activeGroups) {
-    if (activeGroups === true) {
-        for (const group of Object.values(groups)) {
-            group.alpha = 1;
+
+export function highlightObjects(objects, dimAlpha = DIM_ALPHA) {
+    const containers = Object.values(groups);
+
+    if (objects === true) {
+        for (const c of containers) {
+            c.alpha = 1;
+            for (const child of c.children) child.alpha = 1;
         }
         return;
     }
-    for (const group of Object.values(groups)) {
-        group.alpha = 0.25;
+
+    const containerSet = new Set(containers);
+    const keep = new Set();
+
+    for (const item of objects) {
+        for (const obj of asDisplayObjects(item)) {
+            // sobe até o filho direto de algum grupo
+            let node = obj;
+            while (node.parent && !containerSet.has(node.parent)) node = node.parent;
+            if (node.parent) keep.add(node);
+        }
     }
-    for (const group of activeGroups) {
-        group.alpha = 1;
+
+    for (const c of containers) {
+        c.alpha = 1; // quem controla o alpha agora são os filhos
+        for (const child of c.children) {
+            child.alpha = keep.has(child) ? 1 : dimAlpha;
+        }
     }
+}
+
+export function highlight(activeGroups) {
+    if (activeGroups === true) return highlightObjects(true);
+    highlightObjects(activeGroups.flatMap((g) => g.children));
 }
 
 const TAU = Math.PI * 2;
@@ -949,7 +1013,6 @@ export function animateTransform({ point, screen, zoom: targetZoom, rotation: ta
     transformFrame = requestAnimationFrame(step);
 }
 
-/** Compass button: rotate around the screen center. */
 export function smoothRotation(r) {
     animateTransform({ rotation: r });
 }

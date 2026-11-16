@@ -1,5 +1,19 @@
 /* ==========================================================================
-   Modal shell
+   modais.css: modal shell, forms and share modal
+   Colors, radii, shadows, font and buttons come from global.css.
+
+   Every rule here is scoped to .app-modal (the <dialog> that holds all modal
+   content). Nothing in this file matches an element outside a modal.
+
+   1. Modal shell
+   2. Forms (field look: global.css, section 5)
+   3. Buttons (layout only; look is in global.css, section 4)
+   4. Share modal
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. Modal shell
    ========================================================================== */
 
 .app-modal {
@@ -15,16 +29,15 @@
   overflow: hidden;
 
   border: none;
-  border-radius: 16px;                          /* same radius as the banner bottom sheet */
+  border-radius: var(--radius-md);
   padding: 0;
-  background: white;
-  color: #222;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-  font-family: var(--font-family, sans-serif);
+  background: var(--white);
+  color: var(--gray-900);
+  box-shadow: var(--shadow-lg);
 
   opacity: 0;
   transform: translateY(16px) scale(0.98);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity var(--duration-base) ease, transform var(--duration-base) ease;
 }
 
 .app-modal[data-size="sm"] { max-width: min(360px, 92vw); }
@@ -41,17 +54,16 @@
   transform: translateY(16px) scale(0.98);
 }
 
-/* same backdrop as the sidebar */
 .app-modal::backdrop {
   background: rgba(0, 0, 0, 0);
-  transition: background 0.3s ease-in-out;
+  transition: background var(--duration-base) ease-in-out;
 }
 
 .app-modal.open::backdrop {
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
 }
 
-.app-modal-box {
+.app-modal .app-modal-box {
   display: flex;
   flex-direction: column;
   max-height: calc(var(--app-height) * 0.9);
@@ -59,7 +71,7 @@
   box-sizing: border-box;
 }
 
-.app-modal-header {
+.app-modal .app-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -67,53 +79,28 @@
   gap: 16px;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #eee;               /* same divider as .sidebar-header */
+  border-bottom: 1px solid var(--gray-100);
 }
 
-.app-modal-title {
+.app-modal .app-modal-title {
   margin: 0;
-  font-family: inherit;
   font-size: 1.2em;
   font-weight: 700;
   line-height: 1.25;
-  color: #222;
+  color: var(--gray-900);
 }
 
-/* same look as .route-icon-btn: circle that gets a background on hover */
-.app-modal-close {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
+/* circle look (size, hover, focus) is global.css, section 6: only the glyph size lives here */
+.app-modal .app-modal-close {
   font-size: 1.5em;
-  line-height: 1;
-  color: #444;
-  cursor: pointer;
-  transition: background-color 0.2s;
 }
 
-.app-modal-close:hover {
-  background-color: #eee;
-  color: #000;
-}
-
-.app-modal-close:focus-visible {
-  outline: 3px solid rgba(0, 128, 0, 0.35);    /* same focus ring as .banner-action */
-  outline-offset: 2px;
-}
-
-.app-modal-body {
+.app-modal .app-modal-body {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-/* mobile: becomes a bottom sheet, like the banner */
+/* mobile: becomes a bottom sheet */
 @media (max-width: 700px) {
   .app-modal,
   .app-modal[data-size] {
@@ -122,9 +109,9 @@
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    border-radius: 16px 16px 0 0;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
     transform: translateY(100%);
-    transition: transform 0.3s ease, opacity 0.3s ease;
+    transition: transform var(--duration-base) ease, opacity var(--duration-base) ease;
   }
 
   .app-modal.open {
@@ -135,181 +122,95 @@
     transform: translateY(100%);
   }
 
-  .app-modal-box {
+  .app-modal .app-modal-box {
     padding: 20px 16px calc(20px + var(--safe-bottom));
   }
 }
 
 
 /* ==========================================================================
-   Forms
+   2. Forms (field look: global.css, section 5)
    ========================================================================== */
 
-.modal-form {
+.app-modal .modal-form {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 16px;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.form-group label {
-  font-size: 0.9em;
-  color: #444;
-}
-
-/* same look as .route-field: gray fill, turns white with a green border on focus */
-.form-group input {
-  box-sizing: border-box;
-  height: 42px;
-  padding: 0 12px;
-  border: 2px solid transparent;
-  border-radius: 12px;
-  background-color: #f3f3f3;
-  font-family: inherit;
-  font-size: 1em;
-  color: #222;
-  outline: none;
-  transition: background-color 0.2s, border-color 0.2s;
-}
-
-.form-group input:focus {
-  background-color: white;
-  border-color: green;
-}
+/* .form-group (label + input): global.css, section 5 */
 
 
 /* ==========================================================================
-   Buttons (same geometry as .banner-action)
+   3. Buttons (layout only; look is in global.css, section 4)
    ========================================================================== */
 
-/* secondary: white with a green border (like "Compartilhar") */
-.modal-button,
-.social-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  vertical-align: middle;
-  gap: 8px;
-  padding: 12px 16px;
-  border: 1.5px solid green;
-  border-radius: 999px;
-  background-color: white;
-  color: green;
-  font-family: inherit;
-  font-size: 0.95em;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s, color 0.2s, transform 0.1s;
-}
-
-.modal-button:hover,
-.social-btn:hover {
-  background-color: rgba(0, 128, 0, 0.08);
-}
-
-/* primary: filled green (like "Rotas").
-   Comes after the secondary rules so .modal-button-main wins on the same element. */
-.modal-submit-btn,
-.modal-button-main,
-.btn-copy {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  vertical-align: middle;
-  gap: 8px;
-  padding: 12px 16px;
-  border: 1.5px solid green;
-  border-radius: 999px;
-  background-color: green;
-  color: white;
-  font-family: inherit;
-  font-size: 0.95em;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 0.2s, color 0.2s, transform 0.1s;
-}
-
-.modal-submit-btn:hover,
-.modal-button-main:hover,
-.btn-copy:hover {
-  background-color: #006400;
-  border-color: #006400;
-}
-
-.modal-submit-btn:active,
-.modal-button:active,
-.btn-copy:active,
-.social-btn:active {
-  transform: scale(0.97);
-}
-
-.modal-submit-btn:focus-visible,
-.modal-button:focus-visible,
-.btn-copy:focus-visible,
-.social-btn:focus-visible {
-  outline: 3px solid rgba(0, 128, 0, 0.35);
-  outline-offset: 2px;
-}
-
-.modal-button + .modal-button,
-.modal-button + .modal-button-main,
-.modal-button-main + .modal-button,
-.modal-button-main + .modal-button-main {
+/* spacing between adjacent buttons in a row */
+.app-modal .modal-button + .modal-button,
+.app-modal .modal-button + .modal-button-main,
+.app-modal .modal-button-main + .modal-button,
+.app-modal .modal-button-main + .modal-button-main {
   margin-left: 10px;
 }
 
 
 /* ==========================================================================
-   Share modal
+   4. Share modal
    ========================================================================== */
 
-.share-social-grid {
+.app-modal .share-social-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
 
-.social-icon {
+.app-modal .social-icon {
   font-size: 22px;
   line-height: 1;
 }
 
-/* the pill input box encloses the Copy button, so it has to be a bit smaller */
-.share-link-box {
+/* the pill box encloses the Copy button, so the button is a bit smaller */
+.app-modal .share-link-box {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 4px 4px 4px 16px;
-  border: 1px solid #ccc;
-  border-radius: 999px;
-  background: #f3f3f3;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-pill);
+  background: var(--gray-50);
 }
 
-.share-link-box input {
+.app-modal .share-link-box input {
   flex: 1;
   min-width: 0;   /* keeps the flex input from overflowing the box */
   border: none;
   outline: none;
   background: transparent;
-  font-family: inherit;
   font-size: 0.9em;
-  color: #444;
+  color: var(--gray-700);
   text-overflow: ellipsis;
 }
 
-.btn-copy {
+.app-modal .btn-copy {
   padding: 8px 18px;
-  font-size: 0.85em;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
-.btn-copy.copied {
-  background-color: #006400;
-  border-color: #006400;
+.app-modal .btn-copy.copied {
+  background-color: var(--dark-green-hover);
+  border-color: var(--dark-green-hover);
+}
+
+.app-modal .modal-text {
+  margin-bottom: 20px;
+  line-height: 1.5;
+  color: var(--gray-700);
+}
+
+.app-modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }

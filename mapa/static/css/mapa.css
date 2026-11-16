@@ -1,37 +1,25 @@
 /* ==========================================================================
    mapa.css: main map page + editor
+   Colors, radii, shadows, font, buttons and icon buttons come from global.css.
 
-   1. Tokens & base
+   1. Base
    2. Layout & map
    3. Search & routes
    4. Sidebar
    5. Map controls
    6. Banner
    7. User tab
-   8. Modals & share
-   9. Editor UI
-   10. Responsive (mobile)
+   8. Editor UI
+   9. Responsive (mobile)
    ========================================================================== */
 
 
 /* ==========================================================================
-   1. Tokens & base
+   1. Base
    ========================================================================== */
 
 :root {
-    /* 100dvh follows the visible viewport on mobile (browser bars collapse/expand);
-       100vh is the fallback for browsers without dvh. */
-    --app-height: 100vh;
-
-    /* Only non-zero with <meta name="viewport" content="..., viewport-fit=cover"> */
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-right: env(safe-area-inset-right, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-left: env(safe-area-inset-left, 0px);
-}
-
-@supports (height: 100dvh) {
-    :root { --app-height: 100dvh; }
+    --map-bg: #EEE8DC;   /* sand: map background and image placeholders */
 }
 
 html,
@@ -74,7 +62,7 @@ canvas {
 #map {
     width: 100vw;
     height: var(--app-height);
-    background-color: #EEE8DC;
+    background-color: var(--map-bg);
 }
 
 /* no blue tap flash on the map UI */
@@ -107,7 +95,6 @@ header {
     display: flex;
     align-items: flex-start;
     gap: 1em;
-    box-sizing: border-box;
     background-color: transparent;
     margin:
         calc(var(--body-margin) + var(--safe-top))
@@ -121,16 +108,16 @@ header {
     width: min(500px, calc(100% - 2 * var(--body-margin) - var(--safe-left) - var(--safe-right)));
 }
 
+/* 25px = half of the 50px header: a pill when collapsed, a rounded card when expanded */
 #search {
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    box-sizing: border-box;
     padding: 0 15px;
     font-size: 1.2em;
-    background-color: white;
-    border: 1px solid #ccc;
+    background-color: var(--white);
+    border: 1px solid var(--gray-300);
     border-radius: 25px;
 }
 
@@ -145,6 +132,10 @@ header {
     height: 50px;
 }
 
+#search-label i {
+    color: var(--gray-500);
+}
+
 #search input[type="search"] {
     flex: 1;
     min-width: 0;
@@ -154,7 +145,6 @@ header {
     outline: none;
     background: transparent;
     font-size: 1em;
-    font-family: var(--font-family);
 }
 
 #options {
@@ -164,10 +154,9 @@ header {
     justify-content: center;
     width: 50px;
     height: 50px;
-    box-sizing: border-box;
     border: none;
-    border-radius: 25px;
-    background-color: white;
+    border-radius: 50%;
+    background-color: var(--white);
     font-size: 1.2em;
     cursor: pointer;
 }
@@ -186,18 +175,17 @@ header {
     margin: 15px 0;
     padding: 0;
     list-style: none;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .search-element {
     display: flex;
     align-items: center;
     gap: 12px;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
 }
 
 .search-element:hover {
-    background-color: #eee;
+    background-color: var(--gray-100);
     cursor: pointer;
 }
 
@@ -206,7 +194,7 @@ header {
     width: 44px !important;
     height: 44px !important;
     object-fit: cover;
-    background-color: #f2f2f2;
+    background-color: var(--gray-50);
 }
 
 .search-element-description {
@@ -220,7 +208,7 @@ header {
     font-size: 17px;
     font-weight: 500;
     line-height: 1.2;
-    color: #111;
+    color: var(--gray-900);
 }
 
 .search-element-description p {
@@ -228,7 +216,7 @@ header {
     overflow: hidden;
     font-size: 14px;
     line-height: 1.2;
-    color: #767676;
+    color: var(--gray-500);
     white-space: nowrap;
     text-overflow: ellipsis;
 }
@@ -241,14 +229,14 @@ header {
     justify-content: center;
     width: 44px;
     height: 44px;
-    background-color: #f2f2f2;
-    color: green;
+    background-color: var(--gray-50);
+    color: var(--dark-green-main);
 }
 
 .no-results {
     padding: 4px 0;
     font-size: 14px;
-    color: #767676;
+    color: var(--gray-500);
 }
 
 /* route mode */
@@ -267,32 +255,31 @@ header {
     gap: 8px;
 }
 
+/* same look as .form-group input (global.css, section 5) */
 .route-field {
     display: flex;
     align-items: center;
     gap: 10px;
     height: 42px;
-    box-sizing: border-box;
     padding: 0 12px;
-    background-color: #f3f3f3;
+    background-color: var(--gray-50);
     border: 2px solid transparent;
-    border-radius: 12px;
+    border-radius: var(--radius-sm);
     cursor: text;
-    transition: background-color 0.2s, border-color 0.2s;
+    transition: background-color var(--duration-fast), border-color var(--duration-fast);
 }
 
 .route-field:focus-within {
-    background-color: white;
-    border-color: green;
+    background-color: var(--white);
+    border-color: var(--dark-green-main);
 }
 
 .route-dot {
     flex-shrink: 0;
     width: 10px;
     height: 10px;
-    box-sizing: border-box;
     margin: 0 3px;
-    border: 2.5px solid #555;
+    border: 2.5px solid var(--gray-700);
     border-radius: 50%;
 }
 
@@ -300,7 +287,7 @@ header {
     flex-shrink: 0;
     width: 16px;
     text-align: center;
-    color: #d93025;
+    color: var(--danger-main);
 }
 
 /* overrides the plain search input inside route fields */
@@ -312,24 +299,9 @@ header {
     font-size: 0.85em;
 }
 
+/* circle look: global.css, section 6 */
 .route-icon-btn {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: #444;
     font-size: 0.85em;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.route-icon-btn:hover {
-    background-color: #eee;
 }
 
 #route-swap i {
@@ -339,27 +311,34 @@ header {
 
 /* ==========================================================================
    4. Sidebar
+   Slides in from the right (transform, so the width can change freely).
+   Closed: visibility hidden, so its links are out of the tab order.
    ========================================================================== */
 
 .sidebar {
     position: fixed;
     top: 0;
-    right: -300px;
+    right: 0;
     z-index: 9999;
     display: flex;
     flex-direction: column;
-    width: 300px;
+    width: min(320px, 85vw);
     height: var(--app-height);
-    box-sizing: border-box;
-    padding: var(--safe-top) 0 var(--safe-bottom);
-    background-color: white;
-    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
-    transition: right 0.3s ease-in-out;
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) 0;
+    background-color: var(--white);
+
+    transform: translateX(100%);
+    visibility: hidden;
+    transition:
+        transform var(--duration-base) ease-in-out,
+        visibility var(--duration-base),
+        box-shadow var(--duration-base);
 }
 
 .sidebar.active {
-    right: 0;
-    left: auto;
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.25);   /* only while open: no shadow leaking at the edge */
 }
 
 .sidebar-backdrop {
@@ -369,10 +348,10 @@ header {
     z-index: 9998;
     width: 100vw;
     height: var(--app-height);
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: var(--overlay);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.3s ease-in-out;
+    transition: opacity var(--duration-base) ease-in-out;
 }
 
 .sidebar-backdrop.active {
@@ -384,53 +363,112 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px;
-    border-bottom: 1px solid #eee;
+    gap: 12px;
+    padding: 16px 16px 16px 20px;
+    border-bottom: 1px solid var(--gray-100);
 }
 
 .sidebar-header h3 {
-    margin: 0;
-    font-family: var(--font-family, sans-serif);
+    font-size: 1.15rem;
+    font-weight: 700;
 }
 
 .sidebar-header h3 a {
-    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--blue-main);
+    text-decoration: none;
 }
 
+.sidebar-header h3 a img {
+    width: 32px;
+    height: auto;
+}
+
+/* circle look: global.css, section 6 */
 #close-sidebar {
-    padding: 5px 10px;
-    border: none;
-    background: none;
-    font-size: 1.5em;
-    cursor: pointer;
+    font-size: 1.25rem;
 }
 
 .sidebar-links {
     display: flex;
     flex-direction: column;
-    padding: 20px 0;
+    gap: 4px;
+    min-height: 0;
+    padding: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* section labels: same style as the banner's "Sobre" */
+.sidebar-section-title,
+.banner-section-title {
+    font-size: 0.75em;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+}
+
+.sidebar-section-title {
+    padding: 12px 12px 6px;
 }
 
 .sidebar-links a {
     display: flex;
     align-items: center;
-    padding: 15px 25px;
+    gap: 14px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    color: var(--gray-900);
+    font-size: 1rem;
+    font-weight: 500;
     text-decoration: none;
-    font-family: var(--font-family, sans-serif);
-    font-size: 1.1em;
-    color: #333;
-    transition: background 0.2s ease;
+    transition: background-color var(--duration-fast);
 }
 
+/* icon tile: green wash, fills green when the row is hovered */
 .sidebar-links a i {
-    width: 20px;
-    margin-right: 15px;
-    text-align: center;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    background-color: var(--green-tint);
+    color: var(--dark-green-main);
+    font-size: 0.95rem;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
 }
 
 .sidebar-links a:hover {
-    background-color: #f5f5f5;
-    color: #000;
+    background-color: var(--gray-50);
+}
+
+.sidebar-links a:hover i {
+    background-color: var(--dark-green-main);
+    color: var(--white);
+}
+
+.sidebar-links a:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: -3px;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    padding: 16px 20px;
+    border-top: 1px solid var(--gray-100);
+    color: var(--gray-500);
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.sidebar-footer strong {
+    display: block;
+    color: var(--gray-700);
+    font-weight: 600;
 }
 
 
@@ -445,9 +483,8 @@ header {
     justify-content: center;
     width: 50px;
     height: 50px;
-    box-sizing: border-box;
     border: none;
-    background-color: white;
+    background-color: var(--white);
     font-size: 1.2em;
     cursor: pointer;
 }
@@ -457,7 +494,7 @@ header {
     position: fixed;
     right: calc(var(--body-margin) + var(--safe-right));
     bottom: calc(var(--body-margin) + var(--safe-bottom));
-    border-radius: 25px;
+    border-radius: 50%;
 }
 
 /* main page: sits above the OS nav bar, and rides on top of the user tab when open
@@ -465,7 +502,7 @@ header {
 #map-container #orientation {
     position: absolute;
     bottom: calc(var(--body-margin) + max(var(--safe-bottom), var(--user-tab-height)));
-    transition: bottom 0.3s ease;
+    transition: bottom var(--duration-base) ease;
 }
 
 #orientation img {
@@ -486,7 +523,7 @@ header {
     flex-direction: row;
     flex: 0 0 500px;
     height: var(--app-height);
-    transition: margin-right 0.3s ease;
+    transition: margin-right var(--duration-base) ease;
 }
 
 .main-ui {
@@ -502,17 +539,14 @@ header {
     display: flex;
     flex-direction: column;
     height: 100%;
-    box-sizing: border-box;
 }
 
 #banner {
     width: 500px;
-    box-sizing: border-box;
     padding: 0;
     overflow-y: auto;
-    background-color: white;
-    font-family: var(--font-family, sans-serif);
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    background-color: var(--white);
+    filter: drop-shadow(var(--shadow-sm));
 }
 
 .banner-form {
@@ -529,17 +563,16 @@ header {
     width: 100%;
     height: 200px;
     margin: 0;
-    background-color: #e0e0e0;
-    background-size:cover;
+    background-color: var(--gray-100);
+    background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    font-family: inherit;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color var(--duration-fast);
 }
 
 .image-upload-wrapper:hover {
-    background-color: #d5d5d5;
+    background-color: var(--gray-300);
 }
 
 .image-upload-wrapper input[type="file"] {
@@ -548,13 +581,12 @@ header {
 
 .image-upload-label {
     padding: 8px 16px;
-    border-radius: 20px;
+    border-radius: var(--radius-pill);
     background-color: rgba(255, 255, 255, 0.85);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-    font-family: inherit;
     font-size: 0.95em;
     font-weight: 600;
-    color: #333;
+    color: var(--gray-700);
     pointer-events: none;
 }
 
@@ -562,7 +594,7 @@ header {
     width: 100%;
     height: 200px;
     overflow: hidden;
-    background-color: #e0e0e0;
+    background-color: var(--gray-100);
 }
 
 #banner .banner-image-container img {
@@ -576,67 +608,63 @@ header {
 .banner-content {
     display: flex;
     flex-direction: column;
-    padding: var(--body-margin, 15px);
+    padding: var(--body-margin);
 }
 
 .editable-title {
     width: 100%;
-    box-sizing: border-box;
     margin: 0;
     padding: 0;
     border: none;
     outline: none;
     background: transparent;
-    font-family: inherit;
     font-size: 1.5em;
     font-weight: bold;
-    color: #222;
+    color: var(--gray-900);
 }
 
 .editable-title::placeholder {
     font-weight: bold;
-    color: #888;
+    color: var(--gray-500);
 }
 
 .banner-divider {
     height: 1px;
     margin: 12px 0;
     border: none;
-    background-color: #e0e0e0;
+    background-color: var(--gray-100);
 }
 
 .editable-description {
     width: 100%;
     min-height: 100px;
-    box-sizing: border-box;
     margin: 0;
     padding: 0;
     border: none;
     outline: none;
     background: transparent;
     resize: none;
-    font-family: inherit;
     font-size: 1em;
     font-weight: normal;
     line-height: 1.4;
-    color: #444;
+    color: var(--gray-700);
 }
 
 .editable-description::placeholder {
     font-weight: normal;
-    color: #999;
+    color: var(--gray-500);
 }
 
 /* view mode (main page): read-only card over the image */
 #banner.banner-view .image-upload-wrapper {
     z-index: 0;
     height: 240px;
-    background-color: #e6e1d6;
+    background-color: var(--map-bg);
     cursor: default;
 }
 
 #banner.banner-view .image-upload-wrapper:hover {
-    background-color: #e6e1d6;   /* no hover effect, it is only a preview */
+    background-color: var(--map-bg);   /* no hover effect, it is only a preview */
 }
 
 #banner.banner-view .banner-content {
@@ -644,15 +672,14 @@ header {
     z-index: 1;
     margin-top: -24px;
     padding: 24px 22px 32px;
-    border-radius: 12px 12px 0 0;
-    background-color: white;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background-color: var(--white);
 }
 
 #banner.banner-view .editable-title {
     font-size: 1.6em;
     font-weight: 700;
     line-height: 1.25;
-    color: #1a1a1a;
     text-overflow: ellipsis;
     cursor: default;
 }
@@ -663,9 +690,7 @@ header {
 
 #banner.banner-view .editable-description {
     overflow: hidden;
-    font-size: 1em;
     line-height: 1.6;
-    color: #444;
     cursor: default;
 }
 
@@ -677,7 +702,7 @@ header {
     }
 }
 
-/* actions */
+/* actions: look of the buttons is global.css (section 4) */
 .banner-actions {
     display: flex;
     gap: 10px;
@@ -686,60 +711,19 @@ header {
 
 .banner-action {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px 16px;
-    border: 1.5px solid green;
-    border-radius: 999px;
-    font-family: inherit;
-    font-size: 0.95em;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.2s, color 0.2s, transform 0.1s;
 }
 
-.banner-action:active {
-    transform: scale(0.97);
-}
-
-.banner-action:focus-visible {
-    outline: 3px solid rgba(0, 128, 0, 0.35);
-    outline-offset: 2px;
-}
-
-.banner-action--primary {
-    background-color: green;
-    color: white;
-}
-
-.banner-action--primary:hover {
-    background-color: #006400;
-    border-color: #006400;
-}
-
-.banner-action--secondary {
-    background-color: white;
-    color: green;
-}
-
-.banner-action--secondary:hover {
-    background-color: rgba(0, 128, 0, 0.08);
-}
-
-/* "Sobre" section (hidden when there is no description) */
+/* "Sobre" section (hidden when there is no description); label style: see Sidebar */
 .banner-section-title {
     margin: 0 0 8px;
-    font-size: 0.75em;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #888;
 }
 
-.banner-section:has(.editable-description:placeholder-shown) {
+.banner-section.is-empty .editable-description {
     display: none;
+}
+
+.banner-section.is-empty .banner-section-title {
+    margin-bottom: 0;
 }
 
 
@@ -756,13 +740,11 @@ header {
     display: flex;
     align-items: center;
     gap: 20px;
-    box-sizing: border-box;
     padding: 20px 30px calc(20px + var(--safe-bottom));
-    background-color: white;
+    background-color: var(--white);
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
-    font-family: var(--font-family, sans-serif);
     transform: translateY(0);
-    transition: transform 0.3s ease, visibility 0.3s;
+    transition: transform var(--duration-base) ease, visibility var(--duration-base);
 }
 
 /* slides down off-screen (not .hidden: display:none would kill the animation) */
@@ -777,7 +759,7 @@ header {
     height: 80px;
     border-radius: 50%;
     object-fit: cover;
-    background-color: #ddd;
+    background-color: var(--gray-100);
 }
 
 #user-info {
@@ -793,117 +775,613 @@ header {
 #user-info p {
     margin: 2px 0 0;
     font-size: 0.9em;
-    color: #444;
+    color: var(--gray-700);
 }
 
+/* look of the button: global.css (section 4) */
 #share-location {
     flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 24px;
-    border: none;
-    border-radius: 30px;
-    background-color: green;
-    color: white;
-    font-family: inherit;
-    font-size: 1em;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-#share-location:hover {
-    background-color: #006400;
 }
 
 
 /* ==========================================================================
-   9. Editor UI
+   8. Editor UI
+   Top bar (tabs + save), left tool rail, construction flyout, banner panel.
+   The map stays full-viewport underneath: screen coordinates in JS use clientX/Y.
    ========================================================================== */
 
-#logo-wrapper {
-    display: flex;
-    justify-content: center;
-    width: 100%;
+#editor-app {
+    --topbar-h: 56px;
+    --rail-w: 72px;
+    --banner-w: 460px;
 }
 
-#editor-logo {
-    width: 56px;
-    margin: var(--body-margin);
-    margin-bottom: 0;
+#editor-app #map {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    height: auto;
+    overflow: hidden;
 }
 
-#editor-modes {
+#editor-app #map canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+}
+
+.svg-icon {
+    flex-shrink: 0;
+    width: 1.25em;
+    height: 1.25em;
+    fill: currentColor;
+}
+
+/* ---------- top bar ---------- */
+
+#editor-topbar {
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--topbar-h);
+    padding: 0 calc(var(--body-margin) + var(--safe-right)) 0 var(--safe-left);
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-100);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+}
+
+/* logo sits above the rail */
+#logo-wrapper {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    height: 100%;
-    background-color: white;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    flex-shrink: 0;
+    width: var(--rail-w);
+}
+
+#editor-logo {
+    width: 32px;
+    height: auto;
+}
+
+.editor-tabs {
+    display: flex;
+    align-self: stretch;
+    gap: 4px;
+}
+
+.editor-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+    border: none;
+    background: transparent;
+    color: var(--gray-500);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color var(--duration-fast);
+}
+
+.editor-tab:hover:not(:disabled) {
+    color: var(--gray-900);
+}
+
+.editor-tab[aria-selected="true"] {
+    color: var(--dark-green-main);
+}
+
+.editor-tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 0;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--dark-green-main);
+}
+
+.editor-tab:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.editor-tab:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: -3px;
+    border-radius: var(--radius-sm);
+}
+
+.tab-soon {
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.topbar-save {
+    margin-left: auto;
+    padding: 8px 18px;
+    font-size: 0.9rem;
+}
+
+/* ---------- tool rail ---------- */
+
+#editor-modes {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: var(--rail-w);
+    padding: 12px 0 calc(12px + var(--safe-bottom));
+    background: var(--white);
+    border-right: 1px solid var(--gray-100);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.06);
 }
 
 #editor-modes hr {
+    width: 32px;
     height: 2px;
-    margin: var(--body-margin);
+    margin: 4px 0;
     border: none;
-    background-color: rgb(182, 182, 182);
+    background: var(--gray-100);
 }
 
-.editor-button {
-    margin: 0 var(--body-margin);
-    border-radius: 5px;
+.tool-btn {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--gray-700);
+    font-size: 1.15rem;
+    cursor: pointer;
+    transition:
+        background-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-press);
 }
 
-.editor-button:first-child {
-    margin-top: var(--body-margin);
+.tool-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
 }
 
-.mode-active {
-    background-color: #aaa;
+.tool-btn:active {
+    transform: scale(0.95);
 }
 
-#pin-mode {
+.tool-btn:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+/* toggled by lightButton() in JS */
+.tool-btn.mode-active {
+    background: var(--dark-green-main);
+    color: var(--white);
+}
+
+/* ---------- construction: icon that pops out of the build button ---------- */
+
+.tool-group {
+    display: flex;
+    align-self: flex-start;                              /* grows to the right, the build button stays put */
+    margin-left: calc((var(--rail-w) - 48px) / 2);
+    overflow: hidden;                                    /* clips the corners of both buttons */
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    transition: box-shadow var(--duration-fast);
+}
+
+.tool-group .tool-btn {
+    flex-shrink: 0;
+    border-radius: 0;
+}
+
+.tool-group .tool-btn:focus-visible {
+    outline-offset: -3px;
+}
+
+.tool-ext {
+    display: flex;
+    flex-shrink: 0;
+    width: 0;
+    height: 48px;
+    padding: 0;
+    overflow: hidden;
+    border: none;
+    background: var(--white);
+    color: var(--dark-green-main);
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        width var(--duration-fast) ease,
+        opacity var(--duration-fast) ease,
+        visibility var(--duration-fast),
+        background-color var(--duration-fast);
+}
+
+.tool-ext-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+}
+
+.tool-ext-icon img {
+    display: block;
+}
+
+.tool-ext .icon-check {
+    display: none;
+    font-size: 1.15rem;
+}
+
+/* expanded: construction mode + hover / keyboard focus / build in progress */
+.tool-group.open:is(:hover, :has(:focus-visible), .busy) {
+    box-shadow: 0 0 0 1.5px var(--dark-green-main), var(--shadow-lg);
+}
+
+.tool-group.open:is(:hover, :has(:focus-visible), .busy) .tool-ext {
+    width: 48px;
+    opacity: 1;
+    visibility: visible;
+}
+
+.tool-ext:hover:not(:disabled) {
+    background: var(--green-tint);
+}
+
+.tool-ext:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: -3px;
+}
+
+/* waiting for the map (placing the pin / drawing the first area) */
+.tool-ext:disabled {
+    background: var(--gray-50);
+    cursor: default;
+}
+
+/* done: confirm */
+.tool-ext[data-state="done"] {
+    background: var(--dark-green-main);
+    color: var(--white);
+}
+
+.tool-ext[data-state="done"]:hover {
+    background: var(--dark-green-hover);
+}
+.icon-pin {
+    filter: brightness(0) saturate(100%) invert(16%) sepia(99%) saturate(7404%) hue-rotate(4deg) brightness(95%) contrast(118%);
+}
+
+.tool-ext[data-state="done"] .icon-pin {
+    display: none;
+}
+
+.tool-ext[data-state="done"] .icon-check {
+    display: block;
+}
+
+/* ---------- banner panel: slides in from the right ---------- */
+
+#editor-app #banner {
     position: fixed;
-    left: calc(var(--body-margin) * 5 + 56px);
-    bottom: var(--body-margin);
-}
-
-#pin-mode button {
-    margin: 0 !important;
-}
-
-.button-list {
+    top: var(--topbar-h);
+    right: 0;
+    bottom: 0;
+    z-index: 4;
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    height: calc(100vh - 2 * 56px - 4 * var(--body-margin));
-    margin: var(--body-margin);
-    border-radius: 10px;
-    background-color: #ddd;
+    width: min(var(--banner-w), 100vw);
+    padding: 0;
+    overflow: hidden;
+    border-left: 1px solid var(--gray-100);
+    background: var(--white);
+    filter: none;
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.15);
+
+    transform: translateX(0);
+    visibility: visible;
+    transition:
+        transform var(--duration-base) ease,
+        visibility var(--duration-base),
+        box-shadow var(--duration-base);
 }
 
-#submit {
-    position: fixed;
-    left: 0;
-    bottom: 0;
+/* not display:none, otherwise there is nothing to animate (closeBanner awaits this transition) */
+#editor-app #banner.hidden {
+    display: flex !important;
+    transform: translateX(100%);
+    visibility: hidden;
+    box-shadow: none;
+    pointer-events: none;
 }
 
-#save {
+#editor-app #banner .banner-form {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.banner-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     flex-shrink: 0;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--gray-100);
 }
 
-#expand-banner {
+.banner-header-icon {
+    display: grid;
+    place-items: center;
     flex-shrink: 0;
-    height: 150px !important;
-    margin-top: auto;
-    margin-bottom: auto;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    background: var(--green-tint);
+    color: var(--dark-green-main);
 }
 
+.banner-header h2 {
+    margin-right: auto;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--gray-900);
+}
+
+/* same pill language as the hub cards */
+.banner-status {
+    max-width: 200px;
+    padding: 3px 10px;
+    overflow: hidden;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-700);
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.banner-status[data-state="partial"] {
+    background: #fff3cd;
+    color: #7a5600;
+}
+
+.banner-status[data-state="complete"] {
+    background: var(--green-tint);
+    color: var(--dark-green-main);
+}
+
+
+/* ---------- banner aliases / keywords ---------- */
+
+.banner-alias-field {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin: 5px 0 2px;
+}
+
+.banner-alias-heading {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.banner-alias-heading .banner-section-title {
+    margin: 0;
+}
+
+.banner-alias-optional {
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+/* Input container */
+
+.banner-alias-editor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+
+    min-height: 43px;
+    padding: 7px 9px;
+
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    background: var(--gray-50);
+
+    cursor: text;
+
+    transition:
+        background-color var(--duration-fast),
+        border-color var(--duration-fast),
+        box-shadow var(--duration-fast);
+}
+
+.banner-alias-editor:focus-within {
+    border-color: var(--dark-green-main);
+    background: var(--white);
+    box-shadow: 0 0 0 3px rgba(8, 115, 19, 0.10);
+}
+
+/* Container holding the chips */
+
+.banner-alias-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Individual keyword */
+
+.banner-alias-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+
+    max-width: 100%;
+    padding: 4px 5px 4px 10px;
+
+    border: 1px solid rgba(8, 115, 19, 0.10);
+    border-radius: var(--radius-pill);
+
+    background: var(--green-tint);
+    color: var(--dark-green-main);
+
+    font-size: 0.79rem;
+    font-weight: 600;
+    line-height: 1.4;
+
+    animation: banner-alias-enter 140ms ease-out;
+}
+
+.banner-alias-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Remove button */
+
+.banner-alias-remove {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+
+    width: 19px;
+    height: 19px;
+    padding: 0;
+
+    border: none;
+    border-radius: 50%;
+
+    background: transparent;
+    color: inherit;
+
+    font-family: Arial, sans-serif;
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 1;
+
+    cursor: pointer;
+
+    opacity: 0.65;
+
+    transition:
+        background-color var(--duration-fast),
+        color var(--duration-fast),
+        opacity var(--duration-fast),
+        transform var(--duration-press);
+}
+
+.banner-alias-remove:hover {
+    background: rgba(8, 115, 19, 0.13);
+    opacity: 1;
+}
+
+.banner-alias-remove:active {
+    transform: scale(0.85);
+}
+
+.banner-alias-remove:focus-visible {
+    outline: 2px solid var(--green-focus);
+    outline-offset: 1px;
+    opacity: 1;
+}
+
+/* Actual text input */
+
+.banner-alias-input {
+    flex: 1 1 135px;
+    min-width: 110px;
+    width: auto;
+
+    padding: 4px 2px;
+
+    border: none;
+    outline: none;
+
+    background: transparent;
+
+    color: var(--gray-900);
+    font-family: inherit;
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.banner-alias-input::placeholder {
+    color: var(--gray-500);
+    opacity: 0.8;
+}
+
+/* Helper text */
+
+.banner-alias-hint {
+    margin: -2px 0 0;
+
+    color: var(--gray-500);
+    font-size: 0.74rem;
+    line-height: 1.4;
+}
+
+/* Entry animation */
+
+@keyframes banner-alias-enter {
+    from {
+        opacity: 0;
+        transform: translateY(3px) scale(0.96);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .banner-alias-chip {
+        animation: none;
+    }
+}
 
 /* ==========================================================================
-   10. Responsive (mobile)
+   9. Responsive (mobile)
    ========================================================================== */
 
 @media (max-width: 700px) {
@@ -935,11 +1413,6 @@ header {
         max-height: calc(var(--app-height) * 0.5);
     }
 
-    /* menu */
-    .sidebar {
-        width: min(300px, 85vw);
-    }
-
     /* banner: side panel becomes a bottom sheet (main page only) */
     #screen-ui.main-ui {
         position: fixed !important;
@@ -950,7 +1423,7 @@ header {
         flex: none;
         height: var(--sheet-height);
         margin-right: 0;
-        transition: transform 0.3s ease, visibility 0.3s;
+        transition: transform var(--duration-base) ease, visibility var(--duration-base);
     }
 
     #screen-ui.main-ui.hidden {
@@ -962,7 +1435,7 @@ header {
     #banner {
         width: 100%;
         padding-bottom: var(--safe-bottom);
-        border-radius: 16px 16px 0 0;
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
         filter: drop-shadow(0 -2px 8px rgba(0, 0, 0, 0.25));
     }
 
@@ -984,7 +1457,7 @@ header {
         flex-wrap: wrap;
         gap: 14px;
         padding: 14px 16px calc(14px + var(--safe-bottom));
-        border-radius: 16px 16px 0 0;
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
     }
 
     #user-avatar {
@@ -993,8 +1466,6 @@ header {
     }
 
     #share-location {
-        justify-content: center;
         width: 100%;
-        padding: 12px 18px;
     }
 }
