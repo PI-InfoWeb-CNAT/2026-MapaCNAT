@@ -1,6 +1,15 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
 import { SpatialHash } from "./spatialHash.js";
+import { getShortestPath } from "./rota.js";
+
+export const Palette = Object.freeze({
+    reference:  { out: 0x3d97e0, in: 0xa4d1f5, hover: 0x00aaff },   // referências
+    connection: { out: 0x3d97e0, in: 0xa4d1f5 },                    // conexões (a rede de rotas)
+    building:   { out: 0xe8730c, in: 0xfcd5a8, hover: 0xc2410c, hoverFill: 0xffe8cc },
+    route:      { out: 0x1a7f37, in: 0x4cc36a },                    // rota calculada (página main)
+    accent:     { out: 0x16a34a, in: 0xbbf7d0 },                    // alvo clicável (fechar a forma)
+});
 
 let page;
 
@@ -26,36 +35,13 @@ function closestPointOnSegment(px, py, x1, y1, x2, y2) {
 
 const MAX_DOT_SIZE = 16;       // maior `size` de uma Reference no editor (10 + 5 do hover) + folga
 const MAX_LINE_HALF = 8;       // maior (size + 6) / 2 de uma Connection (size chega a 9)
-const BORDER_GRAB = 15;        // espessura de captura das bordas de Area (unidades do mundo)
 const PIN_REACH_MARGIN = 1.25; // o hover escala o pin até 1.2x
 
 // buffers de consulta reutilizados: nada de alocar array a cada pointermove
-const _dotBuf = [], _pinBuf = [], _lineBuf = [], _areaBuf = [], _clusterBuf = [], _nearBuf = [];
-const EMPTY = Object.freeze([]);
+const _dotBuf = [], _pinBuf = [], _lineBuf = [];
 
 const byZDesc = (a, b) => b.z - a.z;
 const byIdDesc = (a, b) => b.id - a.id;
-
-// as Areas sempre guardam start/end em "normal"
-function areaBounds(area) {
-    const s = area.start.pos, e = area.end.pos;
-    return {
-        minX: Math.min(s.x, e.x), maxX: Math.max(s.x, e.x),
-        minY: Math.min(s.y, e.y), maxY: Math.max(s.y, e.y),
-    };
-}
-
-function containsPoint(area, x, y, pad = 0) {
-    const s = area.start.pos, e = area.end.pos;
-    return x >= Math.min(s.x, e.x) - pad && x <= Math.max(s.x, e.x) + pad &&
-           y >= Math.min(s.y, e.y) - pad && y <= Math.max(s.y, e.y) + pad;
-}
-
-function overlapsBounds(area, b, tol) {
-    const s = area.start.pos, e = area.end.pos;
-    return Math.max(s.x, e.x) >= b.minX - tol && Math.min(s.x, e.x) <= b.maxX + tol &&
-           Math.max(s.y, e.y) >= b.minY - tol && Math.min(s.y, e.y) <= b.maxY + tol;
-}
 
 function distSqToSegment(px, py, x1, y1, x2, y2) {
     const cx = x2 - x1, cy = y2 - y1;
@@ -146,22 +132,12 @@ export function buildPayload() {
         return id;
     }
 
-    for (const [id, area] of Object.entries(Buildings.areas)) {
-        const s = area.start.getIn("normal");
-        const e = area.end.getIn("normal");
-        payload.areas[id] = {
-            min: { x: Math.min(s.x, e.x), y: Math.min(s.y, e.y) },
-            max: { x: Math.max(s.x, e.x), y: Math.max(s.y, e.y) },
-        };
-    }
-
     for (const [id, building] of Object.entries(Buildings.buildings)) {
+        if (!building.closed) continue;   // rascunho não vai para o servidor
         payload.buildings[id] = {
             name: building.name,
             pin: normalPos(building.coordinate),
-            areas: building.areas
-                .filter(a => a.id !== -1)
-                .map(a => a.id),
+            polygon: building.vertices.map(v => ({ x: v.pos.x, y: v.pos.y })),
             entrances: building.entrances
                 .filter(r => r.id !== -1)
                 .map(r => r.id),
@@ -245,15 +221,17 @@ export async function queryBanner(query) {
   return combined
     .reduce((acc, element) => {
       const banner = element?.banner;
+      const title = banner?.title || element?.name;
 
-      if (!banner?.title) return acc;
+      // Skip only if both banner.title and element.name are missing.
+      if (!title) return acc;
 
       // Collect all searchable fields.
       const searchFields = [
-        banner.title,
-        ...(Array.isArray(banner.titleAlias)
+        title,
+        ...(Array.isArray(banner?.titleAlias)
           ? banner.titleAlias
-          : banner.titleAlias
+          : banner?.titleAlias
             ? [banner.titleAlias]
             : []),
         element?.name,
@@ -268,9 +246,9 @@ export async function queryBanner(query) {
 
       if (score > 0) {
         acc.push({
-          title: banner.title,
-          image: banner.image,
-          description: banner.description,
+          title,
+          image: banner?.image,
+          description: banner?.description,
           ref: element,
           score
         });
@@ -288,7 +266,6 @@ export async function load() {
         if (!response.ok) throw new Error('Erro de rede');
         const data = await response.json();
         let refMap = {};
-        let areaMap = {};
         
         if (data.buildings) {
             for (const key of Object.keys(data.buildings)) {
@@ -320,16 +297,11 @@ export async function load() {
                     }
                 }
 
-                for (const areaKey of build.areas) {
-                    let area = data.areas[areaKey];
-                    let start = newCoord(area.min.x, area.min.y, "normal");
-                    let end = newCoord(area.max.x, area.max.y, "normal");
-                    
-                    if (!areaMap[areaKey]) {
-                        let areaObject = new Area(start, end, building);
-                        areaMap[key] = areaObject;
-                    }
+                let poly = build.polygon;
+                if (!poly && build.areas) {
+                    poly = legacyPolygon(build.areas.map(k => data.areas?.[k]));
                 }
+                if (poly && poly.length >= 3) building.setPolygon(poly);
             }   
         }
         if (data.references) {
@@ -376,6 +348,145 @@ export async function load() {
 
     } catch (error) {
         console.error('Fetch error:', error);
+    }
+}
+
+export class SnapGuides {
+    static graphics = {
+        horizontal: null,
+        vertical: null,
+    };
+
+    static guides = {
+        horizontal: null,
+        vertical: null,
+    };
+
+    static styles = {
+        horizontal: {
+            colorOut: 0x28A7F0,
+            colorIn: 0x28A7F0,
+            alpha: 0.9,
+            size: 1,
+        },
+        vertical: {
+            colorOut: 0x28A7F0,
+            colorIn: 0x28A7F0,
+            alpha: 0.9,
+            size: 1,
+        },
+    };
+
+    static ensureGraphics(axis) {
+        if (!this.graphics[axis]) {
+            this.graphics[axis] = Graficos.createGuide();
+        }
+
+        return this.graphics[axis];
+    }
+
+    static draw(axis, start, end) {
+        this.guides[axis] = { start, end };
+        this.ensureGraphics(axis);
+
+        this.render();
+    }
+
+    static snap(screenPt, targets, thresholdPx = 8) {
+        let bx = null, by = null;
+
+        for (const t of targets) {
+            const n = t.peekNormal();
+            const s = Graficos.getScreenCoordinates(n);
+            const dx = Math.abs(s.x - screenPt.x);
+            const dy = Math.abs(s.y - screenPt.y);
+
+            if (dx <= thresholdPx && (!bx || dx < bx.d)) bx = { d: dx, x: s.x, n: { x: n.x, y: n.y } };
+            if (dy <= thresholdPx && (!by || dy < by.d)) by = { d: dy, y: s.y, n: { x: n.x, y: n.y } };
+        }
+
+        return {
+            x: bx ? bx.x : screenPt.x,
+            y: by ? by.y : screenPt.y,
+            guides: {
+                vertical:   bx ? { start: bx.n, end: bx.n } : null,
+                horizontal: by ? { start: by.n, end: by.n } : null,
+            },
+        };
+    }
+
+    static render() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const margin = 100;   // passa da borda para a linha nunca terminar à vista
+
+        for (const axis of ["horizontal", "vertical"]) {
+            const guide = this.guides[axis];
+            const graphics = this.graphics[axis];
+
+            if (!guide || !graphics) {
+                if (graphics) Graficos.clearGuide(graphics);
+                continue;
+            }
+
+            // âncora (normal) -> tela
+            const s = Graficos.getScreenCoordinates(guide.start);
+
+            const a = axis === "horizontal"
+                ? newCoord(-margin, s.y, "screen")
+                : newCoord(s.x, -margin, "screen");
+            const b = axis === "horizontal"
+                ? newCoord(w + margin, s.y, "screen")
+                : newCoord(s.x, h + margin, "screen");
+
+            Graficos.renderGuide(graphics, {
+                points: [a, b],
+                ...this.styles[axis],
+            });
+        }
+    }
+
+    static clear(axis) {
+        this.guides[axis] = null;
+
+        if (this.graphics[axis]) {
+            Graficos.clearGuide(this.graphics[axis]);
+        }
+    }
+
+    static clearAll() {
+        this.clear("horizontal");
+        this.clear("vertical");
+    }
+
+    static update(guides) {
+        for (const axis of ["horizontal", "vertical"]) {
+            if (guides?.[axis]) {
+                this.guides[axis] = {
+                    start: guides[axis].start,
+                    end: guides[axis].end,
+                };
+
+                this.ensureGraphics(axis);
+            } else {
+                this.guides[axis] = null;
+            }
+        }
+
+        this.render();
+    }
+
+    static destroy() {
+        for (const axis of ["horizontal", "vertical"]) {
+            const graphics = this.graphics[axis];
+
+            if (graphics) {
+                Graficos.destroyConnection(graphics);
+                this.graphics[axis] = null;
+            }
+
+            this.guides[axis] = null;
+        }
     }
 }
 
@@ -440,15 +551,210 @@ function ease(x, type = "in-out", power = 2) {
     }
 }
 
+const VERTEX_GRAB_PX = 10;
+const WALL_SNAP_PX = 12;   // referência gruda na parede dentro desse raio (tela)
+const WALL_EPS = 1e-4;     // redetecta quem já está exatamente na parede (undo/redo/load)
+const _wallBuf = [], _polyBuf = [];
+
+function pointInPolygon(x, y, verts) {
+    let inside = false;
+    for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+        const a = verts[i].pos, b = verts[j].pos;
+        if ((a.y > y) !== (b.y > y) &&
+            x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+}
+
+function closestOnPolygon(x, y, verts) {
+    let best = null;
+    for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+        const a = verts[j].pos, b = verts[i].pos;
+        const p = closestPointOnSegment(x, y, a.x, a.y, b.x, b.y);
+        if (!best || p.d < best.d) best = p;
+    }
+    return best;
+}
+
+function polygonArea(pts) {
+    let s = 0;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        s += pts[j].x * pts[i].y - pts[i].x * pts[j].y;
+    }
+    return Math.abs(s) / 2;
+}
+
+// compatibilidade: mapas antigos salvos com várias áreas viram um polígono (a maior união)
+function legacyPolygon(areas) {
+    const boxes = areas.filter(Boolean).map(a => [a.min.x, a.min.y, a.max.x, a.max.y]);
+    if (!boxes.length) return null;
+    let best = null, bestArea = -1;
+    for (const poly of Geometria.getUnionPolygonVertices(boxes)) {
+        const pts = poly.map(([x, y]) => ({ x, y }));
+        const a = polygonArea(pts);
+        if (a > bestArea) { best = pts; bestArea = a; }
+    }
+    return best;
+}
+
+export class PhantomReference {
+    constructor(coordinate, colors = Palette.reference) {
+        this.alpha = 0.45;
+        this.colorOut = colors.out;
+        this.colorIn = colors.in;
+        this.size = 10;
+        this.tint = 0x00aaff;
+
+        this.coordinate = coordinate;
+        this.coordinate.convertTo("normal");
+
+        this.graphics = Graficos.createReference();
+
+        this.updateGraphics();
+    }
+
+    setPosition(coordinate) {
+        this.coordinate = coordinate;
+        this.coordinate.convertTo("normal");
+
+        this.updateGraphics();
+    }
+
+    buildData() {
+        return {
+            coordinate: this.coordinate,
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            size: this.size,
+            alpha: this.alpha,
+            isEntrance: false,
+            color: this.tint,
+        };
+    }
+
+    updateGraphics() {
+        Graficos.renderReference(this.graphics, this.buildData());
+    }
+
+    destroy() {
+        Graficos.destroyReference(this.graphics);
+    }
+}
+
+// Alvo clicável no 1º vértice: some se a forma não está aberta com 3+ pontos
+class CloseHandle {
+    constructor(building) {
+        this.building = building;
+        this.hover = 0;
+        this.hoverTime = .2;
+        this.t = 0;
+        this.size = 9;
+        this.destroyed = false;
+        this.graphics = Graficos.createReference();
+    }
+
+    hoverAdd() {
+        this.hover = Math.min(this.hover + 1, this.hoverTime * 30);
+        this.hoverUpdate();
+    }
+    hoverDec() {
+        this.hover = Math.max(this.hover - 1, 0);
+        this.hoverUpdate();
+    }
+    hoverUpdate() {
+        this.t = ease(this.hover * (1000 / 30) / (this.hoverTime * 1000));
+        this.size = 9 + this.t * 6;
+        this.updateGraphics();
+    }
+
+    updateGraphics() {
+        if (this.destroyed) return;
+        const b = this.building;
+
+        if (!b.enabled || b.closed || b.vertices.length < 3) {
+            Graficos.clearReference(this.graphics);
+            return;
+        }
+        Graficos.renderReference(this.graphics, {
+            coordinate: b.vertices[0],
+            colorOut: interpCol(Palette.building.out, Palette.accent.out, this.t),
+            colorIn: interpCol(0xffffff, Palette.accent.in, this.t),
+            size: this.size,
+            alpha: 1,
+            isEntrance: false,
+            color: 0,
+        });
+    }
+
+    destroy() {
+        this.destroyed = true;
+        Graficos.destroyReference(this.graphics);
+    }
+}
+
+export class PhantomVertex {
+    constructor(building, coordinate) {
+        this.building = building;
+
+        this.reference = new PhantomReference(coordinate, Palette.building);
+        this.connectionOut = new PhantomConnection(building.vertices.at(-1), Palette.building);
+
+        this.connectionBack = building.vertices.length >= 2
+            ? new PhantomConnection(this.reference.coordinate, Palette.building)
+            : null;
+
+        this.updateGraphics();
+    }
+
+    setEndPoint(coordinate) {
+        if (!this.building || this.building.closed) return;
+
+        this.reference.setPosition(coordinate);
+
+        const vertices = this.building.vertices;
+
+        // Rota de continuação.
+        this.connectionOut.start = vertices.at(-1);
+        this.connectionOut.setEndPoint(this.reference.coordinate);
+
+        // Rota de fechamento.
+        if (vertices.length >= 2) {
+            if (!this.connectionBack) {
+                this.connectionBack = new PhantomConnection(this.reference.coordinate, Palette.building);
+            }
+
+            this.connectionBack.start = this.reference.coordinate;
+            this.connectionBack.setEndPoint(vertices[0]);
+        } else if (this.connectionBack) {
+            this.connectionBack.destroy();
+            this.connectionBack = null;
+        }
+    }
+
+    updateGraphics() {
+        this.setEndPoint(this.reference.coordinate);
+    }
+
+    destroy() {
+        this.reference.destroy();
+        this.connectionOut.destroy();
+
+        if (this.connectionBack) {
+            this.connectionBack.destroy();
+            this.connectionBack = null;
+        }
+    }
+}
+
 export class PhantomConnection {
-    constructor(start) {
+    constructor(start, colors = Palette.connection) {
         this.start = start;
 
         this.alpha = .6;
-        this.colorOut = 0x3d97e0;
-        this.colorIn = 0xa4d1f5;
+        this.colorOut = colors.out;
+        this.colorIn = colors.in;
 
-        this.size = 6;
+        this.size = 4;
 
         this.graphics = Graficos.createConnection();
     }
@@ -476,90 +782,6 @@ export class PhantomConnection {
 
     destroy() {
         Graficos.destroyConnection(this.graphics);
-    }
-}
-
-export class PhantomArea {
-    constructor(startX, startY) {
-        let coord = newCoord(startX, startY, "screen");
-        coord.convertTo("normal");
-        this.start = coord;
-        this.alpha = .6;
-        this.colorOut = {
-            left: 0x3d97e0,
-            top: 0x3d97e0,
-            right: 0x3d97e0,
-            bottom: 0x3d97e0,
-        };
-        this.colorIn = 0xa4d1f5;
-        
-        this.radius = 5;
-        this.borderSize = 8;
-        
-        this.graphics = Graficos.createArea();
-
-        this.phantomDots = {};
-    }
-
-    setEndPoint(end) {
-        this.end = end;
-        this.end.convertTo("normal");
-        this.updateGraphics();
-
-        // a própria área fantasma entra como `extra`: não copia mais Buildings.areas a cada movimento
-        for(const ref of Object.values(Referencer.references)) {
-            let validCoord = Referencer.getValidDot(ref.coordinate, this);
-
-            if (!validCoord.isInside) {
-                if (this.phantomDots[ref.id]) {
-                    Graficos.destroyReference(this.phantomDots[ref.id].gfx);
-                    delete this.phantomDots[ref.id];
-                }
-                continue;
-            }
-            if (!this.phantomDots[ref.id]) {
-                this.phantomDots[ref.id] = { ref: ref, gfx: Graficos.createReference(), validPos: validCoord.coord };
-            }
-
-            this.phantomDots[ref.id].validPos = validCoord.coord;
-            let data = {
-                coordinate: this.phantomDots[ref.id].validPos,
-                colorOut: 0x3d97e0,
-                colorIn: 0xa4d1f5,
-                size: 10,
-                alpha: 1,
-                isEntrance: true
-            }
-            Graficos.renderReference(this.phantomDots[ref.id].gfx, data);
-
-        }
-        
-    }
-
-    buildData() {
-        let start = this.start;
-        let end = this.end;
-        return {
-            colorOut: this.colorOut,
-            colorIn: this.colorIn,
-            alpha: this.alpha,
-            borderSize: this.borderSize,
-            radius: this.radius,
-            start: start,
-            end: end,
-        }
-    }
-
-    updateGraphics() {
-        Graficos.renderArea(this.graphics, this.buildData());
-    }
-
-    destroy() {
-        Graficos.destroyArea(this.graphics);
-        for(const key of Object.keys(this.phantomDots)) {
-            Graficos.destroyReference(this.phantomDots[key].gfx);
-            delete this.phantomDots[key];
-        }
     }
 }
 
@@ -652,86 +874,79 @@ export class TouchPin {
     }
 }
 
+function nearestNodeId(coordinate, nodes) {
+    const p = coordinate.getIn("normal");
+    let best = null;
+    let bestDist = Infinity;
+
+    for (const [id, pos] of Object.entries(nodes)) {
+        const d = (pos.x - p.x) ** 2 + (pos.y - p.y) ** 2;
+        if (d < bestDist) {
+            bestDist = d;
+            best = id; // Object.entries devolve strings, que é o que o A* espera
+        }
+    }
+    return best;
+}
+
+function findRoute(fromPlace, toPlace) {
+    const edges = [];
+    const nodes = {};
+
+    // só entram referências que têm conexão, então o nó mais próximo nunca é um nó isolado
+    for (const conn of Object.values(Connections.connections)) {
+        edges.push([conn.start.id, conn.end.id]);
+        nodes[conn.start.id] = conn.start.coordinate.getIn("normal");
+        nodes[conn.end.id] = conn.end.coordinate.getIn("normal");
+    }
+
+    const startId = nearestNodeId(fromPlace.coordinate, nodes);
+    const goalId = nearestNodeId(toPlace.coordinate, nodes);
+    if (startId === null || goalId === null) return null;
+
+    const ids = getShortestPath(edges, nodes, startId, goalId);
+    return ids ? ids.map(id => Referencer.references[id]) : null;
+}
+
 export class Route {
     constructor() { throw new Error("Classe estática. Não instancie."); }
 
     static active = false;
     static origin = null;       // { ref, title, self? }
     static destination = null;  // { ref, title }
+    static points = [];
+    static graphics = null;
 
-    static locationRequestId = 0;
+    static _listeners = new Set();
+    static _frame = 0;
+    static _lastSelf = null;
 
-    static async start(place) {
-        const title = bannerTitle.value.trim() || 'Destino';
-        const wasActive = this.active;
-
-        this.active = true;
-        searchHeader.classList.add("hidden");
-        routeFields.classList.remove("hidden");
-
-        this.destination = { ref: place, title };
-        routeDestination.value = title;
-
-        if (!wasActive) {
-            this.origin = null;
-            routeOrigin.value = '';
-            this.update();
-            await this.useMyLocation();
-            return;
-        }
-        this.update();
+    /** fn(tipo, Route): tipos emitidos: "nopath" */
+    static subscribe(fn) {
+        this._listeners.add(fn);
+        return () => this._listeners.delete(fn);
     }
 
-    static async useMyLocation() {
-        const id = ++this.locationRequestId;
-        routeOrigin.placeholder = 'Obtendo sua localização…';
+    static _emit(type) {
+        for (const fn of this._listeners) fn(type, this);
+    }
 
-        const status = await Localizacao.requestLocation();
-        routeOrigin.placeholder = originPlaceholder;
-
-        // route closed, or the user picked an origin by hand while we waited
-        if (id !== this.locationRequestId || !this.active || this.origin) return;
-
-        if (status === 'granted') {
-            this.setPoint('origin', selfPoint());
-        } else {
-            reportLocationFailure(status);
-            routeOrigin.focus();
-        }
+    static start(place, title) {
+        if (!this.active) this.origin = null;
+        this.active = true;
+        this.destination = { ref: place, title };
+        this.update();
     }
 
     static stop() {
         this.active = false;
         this.origin = null;
         this.destination = null;
-        routeOrigin.value = '';
-        routeDestination.value = '';
-
-        routeFields.classList.add("hidden");
-        searchHeader.classList.remove("hidden");
-
-        activeInput = null;
-        expanded = false;
-        search.cancel();
-        currentResults = [];
-        currentQuery = '';
-        renderSearchList();
-
         this.update();
     }
 
     static setPoint(which, point) {
         this[which] = point;
-
-        const input = which === 'origin' ? routeOrigin : routeDestination;
-        const other = which === 'origin' ? routeDestination : routeOrigin;
-        const otherPoint = which === 'origin' ? this.destination : this.origin;
-
-        input.value = point ? point.title : '';
-
-        if (point && !otherPoint) other.focus();
-        else input.blur();
-
         this.update();
     }
 
@@ -743,15 +958,15 @@ export class Route {
 
     static swap() {
         [this.origin, this.destination] = [this.destination, this.origin];
-        [routeOrigin.value, routeDestination.value] = [routeDestination.value, routeOrigin.value];
         this.update();
     }
-    
-    static segments = [];
-    static graphics = null;
-    static points = [];
 
-    static update(redraw=true) {
+    static update() {
+        this._compute(false);
+        this._syncTracking();
+    }
+
+    static _compute(silent) {
         this.points = [];
 
         if (this.active && this.origin && this.destination) {
@@ -763,41 +978,57 @@ export class Route {
                     ...path.map(ref => ref.coordinate),
                     this.destination.ref.coordinate,
                 ];
-            } else {
-                Toasts.toaster.show({ text: 'Nenhum caminho encontrado', category: "error" });
+            } else if (!silent) {
+                this._emit("nopath");
             }
         }
-        if(!redraw) return;
-
         this.redraw();
     }
 
-    static async redraw() {
-        let retrack = false;
-        if (this.origin?.title == "Sua localização" || this.destination?.title == "Sua localização") {
-            retrack = true;
-            this.update(false);
-        }
+    static redraw() {
         if (this.points.length < 2) {
             if (this.graphics) Graficos.clearConnection(this.graphics);
             return;
         }
-
         if (!this.graphics) this.graphics = Graficos.createConnection();
 
         Graficos.renderConnection(this.graphics, {
             points: this.points,
-            colorOut: 0x1a7f37,
-            colorIn: 0x4cc36a,
+            colorOut: Palette.route.out,
+            colorIn: Palette.route.in,
             alpha: 1,
             size: 8,
         });
-        if (!retrack) {
+    }
+
+    static _tracksSelf() {
+        return this.active && !!(this.origin?.self || this.destination?.self);
+    }
+
+    // A posição do usuário muda sozinha: UM loop recalcula só quando ela se mexe.
+    // (Antes, cada Route.redraw() chamado no scroll abria mais um loop infinito.)
+    static _syncTracking() {
+        if (!this._tracksSelf()) {
+            if (this._frame) cancelAnimationFrame(this._frame);
+            this._frame = 0;
             return;
         }
-        await sleep(1000 / 60);
+        if (this._frame) return;
 
-        this.redraw();
+        const p = Self.coordinate.pos;
+        this._lastSelf = { x: p.x, y: p.y };
+
+        const tick = () => {
+            if (!this._tracksSelf()) { this._frame = 0; return; }
+
+            const q = Self.coordinate.pos;
+            if (q.x !== this._lastSelf.x || q.y !== this._lastSelf.y) {
+                this._lastSelf = { x: q.x, y: q.y };
+                this._compute(true);       // silencioso: sem toast a cada movimento
+            }
+            this._frame = requestAnimationFrame(tick);
+        };
+        this._frame = requestAnimationFrame(tick);
     }
 }
 
@@ -989,17 +1220,6 @@ export class Referencer {
     static dotHash = new SpatialHash(128);   // todas as referências rastreadas (ponto)
     static pinHash = new SpatialHash(256);   // só as que têm pin (página main)
     static maxPinReach = 0;
-    static motionReport = {};
-    static reporting = false;
-
-    static beginReport() {
-        this.reporting = true;
-        this.motionReport = {};
-    }
-    static endReport() {
-        this.reporting = false;
-        this.motionReport = {};
-    }
 
     static track(reference) {
         if (reference.id !== -1) {
@@ -1105,68 +1325,6 @@ export class Referencer {
         if (all) return hits ? hits.sort(byZDesc) : false;
         return best || false;
     }
-
-    /**
-     * Se o ponto está dentro da união das áreas, devolve o ponto mais próximo da borda da união.
-     * `extraArea` é uma área que ainda não está rastreada (a PhantomArea).
-     */
-    static getValidDot(coordinate, extraArea = null, tol = 1e-9) {
-        let x, y;
-        if (typeof coordinate.getIn === "function") {
-            const p = coordinate.peekNormal();
-            x = p.x;
-            y = p.y;
-        } else {
-            x = coordinate.x;
-            y = coordinate.y;
-        }
-
-        // só o aglomerado de áreas que se tocam e contém o ponto: as outras não mudam o resultado
-        const boxes = Buildings.collectCluster(x, y, extraArea, tol);
-        if (boxes.length === 0) {
-            return { isInside: false, coord: newCoord(x, y, "normal") };
-        }
-
-        // a borda conta como dentro (conjunto fechado)
-        const inOpen = (px, py) => boxes.some(b =>
-            px > b.minX + tol && px < b.maxX - tol &&
-            py > b.minY + tol && py < b.maxY - tol);
-
-        const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
-        const allXs = boxes.flatMap(b => [b.minX, b.maxX]);
-        const allYs = boxes.flatMap(b => [b.minY, b.maxY]);
-
-        const candidates = [];
-        for (const b of boxes) {
-            // arestas horizontais (y fixo), x varia em [minX, maxX]
-            const xs = [clamp(x, b.minX, b.maxX), b.minX, b.maxX,
-                        ...allXs.map(v => clamp(v, b.minX, b.maxX))];
-            for (const edgeY of [b.minY, b.maxY]) {
-                for (const cx of xs) candidates.push({ x: cx, y: edgeY, box: b.box });
-            }
-
-            // arestas verticais (x fixo), y varia em [minY, maxY]
-            const ys = [clamp(y, b.minY, b.maxY), b.minY, b.maxY,
-                        ...allYs.map(v => clamp(v, b.minY, b.maxY))];
-            for (const edgeX of [b.minX, b.maxX]) {
-                for (const cy of ys) candidates.push({ x: edgeX, y: cy, box: b.box });
-            }
-        }
-
-        let best = null;
-        let minDistSq = Infinity;
-        for (const c of candidates) {
-            if (inOpen(c.x, c.y)) continue;          // enterrado dentro da união
-            const d = (c.x - x) ** 2 + (c.y - y) ** 2;
-            if (d < minDistSq) {
-                minDistSq = d;
-                best = c;
-            }
-        }
-
-        const p = best || { x, y };
-        return { isInside: best ? best.box : boxes[0].box, coord: newCoord(p.x, p.y, "normal") };
-    }
 }
 
 export class Buildings {
@@ -1176,56 +1334,53 @@ export class Buildings {
     
     static idTracker = 0;
     static buildings = {};
-    static areas = {};
-    static areaHash = new SpatialHash(256);   // caixa da área + folga de captura
     static pinHash = new SpatialHash(256);    // pins das construções
+    static polyHash = new SpatialHash(256);   // caixa de cada polígono FECHADO
     static maxPinReach = 0;
-    
-    static trackArea(area) {
-        if (area.id !== -1) {
-            return;
+
+    static editing = false;   // mostra as alças (modo Seleção)
+    static hovered = null;    // { building, index }
+
+    static setEditing(on) {
+        if (this.editing === on) return;
+        this.editing = on;
+        if (!on) this.hovered = null;
+        for (const b of Object.values(this.buildings)) b.updateGraphics();
+    }
+
+    static setHoverVertex(hit) {
+        const prev = this.hovered;
+        if (prev?.building === hit?.building && prev?.index === hit?.index) return;
+        this.hovered = hit ? { building: hit.building, index: hit.index } : null;
+        prev?.building.updateGraphics();
+        hit?.building.updateGraphics();
+    }
+
+    /** Canto de construção fechada sob o ponto (raio em pixels de tela). */
+    static getOverlappingVertex(coordinate) {
+        const pos = coordinate.peekNormal();
+        const R = VERTEX_GRAB_PX / Graficos.zoom;
+        const cand = this.polyHash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _polyBuf);
+
+        let best = null, bestD = R * R;
+        for (let i = 0; i < cand.length; i++) {
+            const b = cand[i];
+            for (let k = 0; k < b.vertices.length; k++) {
+                const v = b.vertices[k].pos;
+                const d = (v.x - pos.x) ** 2 + (v.y - pos.y) ** 2;
+                if (d <= bestD) { best = { building: b, index: k }; bestD = d; }
+            }
         }
-        area.id = this.idTracker;
-        this.areas[this.idTracker] = area;
-        this.idTracker += 1;
-        this.indexArea(area);
+        return best;
     }
 
-    static untrackArea(area) {
-        if (area.id !== -1) delete this.areas[area.id];
-        area.id = -1;
-        this.areaHash.delete(area);
-    }
-
-    /** Reindexa a caixa (com a folga de captura da borda). Ignora área não rastreada. */
-    static indexArea(area) {
-        if (area.id === -1 || !area.start || !area.end) return;
-        const b = areaBounds(area);
-        const pad = Math.max(area.borderSize / 2, BORDER_GRAB / 2);
-        this.areaHash.set(area, b.minX - pad, b.minY - pad, b.maxX + pad, b.maxY + pad);
-    }
-
-    static track(building) {
-        if (building.id !== -1) {
-            return;
-        }
-        building.id = this.idTracker;
-        this.buildings[this.idTracker] = building;
-        this.idTracker += 1;
-
-        for(const area of building.areas) {
-            if (area.enabled) this.trackArea(area);   // antes religava até áreas já apagadas
-        }
-        this.syncPin(building);
-    }
-    
-    static untrack(building) {
-        delete this.buildings[building.id];
-        building.id = -1;
-        this.pinHash.delete(building);
-
-        for(const area of building.areas) {
-            Buildings.untrackArea(area);
+    /** Depois de mexer na parede: as entradas escorregam para o ponto mais próximo dela. */
+    static reattachEntrances(building) {
+        for (const ref of [...building.entrances]) {
+            if (!ref.enabled) continue;
+            const p = ref.coordinate.pos;
+            const q = closestOnPolygon(p.x, p.y, building.vertices);
+            ref.move(newCoord(q.x, q.y, "normal"));
         }
     }
 
@@ -1246,16 +1401,6 @@ export class Buildings {
     static setRelated(obj, state) {
         this.setRelation(obj, obj.building, state);
     }
-    
-    static setRelation(obj, building, state) {
-        let iterator = obj instanceof Reference ? building.entrances : building.areas;
-
-        if (state) {
-            iterator = addObj(iterator, obj);
-        } else {
-            iterator = removeObj(iterator, obj);
-        }
-    }
 
     static getBannerless() {
         let flat = Object.values(this.buildings);
@@ -1263,41 +1408,87 @@ export class Buildings {
         return bannerless;
     }
 
-    /**
-     * Áreas (fechadas) do aglomerado conexo que contém o ponto. Devolve EMPTY, sem alocar,
-     * quando o ponto não está em nenhuma área (o caso mais comum).
-     */
-    static collectCluster(x, y, extra, tol) {
-        const cand = this.areaHash.queryPoint(x, y, _clusterBuf);
-        let any = extra ? containsPoint(extra, x, y, tol) : false;
-        for (let i = 0; i < cand.length && !any; i++) any = containsPoint(cand[i], x, y, tol);
-        if (!any) return EMPTY;
-
-        const entries = [], seen = new Set();
-        const visit = (area) => {
-            if (seen.has(area)) return;
-            seen.add(area);
-            const b = areaBounds(area);
-            b.box = area;
-            entries.push(b);
-        };
-
-        for (let i = 0; i < cand.length; i++) {
-            if (containsPoint(cand[i], x, y, tol)) visit(cand[i]);
-        }
-        if (extra && containsPoint(extra, x, y, tol)) visit(extra);
-
-        // expande (BFS) para as áreas que tocam o aglomerado; `entries` funciona como fila
-        for (let i = 0; i < entries.length; i++) {
-            const b = entries[i];
-            const near = this.areaHash.queryRect(b.minX - tol, b.minY - tol, b.maxX + tol, b.maxY + tol, _nearBuf);
-            for (let j = 0; j < near.length; j++) {
-                if (overlapsBounds(near[j], b, tol)) visit(near[j]);
-            }
-            if (extra && overlapsBounds(extra, b, tol)) visit(extra);
-        }
-        return entries;
+    static indexPolygon(building) {
+        if (building.id === -1 || !building.closed) return;
+        const b = building.bounds();
+        this.polyHash.set(building, b.minX, b.minY, b.maxX, b.maxY);
     }
+
+    static unindexPolygon(building) {
+        this.polyHash.delete(building);
+    }
+
+    static track(building) {
+        if (building.id !== -1) return;
+        building.id = this.idTracker;
+        this.buildings[this.idTracker] = building;
+        this.idTracker += 1;
+        this.indexPolygon(building);
+        this.syncPin(building);
+    }
+
+    static untrack(building) {
+        delete this.buildings[building.id];
+        building.id = -1;
+        this.pinHash.delete(building);
+        this.polyHash.delete(building);
+    }
+
+    static setRelation(obj, building, state) {
+        building.entrances = state
+            ? addObj(building.entrances, obj)
+            : removeObj(building.entrances, obj);
+    }
+    // (setRelated pode ser apagado: ninguém mais o usa)
+
+    /** Parede mais próxima (dentro de R, unidades do mundo) entre os polígonos fechados. */
+    static nearestWall(x, y, R) {
+        const cand = this.polyHash.queryRect(x - R, y - R, x + R, y + R, _wallBuf);
+        let best = null, bestD = R * R;
+        for (let i = 0; i < cand.length; i++) {
+            const b = cand[i];
+            const p = closestOnPolygon(x, y, b.vertices);
+            if (p.d <= bestD) {
+                best = { building: b, point: { x: p.x, y: p.y } };
+                bestD = p.d;
+            }
+        }
+        return best;
+    }
+
+    /** Construção sob o ponto (dentro do polígono ou na borda). Maior id = mais por cima. */
+    static getOverlappingBuildings(coordinate, all) {
+        const pos = coordinate.peekNormal();
+        const pad = 4;
+        const cand = this.polyHash.queryRect(pos.x - pad, pos.y - pad, pos.x + pad, pos.y + pad, _polyBuf);
+
+        let best = null, hits = null;
+        for (let i = 0; i < cand.length; i++) {
+            const b = cand[i];
+            const hit = pointInPolygon(pos.x, pos.y, b.vertices) ||
+                        closestOnPolygon(pos.x, pos.y, b.vertices).d <= pad * pad;
+            if (!hit) continue;
+            if (all) (hits ??= []).push(b);
+            else if (!best || b.id > best.id) best = b;
+        }
+
+        if (all) return hits ? hits.sort(byIdDesc) : false;
+        return best || false;
+    }
+
+    /** Depois de fechar um polígono: referências próximas das paredes novas grudam. */
+    static snapReferencesTo(building) {
+        const b = building.bounds();
+        const R = WALL_SNAP_PX / Graficos.zoom;
+        const refs = Referencer.dotHash.queryRect(b.minX - R, b.minY - R, b.maxX + R, b.maxY + R, []);
+        const moved = [];
+        for (const ref of refs) {
+            const rep = ref.move(ref.coordinate, false, true);
+            if (rep) moved.push({ dot: ref, before: rep[1], after: rep[2] });
+        }
+        return moved;
+    }
+
     
     static getOverlappingPins(coordinate, all) {
         const pos = coordinate.peekNormal();
@@ -1315,71 +1506,13 @@ export class Buildings {
         if (all) return hits ? hits.sort(byIdDesc) : false;
         return best || false;
     }
-
-    static getOverlappingAreas(coordinate, all) {
-        const pos = coordinate.peekNormal();
-        const cand = this.areaHash.queryPoint(pos.x, pos.y, _areaBuf);
-
-        let best = null, hits = null;
-        for (let i = 0; i < cand.length; i++) {
-            const area = cand[i];
-            if (!containsPoint(area, pos.x, pos.y, area.borderSize / 2)) continue;
-            if (all) (hits ??= []).push(area);
-            else if (!best || area.id > best.id) best = area;      // id maior = mais por cima
-        }
-
-        if (all) return hits ? hits.sort(byIdDesc) : false;
-        return best || false;
-    }
-
-    static getOverlappingAreaBorders(coordinate, all) {
-        const pos = coordinate.peekNormal();
-        const half = BORDER_GRAB / 2;
-        const cand = this.areaHash.queryPoint(pos.x, pos.y, _areaBuf);
-        if (cand.length > 1) cand.sort(byIdDesc);                  // de cima para baixo
-
-        let allList = null;
-
-        for (let i = 0; i < cand.length; i++) {
-            const area = cand[i];
-            const s = area.start.pos, e = area.end.pos;
-            const minX = Math.min(s.x, e.x), maxX = Math.max(s.x, e.x);
-            const minY = Math.min(s.y, e.y), maxY = Math.max(s.y, e.y);
-
-            if (pos.x >= minX - half && pos.x <= maxX + half &&
-                pos.y >= minY - half && pos.y <= maxY + half) {
-
-                const dTop = Math.abs(pos.y - minY), dRight = Math.abs(pos.x - maxX);
-                const dBottom = Math.abs(pos.y - maxY), dLeft = Math.abs(pos.x - minX);
-
-                if (!all) {
-                    let side = null, bestD = Infinity;
-                    if (dTop <= half && dTop < bestD) { side = "top"; bestD = dTop; }
-                    if (dRight <= half && dRight < bestD) { side = "right"; bestD = dRight; }
-                    if (dBottom <= half && dBottom < bestD) { side = "bottom"; bestD = dBottom; }
-                    if (dLeft <= half && dLeft < bestD) { side = "left"; bestD = dLeft; }
-                    if (side) return { area, side };
-                } else {
-                    const sides = [["top", dTop], ["right", dRight], ["bottom", dBottom], ["left", dLeft]]
-                        .filter(([, d]) => d <= half)
-                        .sort((p, q) => p[1] - q[1]);
-                    for (const [side] of sides) (allList ??= []).push({ area, side });
-                }
-            }
-
-            // uma área que cobre o ponto esconde as de baixo
-            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) break;
-        }
-
-        return allList || false;
-    }
 }
 
 export class Reference {
-    constructor(coordinate) {
+    constructor(coordinate, { snap = false } = {}) {
         this.alpha = 1;
-        this.colorOut = 0x3d97e0;
-        this.colorIn = 0xa4d1f5;
+        this.colorOut = Palette.reference.out;
+        this.colorIn = Palette.reference.in;
         this.enabled = true;
         this.size = 10;
         this.isEntrance = false;
@@ -1395,7 +1528,7 @@ export class Reference {
 
         
         this.positionTracked = false;
-        this.move(coordinate, true);
+        this.move(coordinate, true, snap);
         
         this.graphics = null;
         if (page == "editor") {
@@ -1446,7 +1579,7 @@ export class Reference {
         let t = this.hover * (1000 / 30) / ms;
         t = ease(t);
         this.size = page == "editor" ? 10 + t * 5: 1 + t * .2;
-        this.tint = interpCol(0x000000, 0x00aaff, t);
+        this.tint = interpCol(0x000000, Palette.reference.hover, t);;
         this.updateGraphics();
     }
 
@@ -1485,37 +1618,34 @@ export class Reference {
         Graficos.BringToFrontReference(this.graphics);
     }
     
-    validatePos() {
-        return this.move(this.coordinate);
+    validatePos(snap = false) {
+        return this.move(this.coordinate, false, snap);
     }
 
-    move(coord, create=false) {
-        let validCoord = Referencer.getValidDot(coord);
+    move(coord, create = false, snap = false) {
+        const p = coord.peekNormal();
+        const R = snap ? WALL_SNAP_PX / Graficos.zoom : WALL_EPS;
+        const hit = Buildings.nearestWall(p.x, p.y, R);
+        const pos = hit ? hit.point : { x: p.x, y: p.y };
+        const building = hit ? hit.building : false;
+
         let report = false;
         if (this.coordinate) {
-            if (validCoord.isInside) {
-                report = [this, this.coordinate.getIn("normal"), validCoord.coord.getIn("normal")];
-            }
-            if (!validCoord.isInside && this.isEntrance) {
-                report = [this, this.coordinate.getIn("normal"), validCoord.coord.getIn("normal")];
+            const old = this.coordinate.pos;
+            if (old.x !== pos.x || old.y !== pos.y || this.building !== building) {
+                report = [this, { x: old.x, y: old.y }, { x: pos.x, y: pos.y }];
             }
         }
-        this.isEntrance = validCoord.isInside != false;
 
-        if (this.isEntrance) {
-            this.building = validCoord.isInside.building;
-            Buildings.setRelated(this, this.isEntrance);
-        } else {
-            if (this.building) {
-                Buildings.setRelated(this, this.isEntrance);
-            }
-            this.building = validCoord.isInside.building;
+        if (this.building !== building) {
+            if (this.building) Buildings.setRelation(this, this.building, false);
+            if (building) Buildings.setRelation(this, building, true);
         }
+        this.building = building;
+        this.isEntrance = !!building;
 
-        this.coordinate = validCoord.coord;
-        this.coordinate.convertTo("normal");
+        this.coordinate = newCoord(pos.x, pos.y, "normal");
 
-        // indexa (ou reindexa). Referência desabilitada nunca volta para o hash.
         if (this.enabled) Referencer.addPositionTrack(this);
 
         if (create) return report;
@@ -1559,8 +1689,8 @@ export class Reference {
 export class Connection {
     constructor(start, end) {
         this.alpha = 1;
-        this.colorOut = 0x3d97e0;
-        this.colorIn = 0xa4d1f5;
+        this.colorOut = Palette.connection.out;
+        this.colorIn = Palette.connection.in;
         this.enabled = true;
         this.size = 4;
 
@@ -1656,119 +1786,117 @@ export class Building {
         this.name = name;
 
         this.id = -1;
-        this.visual = "areas";
-        this.areas = [];
+        this.vertices = [];      // Coordinates sempre em "normal"
+        this.closed = false;
         this.entrances = [];
         this.hover = 0;
         this.hoverTime = .2;
         Buildings.track(this);
-        
+
         this.move(coordinate, true);
 
         this.graphics = Graficos.createPin(name);
         Buildings.notePin(this);
-        
-        this.points = [];
+
         this.alpha = 1;
-        this.colorOut = 0x3d97e0
-        this.colorIn = 0xa4d1f5;
+        this.colorOut = Palette.building.out;
+        this.colorIn = Palette.building.in;
+        this.colorInBase = Palette.building.in;
         this.borderSize = 8;
         this.radius = 5;
         this.tint = 0x000000;
 
         this.polygonGraphics = Graficos.createPoly();
-
+        this.closeHandle = page === "editor" ? new CloseHandle(this) : null; 
         this.banner = new Banner();
-        
+
         this.updateGraphics();
     }
 
     hoverAdd() {
         this.hover += 1;
-        let cap = this.hoverTime * 30;
-
-        if (this.hover >= cap) {
-            this.hover = cap;
-        }
+        const cap = this.hoverTime * 30;
+        if (this.hover >= cap) this.hover = cap;
         this.hoverUpdate();
     }
     hoverDec() {
         this.hover -= 1;
-        if (this.hover <= 0) {
-            this.hover = 0;
-        }
-
+        if (this.hover <= 0) this.hover = 0;
         this.hoverUpdate();
     }
     hoverUpdate() {
-        let ms = this.hoverTime * 1000;
-        let t = this.hover * (1000 / 30) / ms;
-        t = ease(t);
+        const ms = this.hoverTime * 1000;
+        const t = ease(this.hover * (1000 / 30) / ms);
         this.pinSize = 1 + t * .2;
-        this.tint = interpCol(0x000000, 0x00aaff, t);
+        this.tint = interpCol(0x000000, Palette.building.hover, t);
+        this.colorIn = interpCol(this.colorInBase, Palette.building.hoverFill, t);
         this.updateGraphics();
     }
 
-    getBoxes() {
-        let boxes = [];
-        for(const area of this.areas) {
-            if(area.enabled == false) {
-                continue;
-            }
-            let box = area.getBox();
-            boxes.push(box);
+    // ---- polígono ----
+
+    bounds() {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const { pos } of this.vertices) {
+            minX = Math.min(minX, pos.x); maxX = Math.max(maxX, pos.x);
+            minY = Math.min(minY, pos.y); maxY = Math.max(maxY, pos.y);
         }
-        return boxes;
+        return { minX, minY, maxX, maxY };
     }
 
-    buildPolygon() {
-        let boxes = this.getBoxes();
-        let polygons = Geometria.getUnionPolygonVertices(boxes);
-        let coordPolygon = [];
-        for(const polygon of polygons) {
-            let coordPoints = [];
-            for(const point of polygon) {
-                let coord = newCoord(point[0], point[1], "normal");
-                coordPoints.push(coord);
-            }
-            coordPolygon.push(coordPoints);
-        }
-        this.points = coordPolygon;
+    area() {
+        return polygonArea(this.vertices.map(v => v.pos));
+    }
 
+    addVertex(coord) {
+        coord.convertTo("normal");
+        this.vertices.push(coord);
         this.updateGraphics();
     }
 
-    convertTo(mode) {
-        if (this.visual == mode) {
-            return;
-        }
-
-        this.visual = mode;
-
-        if (mode == "polygon") {
-            for(const area of this.areas) {
-                area.areaMode = false;
-                area.updateGraphics();
-            }
-            
-            this.buildPolygon();
-
-        } else {
-            for(const area of this.areas) {
-                area.areaMode = true;
-                area.updateGraphics();
-            }
-        }
-
+    removeLastVertex() {
+        this.vertices.pop();
         this.updateGraphics();
     }
+
+    close() {
+        this.closed = true;
+        Buildings.indexPolygon(this);
+        this.updateGraphics();
+    }
+
+    reopen() {
+        this.closed = false;
+        Buildings.unindexPolygon(this);
+        this.updateGraphics();
+    }
+
+    /** Usado no load: pontos {x, y} em "normal". */
+    setPolygon(points) {
+        this.vertices = points.map(p => newCoord(p.x, p.y, "normal"));
+        this.closed = this.vertices.length >= 3;
+        if (this.closed) Buildings.indexPolygon(this);
+        this.updateGraphics();
+    }
+
+    moveVertex(index, coord) {
+        coord.convertTo("normal");
+        this.vertices[index] = newCoord(coord.pos.x, coord.pos.y, "normal");
+        if (this.closed) Buildings.indexPolygon(this);   // o hash precisa estar certo antes das entradas
+        this.updateGraphics();
+    }
+
+    rename(name) {
+        this.name = name;
+        Graficos.setPinText(this.graphics, name);
+        Buildings.notePin(this);   // recalcula o alcance do pino com o novo texto
+        this.updateGraphics();
+    }
+
+    // ---- gráficos ----
 
     buildData() {
-        return {
-            size: this.pinSize,
-            coordinate: this.coordinate,
-            color: this.tint
-        }
+        return { size: this.pinSize, coordinate: this.coordinate, color: this.tint };
     }
 
     setColor(color) {
@@ -1776,36 +1904,45 @@ export class Building {
         this.updateGraphics();
     }
 
-    buildDataPoly() {
-        return {
-            points: this.points,
+    updateGraphics() {
+        this.closeHandle?.updateGraphics();
+
+        if (!this.enabled) {
+            Graficos.clearPin(this.graphics);
+            Graficos.clearPoly(this.polygonGraphics);
+            return;
+        }
+
+        Graficos.renderPin(this.graphics, this.buildData());
+
+        // na página main só o pin aparece (como antes)
+        if (page !== "editor" || this.vertices.length === 0) {
+            Graficos.clearPoly(this.polygonGraphics);
+            return;
+        }
+
+        const data = {
+            points: this.vertices,
             alpha: this.alpha,
             colorOut: this.colorOut,
             colorIn: this.colorIn,
             borderSize: this.borderSize,
-            radius: this.radius
-        }
-    }
-    
-    updateGraphics() {
-        if (this.enabled) {
-            Graficos.renderPin(this.graphics, this.buildData());
-
-            if (this.visual == "polygon") {
-                Graficos.renderPoly(this.polygonGraphics, this.buildDataPoly());
-            } else {
-                Graficos.clearPoly(this.polygonGraphics);
-            }
+            radius: this.radius,
+            handles: this.closed && Buildings.editing && page === "editor",
+            handleActive: Buildings.hovered?.building === this ? Buildings.hovered.index : -1,
+        };
+        
+        if (this.closed) {
+            Graficos.renderPoly(this.polygonGraphics, data);
         } else {
-            Graficos.clearPin(this.graphics);
-            Graficos.clearPoly(this.polygonGraphics);
+            Graficos.renderDraft(this.polygonGraphics, { ...data, closable: this.vertices.length >= 3 });
         }
     }
 
     enable() {
         this.enabled = true;
+        Buildings.track(this);          // reindexa o polígono se estiver fechado
         this.updateGraphics();
-        Buildings.track(this);
     }
     disable() {
         this.enabled = false;
@@ -1813,221 +1950,21 @@ export class Building {
         Buildings.untrack(this);
     }
 
-    move(coordinate, create=false) {
+    move(coordinate, create = false) {
         this.coordinate = coordinate;
         this.coordinate.convertTo("normal");
         Buildings.syncPin(this);
 
         if (!create) {
             this.updateGraphics();
-            this.bringToFront();
         }
     }
 
     destroy() {
+        this.closeHandle?.destroy();
         Graficos.destroyPin(this.graphics);
+        Graficos.destroyPoly(this.polygonGraphics);
         Buildings.untrack(this);
-    }
-}
-
-class AreaBorder {
-    constructor(side, area) {
-        this.color = 0x3d97e0;
-        this.colorBase = 0x3d97e0;
-        this.colorHovered = 0xffffcc;
-        this.side = side;
-        this.area = area;
-        this.hover = 0;
-        this.hoverTime = .2;
-    }
-    hoverAdd() {
-        this.hover += 1;
-        let cap = this.hoverTime * 30;
-
-        if (this.hover >= cap) {
-            this.hover = cap;
-        }
-        this.hoverUpdate();
-    }
-    hoverDec() {
-        this.hover -= 1;
-        if (this.hover <= 0) {
-            this.hover = 0;
-        }
-
-        this.hoverUpdate();
-    }
-    hoverUpdate() {
-        let ms = this.hoverTime * 1000;
-        let t = this.hover * (1000 / 30) / ms;
-        t = ease(t);
-        
-        this.area.colorOut[this.side] = interpCol(this.colorBase, this.colorHovered, t);
-        this.area.updateGraphics();
-    }
-}
-
-export class Area {
-    constructor(start, end, building) {
-        this.alpha = 1;
-        this.colorOut = {
-            left: 0x3d97e0,
-            top: 0x3d97e0,
-            right: 0x3d97e0,
-            bottom: 0x3d97e0,
-        };
-        this.sides = {
-            left: new AreaBorder("left", this),
-            top: new AreaBorder("top", this),
-            right: new AreaBorder("right", this),
-            bottom: new AreaBorder("bottom", this),
-        };
-
-        this.colorIn = 0xa4d1f5;
-        this.colorInBase = 0xa4d1f5;
-        this.colorInHover = 0xd4f1ff;
-        this.radius = 5;
-        this.borderSize = 8;
-        
-        this.enabled = true;
-        this.areaMode = true;
-    
-        this.hover = 0;
-        this.hoverTime = .2;
-        
-        let minStart = newCoord(Math.min(start.pos.x, end.pos.x), Math.min(start.pos.y, end.pos.y), start.space);
-        let maxEnd = newCoord(Math.max(start.pos.x, end.pos.x), Math.max(start.pos.y, end.pos.y), end.space);
-        minStart.convertTo("normal");
-        maxEnd.convertTo("normal");
-
-        this.id = -1;
-        Buildings.trackArea(this);
-        this.building = building;
-        Buildings.setRelated(this, true);
-
-        this.graphics = Graficos.createArea();
-        
-        this.move(minStart, maxEnd);
-
-        this.updateGraphics();
-    }
-
-    motionReport(old) {
-        if(!Referencer.reporting) {
-            return;
-        }
-
-        // só referências perto da caixa antiga ou da nova podem mudar de estado
-        const now = areaBounds(this);
-        const minX = Math.min(now.minX, old ? old.minX : Infinity) - 1;
-        const minY = Math.min(now.minY, old ? old.minY : Infinity) - 1;
-        const maxX = Math.max(now.maxX, old ? old.maxX : -Infinity) + 1;
-        const maxY = Math.max(now.maxY, old ? old.maxY : -Infinity) + 1;
-
-        // array novo: validatePos reindexa as referências durante o loop
-        const refs = Referencer.dotHash.queryRect(minX, minY, maxX, maxY, []);
-
-        for(const ref of refs) {
-            let refReport = ref.validatePos();
-            if (refReport === false) {
-                continue;
-            }
-            if(!Referencer.motionReport[ref.id]) {
-                Referencer.motionReport[ref.id] = refReport;
-            }
-            Referencer.motionReport[ref.id][2] = refReport[2];
-        }
-    }
-
-    move(start, end) {
-        const old = this.start ? areaBounds(this) : null;    // caixa antes da mudança
-        start.convertTo("normal");
-        end.convertTo("normal");
-        this.start = start;
-        this.end = end;
-
-        Buildings.indexArea(this);                            // o hash precisa estar atualizado ANTES do motionReport
-        this.updateGraphics();
-
-        this.motionReport(old);
-    }
-
-    getBox() {
-        let start = this.start.getIn("normal");
-        let end = this.end.getIn("normal");
-        return [
-            start.x,
-            start.y,
-            end.x,
-            end.y
-        ]
-    }
-    
-    buildData() {
-        let start = this.start;
-        let end = this.end;
-        return {
-            colorOut: this.colorOut,
-            colorIn: this.colorIn,
-            alpha: this.alpha,
-            borderSize: this.borderSize,
-            radius: this.radius,
-            start: start,
-            end: end,
-        }
-    }
-
-    hoverAdd() {
-        this.hover += 1;
-        let cap = this.hoverTime * 30;
-
-        if (this.hover >= cap) {
-            this.hover = cap;
-        }
-        this.hoverUpdate();
-    }
-    hoverDec() {
-        this.hover -= 1;
-        if (this.hover <= 0) {
-            this.hover = 0;
-        }
-
-        this.hoverUpdate();
-    }
-    hoverUpdate() {
-        let ms = this.hoverTime * 1000;
-        let t = this.hover * (1000 / 30) / ms;
-        t = ease(t);
-        this.colorIn = interpCol(this.colorInBase, this.colorInHover, t);
-        this.updateGraphics();
-    }
-
-    updateGraphics() {
-        if (this.enabled && this.areaMode) {
-            if (page == "main") {
-                return;
-            }
-            Graficos.renderArea(this.graphics, this.buildData());
-        } else {
-            Graficos.clearArea(this.graphics);
-        }
-    }
-
-    enable() {
-        this.enabled = true;
-        this.updateGraphics();
-        Buildings.trackArea(this);
-    }
-    disable() {
-        this.enabled = false;
-        this.updateGraphics();
-        Buildings.untrackArea(this);
-    }
-
-    destroy() {
-        Graficos.destroyArea(this.graphics);
-        Buildings.setRelated(this, false);
-        Buildings.untrackArea(this);
     }
 }
 
