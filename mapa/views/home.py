@@ -8,12 +8,11 @@ from mapa.models.feedback import Feedback
 def home(request: Any):
     template = loader.get_template('home.html')
     context = {
-            # "user": request.user,
             "is_authenticated": request.user.is_authenticated
         }
     return HttpResponse(template.render(context))
 
-def feedback(request: Any):
+def give_feedback(request: Any):
     form = FeedbackForm()
     context = {
             "is_authenticated": request.user.is_authenticated,

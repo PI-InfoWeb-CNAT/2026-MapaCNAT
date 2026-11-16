@@ -1,0 +1,25 @@
+{% load static %}
+{# Uso: {% include 'painel/_header.html' with ativo='mapas' %}  (ou ativo='staff') #}
+<header class="painel-header">
+    <div class="painel-header-inner">
+        <a href="{% url 'home' %}" class="painel-logo">
+            <img src="{% static 'img/logo.png' %}" alt="Mapa CNAT, página inicial">
+        </a>
+
+        <nav class="painel-nav" aria-label="Painel de administração">
+            <a href="{% url 'painel_hub' %}" {% if ativo == 'mapas' %}aria-current="page"{% endif %}>
+                <i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>
+                <span>Mapas</span>
+            </a>
+            <a href="{% url 'painel_staff' %}" {% if ativo == 'staff' %}aria-current="page"{% endif %}>
+                <i class="fa-solid fa-users-gear" aria-hidden="true"></i>
+                <span>Staff</span>
+            </a>
+        </nav>
+
+        <a class="botao" href="{% url 'logout' %}">
+            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+            <span>Sair</span>
+        </a>
+    </div>
+</header>

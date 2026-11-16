@@ -42,8 +42,46 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    'django.contrib.sites',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+    
     'mapa',
 ]
+
+SITE_ID = 1
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+SOCIALACCOUNT_LOGIN_ON_GET = True
+
+SOCIALACCOUNT_QUERY_EMAIL = True
+
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+
+ACCOUNT_LOGIN_METHODS = {"username", "email"}
+
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "EMAIL_AUTHENTICATION": True,
+        "SCOPE": [
+            "profile",
+            "email",
+        ],
+        "AUTH_PARAMS": {
+            "access_type": "online",
+        },
+    }
+}
+
+LOGIN_REDIRECT_URL = '/mapa/'
+ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -54,14 +92,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
 ]
 
 ROOT_URLCONF = 'mapa_cnat.urls'
-
-AUTHENTICATION_BACKENDS = [
-    "mapa.backends.email.EmailBackend",
-    "django.contrib.auth.backends.ModelBackend",  # mantém login por username em outros lugares (admin, etc.)
-]
 
 TEMPLATES = [
     {
@@ -81,6 +115,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'mapa_cnat.wsgi.application'
 
+SUAP_CLIENT_ID = "zLYHlhQPdsADHyoAy9Jkg9qWzHIzCP0KJLjKJhgz"
+SUAP_CLIENT_SECRET = "skXJBrmbAAALxBshze9QZ2V9VNTsHiYsZ0JzaKaAlOg0CBz7gGvxd86QqCewmffiHB5l6OxxBgntZGNIgPMf56Qaeauez8n37nAHRsMoOQzdVdYICF6pfOyotDnTw723"
 
 # Database
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases
@@ -115,9 +151,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/4.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'pt-br'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "America/Fortaleza"
 
 USE_I18N = True
 
