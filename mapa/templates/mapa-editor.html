@@ -14,89 +14,116 @@
 {% endblock %}
 
 {% block content %}
-<header>
-    <div id="editor-modes">
-        <a href="{% url 'home' %}" id="logo-wrapper"><img id="editor-logo" src="{% static 'img/logo-pequeno.png' %}"></a>
-        <div class="button-list">
-            <button class="padding icon editor-button" id="selection"><i class="fa-solid fa-hand"></i></button>
-            <button class="padding icon editor-button" id="delete"><i class="fa-solid fa-trash"></i></button>
-            <hr>
-            <button class="padding icon editor-button" id="build"><i class="fa-solid fa-building"></i></button>
-            <button class="padding icon editor-button" id="reference"><i class="fa-solid fa-map-pin"></i></button>
-            <button class="padding icon editor-button" id="connection"><i class="fa-solid fa-circle-nodes"></i></button>
-            <button class="padding icon editor-button" id="banner-btn"><i class="fa-solid fa-image"></i></button>
+<div id="editor-app">
+
+    <!-- sprite: banner icon (card with image on top and text lines below) -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="icon-banner" viewBox="0 0 24 24">
+            <path fill-rule="evenodd" d="M5 3h14a2 2 0 0 1 2 2v8H3V5a2 2 0 0 1 2-2zM5 11l3.5-3.5L11 10l2.5-2.5L19 11H5zM16 5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z"/>
+            <rect x="3" y="15.5" width="18" height="2.2" rx="1.1"/>
+            <rect x="3" y="19.3" width="11" height="2.2" rx="1.1"/>
+        </symbol>
+    </svg>
+
+    <nav id="editor-topbar" aria-label="Editor">
+        <a href="{% url 'home' %}" id="logo-wrapper" aria-label="Voltar ao início">
+            <img id="editor-logo" src="{% static 'img/logo-pequeno.png' %}" alt="">
+        </a>
+
+        <div class="editor-tabs" role="tablist" aria-label="Editores">
+            <button type="button" class="editor-tab" role="tab" id="tab-map"
+                    data-tab="map" aria-selected="true" aria-controls="view-map">
+                <i class="fa-solid fa-map"></i> Mapa
+            </button>
+            <!-- remove "disabled" and the badge when the building editor exists -->
+            <button type="button" class="editor-tab" role="tab" id="tab-buildings"
+                    data-tab="buildings" aria-selected="false" aria-controls="view-buildings" disabled>
+                <i class="fa-solid fa-building"></i> Construções <span class="tab-soon">em breve</span>
+            </button>
         </div>
-        <button class="padding icon editor-button hidden" style="cursor: pointer;" id="submit"><i class="fa-solid fa-check"></i></button>
-    </div>
-    <div id="pin-mode" class="hidden">
-        <button class="padding icon editor-button hidden" id="pin"><i class="fa-solid fa-check"></i></button>
-        <button class="padding icon editor-button" id="pin"><img src="{% static 'img/pino.png' %}" width="32" alt="Pino de Construção"></button>
-    </div>
-</header>
 
-<main>
-    <section id="screen-ui">
-        <article>
-            <button class="padding icon editor-button" id="save"><i class="fa-solid fa-save"></i></button>
-            
-            <button class="padding icon editor-button hidden" id="expand-banner"><i class="fa-solid fa-angles-right"></i></button>
-        </article>
-        
-        <article class="hidden" id="banner">
-            <form class="banner-form" id="bannerForm">
-                <label 
-                    for="banner-image-input" 
-                    class="image-upload-wrapper" 
-                    id="image-upload-wrapper">
-                    <span class="image-upload-label" id="image-upload-label">
-                        adicionar imagem +
-                    </span>
-                    <input 
-                        type="file" 
-                        id="banner-image-input" 
-                        accept="image/*">
-                </label>
+        <button type="button" id="save" class="alt-botao topbar-save">
+            <i class="fa-solid fa-floppy-disk"></i> Salvar
+        </button>
+    </nav>
 
-                <div class="banner-content">
-                    <input 
-                        type="text" 
-                        class="editable-title" 
-                        id="place-name" 
-                        placeholder="Nome da construção">
+    <main>
+        <!-- ===== tab: map editor ===== -->
+        <section class="editor-view" id="view-map" data-view="map" role="tabpanel" aria-labelledby="tab-map">
 
-                    <hr class="banner-divider">
+            <nav id="editor-modes" aria-label="Ferramentas do mapa">
+                <button type="button" class="tool-btn" id="selection" title="Seleção" aria-label="Seleção"><i class="fa-solid fa-hand"></i></button>
+                <button type="button" class="tool-btn" id="delete" title="Apagar" aria-label="Apagar"><i class="fa-solid fa-trash"></i></button>
+                <hr>
 
-                    <textarea 
-                        class="editable-description" 
-                        id="place-description" 
-                        placeholder="Escreva uma descrição..."
-                    ></textarea>
+                <div class="tool-group" id="construction-group">
+                    <button type="button" class="tool-btn" id="build" title="Construções" aria-label="Construções"><i class="fa-solid fa-building"></i></button>
+                    <button type="button" id="pin-mode" class="tool-ext" data-state="idle"
+                            title="Nova construção: Clique para começar" aria-label="Nova construção">
+                        <span class="tool-ext-icon">
+                            <img class="icon-pin" src="{% static 'img/pino.png' %}" width="22" alt="">
+                            <i class="icon-check fa-solid fa-check"></i>
+                        </span>
+                    </button>
                 </div>
-            </form>
-        </article>
-    </section>
-    
 
-    <div id="map"></div>
-    
-    {{ mapa.coordinates|json_script:"coordinates-data" }}
+                <button type="button" class="tool-btn" id="reference" title="Referências" aria-label="Referências"><i class="fa-solid fa-map-pin"></i></button>
+                <button type="button" class="tool-btn" id="connection" title="Conexões" aria-label="Conexões"><i class="fa-solid fa-circle-nodes"></i></button>
+                <button type="button" class="tool-btn" id="banner-btn" title="Banners" aria-label="Banners">
+                    <svg class="svg-icon" aria-hidden="true"><use href="#icon-banner"/></svg>
+                </button>
+            </nav>
 
-    <script>
-        const mapaCoordinates = JSON.parse(
-            document.getElementById('coordinates-data').textContent
-        );
-        const config = "{% static 'json/config.json' %}";
-        const mapImage = "{% url 'mapa_svg_raw' mapa.pk %}";
-        const pinImage = "{% static 'img/pino.png' %}";
-        const entranceImage = "{% static 'img/entrance.png' %}";
-        const defaultUserImage = "{% static 'img/default-user.png' %}";
-        const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' mapa.pk %}";
-        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
-        let sharePlaceLat = false;
-        let sharePlaceLong = false;
-        const bannerURL = "{% url 'banner_image' 0 %}";
-    </script>
-    <script src="https://pixijs.download/release/pixi.min.js"></script>
-    <script type="module" src="{% static 'js/mapa-editor.js' %}"></script>
-</main>
+            <aside id="banner" class="hidden" aria-label="Editor de banner">
+                <div class="banner-header">
+                    <span class="banner-header-icon"><svg class="svg-icon" aria-hidden="true"><use href="#icon-banner"/></svg></span>
+                    <h2>Banner</h2>
+                    <span class="banner-status" id="banner-status" data-state="empty">Não detalhado</span>
+                    <button type="button" class="icon-btn" id="banner-close" aria-label="Fechar banner"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <form class="banner-form" id="bannerForm">
+                    <label for="banner-image-input" class="image-upload-wrapper" id="image-upload-wrapper">
+                        <span class="image-upload-label" id="image-upload-label">adicionar imagem +</span>
+                        <input type="file" id="banner-image-input" accept="image/*">
+                    </label>
+
+                    <div class="banner-content">
+                        <input type="text" class="editable-title" id="place-name" placeholder="Nome da construção">
+                        <hr class="banner-divider">
+                        <textarea class="editable-description" id="place-description" placeholder="Escreva uma descrição..."></textarea>
+                    </div>
+                </form>
+            </aside>
+
+            <div id="map"></div>
+        </section>
+
+        <!-- ===== tab: building editor (future, rendered separately) ===== -->
+        <section class="editor-view hidden" id="view-buildings" data-view="buildings" role="tabpanel" aria-labelledby="tab-buildings"></section>
+
+        {{ mapa.coordinates|json_script:"coordinates-data" }}
+
+        <script src="{% static 'js/coordinate-estimation.js' %}"></script>
+        <script>
+            const mapaCoordinates = JSON.parse(
+                document.getElementById('coordinates-data').textContent
+            );
+            const metrics = analyzeMapCalibration(mapaCoordinates);
+
+            const config = "{% static 'json/config.json' %}";
+            const mapImage = "{% url 'mapa_svg_raw' mapa.pk %}";
+            const pinImage = "{% static 'img/pino.png' %}";
+            const entranceImage = "{% static 'img/entrance.png' %}";
+            const defaultUserImage = "{% static 'img/default-user.png' %}";
+            const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' mapa.pk %}";
+            const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
+            let sharePlaceLat = false;
+            let sharePlaceLong = false;
+            const bannerURL = "{% url 'banner_image' 0 %}";
+        </script>
+        <script src="https://pixijs.download/release/pixi.min.js"></script>
+        <script type="module" src="{% static 'js/mapa-editor.js' %}"></script>
+    </main>
+</div>
 {% endblock %}

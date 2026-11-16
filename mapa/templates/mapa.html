@@ -157,12 +157,16 @@
 
     {{ mapa.coordinates|json_script:"coordinates-data" }}
 
+    <script src="{% static 'js/coordinate-estimation.js' %}"></script>
     <script>
+
         const config = "{% static 'json/config.json' %}";
         const mapImage = "{% url 'mapa_svg_raw' mapa.pk %}";
         const mapaCoordinates = JSON.parse(
             document.getElementById('coordinates-data').textContent
         );
+        const metrics = analyzeMapCalibration(mapaCoordinates);
+
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
         const defaultUserImage = "{% static 'img/default-user.png' %}";
@@ -184,7 +188,6 @@
 
                 if (!isNaN(x) && !isNaN(y)) {
                     window.initialCoordinates = { x, y };
-                    console.log("Coordenadas extraídas da URL:", window.initialCoordinates);
                 }
             }
         })();

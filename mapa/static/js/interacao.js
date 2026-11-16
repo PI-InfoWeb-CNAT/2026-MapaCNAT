@@ -18,6 +18,13 @@ let mapInterface;
 let mapContainer;
 let hoverMap;
 let defaultImageFile;
+let pressedType = "none";
+
+let constructionPanel;
+let pinTitle;
+let pinHint;
+let bannerStatus;
+let activeTab = "map";
 
 const DOUBLE_CLICK_MS = 350;
 const DOUBLE_CLICK_DIST = 24;
@@ -114,10 +121,11 @@ function isMobileDevice() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export function setContext(context) {
     page = context.page;
-    minZoom = Graficos.minZoom;
-    maxZoom = Graficos.maxZoom;
+    zoom = Graficos.zoom;
     zoomStep = context.scroll_ratio;
 }
 
@@ -201,6 +209,69 @@ class Task {
 
 const hasEnabledAreas = (b) => !!b && b.areas.some((a) => a.enabled);
 
+const PIN_STATES = {
+    idle:    { title: "Nova construção",     hint: "Clique para começar" },
+    placing: { title: "Posicione o pin",     hint: "Clique no mapa onde fica a construção" },
+    drawing: { title: "Desenhe a área",      hint: "Arraste no mapa para criar a primeira área" },
+    done:    { title: "Concluir construção", hint: "Arraste para somar áreas ou conclua" },
+};
+
+// a banner is valid when it has image + title + description, or none of them
+function bannerState() {
+    if (page != "editor" || !bannerHeld()) return { state: "empty", missing: [] };
+
+    const filled = {
+        "imagem": !!Holdable.initialPos?.img,
+        "título": !!bannerTitle.value.trim(),
+        "descrição": !!bannerDescription.value.trim(),
+    };
+    const missing = Object.keys(filled).filter((k) => !filled[k]);
+    const state = missing.length === 3 ? "empty" : missing.length === 0 ? "complete" : "partial";
+    return { state, missing };
+}
+
+function syncDescriptionLabel() {
+    const label = bannerTab.querySelector(".banner-section-title");
+    if (!label) return;
+
+    const empty = !bannerDescription.value.trim();
+    label.textContent = empty ? "Sem descrição" : "Sobre";
+    label.closest(".banner-section")?.classList.toggle("is-empty", empty);
+}
+
+function syncBannerStatus() {
+    if (!bannerStatus) return;
+    const { state, missing } = bannerState();
+    bannerStatus.dataset.state = state;
+    bannerStatus.textContent =
+        state === "partial" ? `Falta: ${missing.join(", ")}` :
+        state === "complete" ? "Completo" : "Não detalhado";
+}
+
+function clearBannerFields() {
+    resetDisplayImage();
+    bannerTitle.value = "";
+    bannerDescription.value = "";
+    if (bannerHeld()) Holdable.initialPos.img = false;
+    syncBannerStatus();
+}
+
+async function switchTab(name) {
+    if (name === activeTab) return;
+    if (!(await Actions.ensureBannerValid())) return;
+
+    await Actions.switchMode(EditorModes.FREE);
+    if (editorMode !== EditorModes.FREE) return;   // user kept an unfinished construction
+
+    activeTab = name;
+    for (const tab of document.querySelectorAll("[data-tab]")) {
+        tab.setAttribute("aria-selected", String(tab.dataset.tab === name));
+    }
+    for (const view of document.querySelectorAll("[data-view]")) {
+        view.classList.toggle("hidden", view.dataset.view !== name);
+    }
+}
+
 function passedDragThreshold(e) {
     const limit = e.pointerType === "touch" ? 10 : 4;
     return Math.hypot(e.clientX - clickX, e.clientY - clickY) >= limit;
@@ -220,14 +291,15 @@ function normalCoordAt(x, y) {
 }
 
 function pickMainTarget(coord) {
-    coord.convertTo("normal");     // uma conversão só, em vez de uma por consulta
-    return (
-        Editor.Self.getOverlappingPin(coord) ||
-        Editor.Referencer.getOverlappingDotPins(coord) ||
-        Editor.Buildings.getOverlappingAreas(coord)?.building ||
-        Editor.Buildings.getOverlappingPins(coord) ||
-        null
-    );
+    coord.convertTo("normal"); // uma conversão só, em vez de uma por consulta
+
+    let ref;
+    if ((ref = Editor.Self.getOverlappingPin(coord))) return { type: "selfPin", ref };
+    if ((ref = Editor.Referencer.getOverlappingDotPins(coord))) return { type: "refPin", ref };
+    if ((ref = Editor.Buildings.getOverlappingAreas(coord)?.building)) return { type: "area", ref };
+    if ((ref = Editor.Buildings.getOverlappingPins(coord))) return { type: "buildPin", ref };
+
+    return { type: "none", ref: null };
 }
 
 // At most one map update per frame, no matter how often pointermove fires
@@ -263,7 +335,7 @@ function applyMainMove(m) {
     } else if (leftClicking) {
         Pointer.defaultMove(m);
     } else {
-        const pin = pickMainTarget(Editor.newCoord(m.clientX, m.clientY, "screen"));
+        const pin = pickMainTarget(Editor.newCoord(m.clientX, m.clientY, "screen")).ref;
         hoverTargetSet = new Set();
         if (pin) hoverTargetSet.add(pin);
         setCursor(pin ? "pointer" : "default");
@@ -271,6 +343,8 @@ function applyMainMove(m) {
 }
 
 function placeMarker(coord) {
+    coord.convertTo("normal");
+    coord = Editor.Connections.snap(coord);   // autosnap em até 10px de uma conexão
     Editor.TouchPin.setPos(coord);
     Editor.TouchPin.setVisible(true);
     const g = Localizacao.mapToGeographical(coord.pos);
@@ -347,13 +421,8 @@ class Touch {
             const currentDistance = Transformacao.distance(a, b);
             const currentAngle = Transformacao.angle(a, b);
 
-            zoom = Math.min(
-                Math.max(
-                    startZoom * (currentDistance / startDistance),
-                    minZoom,
-                ),
-                maxZoom,
-            );
+            zoom = Math.min(Math.max(startZoom * (currentDistance / startDistance), Graficos.minZoom), Graficos.maxZoom);
+
             Graficos.setZoom(zoom);
             Graficos.updateMap();
 
@@ -428,8 +497,12 @@ class Pointer {
 
         if (page == "main") {
             if (e.button === 0) {
-                pressedTarget = pickMainTarget(Editor.newCoord(clickX, clickY, "screen"));
-                if (!pressedTarget && e.pointerType !== "mouse") startLongPress(clickX, clickY);
+                let target = pickMainTarget(Editor.newCoord(clickX, clickY, "screen"));
+                pressedTarget = target.ref;
+                pressedType = target.type;
+                if ((!target.ref || target.type === "area") && e.pointerType !== "mouse") {
+                    startLongPress(clickX, clickY);
+                }
             }
             return;
         } else if (page == "editor") {
@@ -526,7 +599,7 @@ class Pointer {
                 } else if (overlapPins) {
                     Actions.openBanner(overlapPins);
                 } else {
-                    Actions.closeBanner();
+                    Actions.requestCloseBanner();
                 }
             }
         }
@@ -790,32 +863,48 @@ class Pointer {
         if (page == "main") {
             clearLongPress();
             const pressed = pressedTarget;
+            const pressedKind = pressedType;
             pressedTarget = null;
+            pressedType = "none";
 
-            if (longPressFired) { longPressFired = false; return; }   // the hold already placed the pin
+            if (longPressFired) { longPressFired = false; return; }
             if (moved || !wasLeftClicking) return;
 
+            const isDoubleTap = () => {
+                const now = performance.now();
+                return lastTap &&
+                    now - lastTap.t <= DOUBLE_CLICK_MS &&
+                    Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) <= DOUBLE_CLICK_DIST;
+            };
+
             if (pressed) {
-                lastTap = null;
+                // clique duplo (mouse) em cima de uma área: coloca o marcador em vez de reabrir o banner
+                if (pressedKind === "area" && e.pointerType === "mouse") {
+                    if (isDoubleTap()) {
+                        lastTap = null;
+                        placeMarker(Editor.newCoord(e.clientX, e.clientY, "screen"));
+                        return;
+                    }
+                    lastTap = { t: performance.now(), x: e.clientX, y: e.clientY };
+                } else {
+                    lastTap = null;
+                }
+
                 if (pressed.selfPin) Actions.openUser(pressed);
                 else Actions.openBanner(pressed);
                 return;
             }
 
-            // tap on empty map: closes panels, never places a pin by itself
             Actions.closeBanner();
             Actions.closeUser();
 
-            if (e.pointerType !== "mouse") return;   // touch uses long press instead
+            if (e.pointerType !== "mouse") return;
 
-            const now = performance.now();
-            if (lastTap &&
-                now - lastTap.t <= DOUBLE_CLICK_MS &&
-                Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) <= DOUBLE_CLICK_DIST) {
+            if (isDoubleTap()) {
                 lastTap = null;
                 placeMarker(Editor.newCoord(e.clientX, e.clientY, "screen"));
             } else {
-                lastTap = { t: now, x: e.clientX, y: e.clientY };
+                lastTap = { t: performance.now(), x: e.clientX, y: e.clientY };
             }
             return;
         } else if (page == "editor") {
@@ -881,10 +970,7 @@ class Pointer {
         const mY = e.offsetY;
 
         let zoomFactor = e.deltaY < 0 ? zoomStep : 1 / zoomStep;
-        const nextZoom = Math.min(
-            Math.max(zoom * zoomFactor, minZoom),
-            maxZoom,
-        );
+        const nextZoom = Math.min(Math.max(zoom * zoomFactor, Graficos.minZoom), Graficos.maxZoom);
         zoomFactor = nextZoom / zoom;
 
         Graficos.setPosition(
@@ -1271,6 +1357,14 @@ class Actions {
         return connection;
     }
 
+    static syncHighlight() {
+        if (editorMode == EditorModes.BANNER) {
+            Graficos.highlight([Graficos.groups.PINS, Graficos.groups.REFERENCES]);
+        } else {
+            Graficos.highlight(true);
+        }
+    }
+
     static applyMode(mode) {
         Detail.set();
         editorMode = mode;
@@ -1284,14 +1378,7 @@ class Actions {
             ].includes(mode),
         );
 
-        if (mode == EditorModes.BANNER) {
-            Graficos.highlight([
-                Graficos.groups.PINS,
-                Graficos.groups.REFERENCES,
-            ]);
-        } else {
-            Graficos.highlight(true);
-        }
+        this.syncHighlight();
 
         this.closeBanner();
 
@@ -1324,6 +1411,12 @@ class Actions {
 
     static async switchMode(mode = EditorModes.FREE) {
         if (this.switching) return;
+
+        this.switching = true;
+        const bannerOk = await this.ensureBannerValid();
+        this.switching = false;
+        if (!bannerOk) return;
+
         if (editorMode == EditorModes.CONSTRUCTION) {
             const building = Task.data["buildObject"];
             if (
@@ -1596,17 +1689,6 @@ class Actions {
         return area;
     }
 
-    static pinDoneMode(mode) {
-        if (mode) {
-            pinBtn.children[0].classList.remove("hidden");
-            pinBtn.children[1].classList.add("hidden");
-        } else {
-            pinBtn.children[1].classList.remove("hidden");
-            pinBtn.children[0].classList.add("hidden");
-        }
-        pinDone = mode;
-    }
-
     static pinMode(bool) {
         mapObj.classList.toggle("custom-cursor", bool);
     }
@@ -1618,7 +1700,7 @@ class Actions {
     }
 
     static syncTaskUI() {
-        if (!pinBtn) return;
+        if (!pinBtn || !constructionPanel) return;
         const inBuild = Task.task === "build";
         const hasAreas =
             inBuild &&
@@ -1626,10 +1708,20 @@ class Actions {
             hasEnabledAreas(Task.data["buildObject"]);
 
         this.pinMode(inBuild && Task.taskStep === 0);
-        const show =
-            editorMode === EditorModes.CONSTRUCTION && (!inBuild || hasAreas);
-        pinBtn.classList.toggle("hidden", !show);
-        this.pinDoneMode(hasAreas);
+
+        let state = "idle";
+        if (inBuild) state = hasAreas ? "done" : Task.taskStep === 0 ? "placing" : "drawing";
+
+        pinDone = hasAreas;
+        pinBtn.dataset.state = state;
+        pinBtn.disabled = state === "placing" || state === "drawing";   // was hidden before; same clicks blocked
+
+        const label = `${PIN_STATES[state].title}: ${PIN_STATES[state].hint}`;
+        pinBtn.title = label;
+        pinBtn.setAttribute("aria-label", PIN_STATES[state].title);
+
+        constructionPanel.classList.toggle("open", editorMode === EditorModes.CONSTRUCTION);
+        constructionPanel.classList.toggle("busy", state !== "idle");
     }
 
     static bannerToken = 0;
@@ -1639,18 +1731,21 @@ class Actions {
             !bannerTab.classList.contains("hidden")) return;
 
         if (!bannerTab.classList.contains("hidden")) {
+            if (!(await this.ensureBannerValid())) return;   // incomplete banner: ask first
+
             const closing = this.closeBanner();
             const token = this.bannerToken;
             await closing;
-            if (token !== this.bannerToken) return; // outra ação ocorreu durante a espera
+            if (token !== this.bannerToken) return;
         }
 
-        this.bannerToken++; // invalida qualquer closeBanner ainda pendente
+        this.bannerToken++;
 
         this.saveBanner();
         resetDisplayImage();
         Holdable.set(obj, "banner", { img: obj.banner.image || false });
         this.restoreBanner(obj);
+        syncBannerStatus();
         bannerTab.classList.remove("hidden");
     }
 
@@ -1675,8 +1770,8 @@ class Actions {
         if (!banner) return;
 
         const image = Holdable.initialPos?.img || false;
-        const title = bannerTitle.value;
-        const description = bannerDescription.value;
+        const title = bannerTitle.value.trim();
+        const description = bannerDescription.value.trim();
 
         banner.detailed = !!(image || title || description);
         banner.image = image;
@@ -1696,7 +1791,33 @@ class Actions {
         }
 
         bannerTitle.value = b.title || "";
+        if(page == "main" && !bannerTitle.value && obj.name) {
+            bannerTitle.value = obj.name;
+        }
         bannerDescription.value = b.description || "";
+        if (page == "main") syncDescriptionLabel();
+    }
+
+    static confirmingBanner = false;
+
+    static async ensureBannerValid() {
+        const { state, missing } = bannerState();
+        if (state !== "partial") return true;
+        if (this.confirmingBanner) return false;
+
+        this.confirmingBanner = true;
+        const discard = await this.openModal("bannerIncomplete", { missing });
+        this.confirmingBanner = false;
+
+        if (!discard) return false;
+        clearBannerFields();
+        return true;
+    }
+
+    static async requestCloseBanner() {
+        if (!(await this.ensureBannerValid())) return false;
+        await this.closeBanner();
+        return true;
     }
 
     static openUser(user) {
@@ -1754,7 +1875,7 @@ class Actions {
                         } else if (platform === 'instagram') {
                             try {
                                 await navigator.clipboard.writeText(shareData.url);
-                                Toasts.toaster.show({text: "Link copiado!"});
+                                Toasts.toaster.show({text: "Link copiado!", category: "success"});
                                 window.open('https://www.instagram.com/', '_blank');
                             } catch (err) {
                                 console.error('Failed to copy text: ', err);
@@ -1765,7 +1886,7 @@ class Actions {
 
                 btnCopy.addEventListener('click', async () => {
                     await navigator.clipboard.writeText(input.value);
-                    Toasts.toaster.show({ text: 'Link copiado' });
+                    Toasts.toaster.show({ text: 'Link copiado', category: "success"});
                 });
                 }
             });
@@ -1810,6 +1931,13 @@ class Actions {
                 message: 'A construção ainda não tem nenhuma área. Se continuar, ela será descartada.',
                 cancelText: 'Voltar',
                 confirmText: 'Descartar Alterações',
+            });
+        } else if (name == "bannerIncomplete") {
+            return Modals.modal.confirm({
+                title: 'Banner incompleto',
+                message: `Um banner precisa ter imagem, título e descrição, ou ficar totalmente vazio. Faltam: ${data.missing.join(", ")}. Se continuar, o que foi preenchido será descartado.`,
+                cancelText: 'Continuar editando',
+                confirmText: 'Descartar banner',
             });
         }
     }
@@ -1876,52 +2004,113 @@ async function saveMapState(formData) {
 
 let isSaving = false;
 
+function confirmBannerless(bannerless) {
+    return new Promise((resolve) => {
+        const n = bannerless.length;
+        let viewing = false;
+
+        const toast = Toasts.toaster.show({
+            category: "warn",
+            title: `${n} ${n === 1 ? "construção sem banner" : "construções sem banner"}`,
+            text: `${n === 1 ? "Ela aparecerá" : "Elas aparecerão"} no mapa sem título, imagem ou descrição.`,
+            duration: 0,
+            priority: 5,
+            html: `
+                <div class="toast-actions">
+                    <button type="button" class="modal-button toast-ver" data-action="view">
+                        <i class="fa-solid fa-eye"></i> Ver construções
+                    </button>
+                    <button type="button" class="modal-button" data-action="cancel">Cancelar</button>
+                    <button type="button" class="modal-button modal-button-main" data-action="save">Salvar mesmo assim</button>
+                </div>
+            `,
+        });
+
+        const finish = async (result) => {
+            toast.removeEventListener("click", onClick);
+            if (viewing) Actions.syncHighlight();   // desfaz o destaque
+            Toasts.toaster.remove(toast);
+            await sleep(200);
+            resolve(result);
+        };
+
+        const onClick = (e) => {
+            const btn = e.target.closest("[data-action]");
+            if (!btn) return;
+            const action = btn.dataset.action;
+
+            if (action === "view") {
+                viewing = !viewing;
+                if (viewing) {
+                    Graficos.highlightObjects(bannerless.map((b) => b.graphics));
+                    btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Mostrar tudo';
+                } else {
+                    Actions.syncHighlight();
+                    btn.innerHTML = '<i class="fa-solid fa-eye"></i> Ver construções';
+                }
+            } else {
+                finish(action === "save");
+            }
+        };
+
+        toast.addEventListener("click", onClick);
+    });
+}
+
 export async function save() {
     if (isSaving) return;
     isSaving = true;
 
-    const progress = Toasts.toaster.showProgress({
-        title: "Salvando mapa...",
-        tasks: {
-            savedBanner: false,
-            createdPayload: false,
-            preparedFiles: false,
-            uploaded: false
-        },
-        labels: {
-            savedBanner: "Banner salvo...",
-            createdPayload: "Dados preparados...",
-            preparedFiles: "Arquivos anexados...",
-            uploaded: "Sincronizado com o servidor!"
-        }
-    });
-
     try {
+        if (!(await Actions.ensureBannerValid())) return;
         Actions.saveBanner();
-        progress.completeTask("savedBanner");
 
-        const { payload, files } = Editor.buildPayload();
-        progress.completeTask("createdPayload");
+        const bannerless = Editor.Buildings.getBannerless();
+        if (bannerless.length > 0 && !(await confirmBannerless(bannerless))) {
+            return;
+        }
 
-        const formData = new FormData();
-        formData.append("data", JSON.stringify(payload));
+        const progress = Toasts.toaster.showProgress({
+            title: "Salvando mapa...",
+            tasks: {
+                savedBanner: false,
+                createdPayload: false,
+                preparedFiles: false,
+                uploaded: false,
+            },
+            labels: {
+                savedBanner: "Banner salvo...",
+                createdPayload: "Dados preparados...",
+                preparedFiles: "Arquivos anexados...",
+                uploaded: "Sincronizado com o servidor!",
+            },
+        });
 
-        if (files && typeof files === "object") {
-            for (const [bannerId, file] of Object.entries(files)) {
-                if (file instanceof File) {
-                    formData.append(`file_${bannerId}`, file, file.name);
+        try {
+            progress.completeTask("savedBanner");
+
+            const { payload, files } = Editor.buildPayload();
+            progress.completeTask("createdPayload");
+
+            const formData = new FormData();
+            formData.append("data", JSON.stringify(payload));
+
+            if (files && typeof files === "object") {
+                for (const [bannerId, file] of Object.entries(files)) {
+                    if (file instanceof File) {
+                        formData.append(`file_${bannerId}`, file, file.name);
+                    }
                 }
             }
+            progress.completeTask("preparedFiles");
+
+            await saveMapState(formData);
+            progress.completeTask("uploaded");
+        } catch (error) {
+            console.error("Erro ao salvar:", error);
+            progress.fail("Não foi possível salvar o mapa.");
+            throw error;
         }
-        progress.completeTask("preparedFiles");
-
-        await saveMapState(formData);
-        progress.completeTask("uploaded");
-
-    } catch (error) {
-        console.error("Erro ao salvar:", error);
-        progress.fail("Não foi possível salvar o mapa.");
-        throw error;
     } finally {
         isSaving = false;
     }
@@ -1955,6 +2144,7 @@ function setDisplayImage(file) {
     }
     if (bannerHeld()) {
         Holdable.initialPos["img"] = file;
+        syncBannerStatus();
     }
 }
 
@@ -2116,9 +2306,9 @@ function pickResult(item) {
 
 function reportLocationFailure(status, deniedText = 'Localização desativada: não é possível traçar rota a partir da sua posição.') {
     if (status === 'denied') {
-        Toasts.toaster.show({ text: deniedText });
+        Toasts.toaster.show({ text: deniedText, category: "error" });
     } else if (status !== 'dismissed') {
-        Toasts.toaster.show({ text: 'Não foi possível obter sua localização.' });
+        Toasts.toaster.show({ text: 'Não foi possível obter sua localização.', category: "error" });
     }
 }
 
@@ -2267,7 +2457,7 @@ class Route {
     static graphics = null;
     static points = [];
 
-    static update() {
+    static update(redraw=true) {
         this.points = [];
 
         if (this.active && this.origin && this.destination) {
@@ -2280,14 +2470,20 @@ class Route {
                     this.destination.ref.coordinate,
                 ];
             } else {
-                Toasts.toaster.show({ text: 'Nenhum caminho encontrado' });
+                Toasts.toaster.show({ text: 'Nenhum caminho encontrado', category: "error" });
             }
         }
+        if(!redraw) return;
 
         this.redraw();
     }
 
-    static redraw() {
+    static async redraw() {
+        let retrack = false;
+        if (this.origin?.title == "Sua localização" || this.destination?.title == "Sua localização") {
+            retrack = true;
+            this.update(false);
+        }
         if (this.points.length < 2) {
             if (this.graphics) Graficos.clearConnection(this.graphics);
             return;
@@ -2302,6 +2498,12 @@ class Route {
             alpha: 1,
             size: 8,
         });
+        if (!retrack) {
+            return;
+        }
+        await sleep(1000 / 60);
+
+        this.redraw();
     }
 }
 
@@ -2482,6 +2684,7 @@ export async function addListeners(map) {
         imageLabel = document.getElementById("image-upload-label");
         bannerTitle = document.getElementById("place-name");
         bannerDescription = document.getElementById("place-description");
+        bannerDescription.placeholder = "Sem descrição";
 
         initSearch();
 
@@ -2510,7 +2713,7 @@ export async function addListeners(map) {
             let geocoords = Localizacao.mapToGeographical(coord.getIn("normal"));
             
             if (!Array.isArray(geocoords) || !Number.isFinite(geocoords[0]) || !Number.isFinite(geocoords[1])) {
-                Toasts.toaster.show({ text: "Falha ao comparilhar." });
+                Toasts.toaster.show({ text: "Falha ao comparilhar.", category: "error" });
                 return;
             }
 
@@ -2532,7 +2735,7 @@ export async function addListeners(map) {
                 let geocoords = Localizacao.mapToGeographical(Editor.Self.coordinate.getIn("normal"));
                 
                 if (!Array.isArray(geocoords) || !Number.isFinite(geocoords[0]) || !Number.isFinite(geocoords[1])) {
-                    Toasts.toaster.show({ text: "Falha ao comparilhar." });
+                    Toasts.toaster.show({ text: "Falha ao comparilhar.", category: "error" });
                     return;
                 }
 
@@ -2557,6 +2760,8 @@ export async function addListeners(map) {
         bannerBtn = document.getElementById("banner-btn");
         saveBtn = document.getElementById("save");
         pinBtn = document.getElementById("pin-mode");
+        constructionPanel = document.getElementById("construction-group");
+        bannerStatus = document.getElementById("banner-status");
 
         imageInput = document.getElementById("banner-image-input");
         imageWrapper = document.getElementById("image-upload-wrapper");
@@ -2586,12 +2791,20 @@ export async function addListeners(map) {
 
             if (key === "y" || (e.shiftKey && key === "z")) {
                 e.preventDefault();
-                Actions.redo();
+                Actions.ensureBannerValid().then((ok) => ok && Actions.redo());
             } else if (key === "z" && !e.shiftKey) {
                 e.preventDefault();
-                Actions.undo();
+                Actions.ensureBannerValid().then((ok) => ok && Actions.undo());
             }
         });
+
+        document.getElementById("banner-close").addEventListener("click", () => Actions.requestCloseBanner());
+        for (const field of [bannerTitle, bannerDescription]) {
+            field.addEventListener("input", syncBannerStatus);
+        }
+        for (const tab of document.querySelectorAll("[data-tab]")) {
+            tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+        }
 
         buildBtn.addEventListener("click", () => Actions.switchMode(EditorModes.CONSTRUCTION));
         referenceBtn.addEventListener("click", () => Actions.switchMode(EditorModes.REFERENCE));

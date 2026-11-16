@@ -1,12 +1,11 @@
 class ModalManager {
   constructor() {
-    this.dialog = document.getElementById('app-modal');
-    if (!this.dialog) {
-      this.dialog = document.createElement('dialog');
-      this.dialog.id = 'app-modal';
-      this.dialog.className = 'app-modal';
-      document.body.appendChild(this.dialog);
-    }
+    // every modal rule in the CSS is scoped to .app-modal, so the class is forced here,
+    // whether the <dialog> came from the template or is created now
+    this.dialog = document.getElementById('app-modal') ?? document.createElement('dialog');
+    this.dialog.id = 'app-modal';
+    this.dialog.classList.add('app-modal');
+    if (!this.dialog.isConnected) document.body.appendChild(this.dialog);
 
     this._cleanupFn = null;
     this._onClose = null;

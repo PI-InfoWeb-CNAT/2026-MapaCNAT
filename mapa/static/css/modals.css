@@ -2,6 +2,9 @@
    modais.css: modal shell, forms and share modal
    Colors, radii, shadows, font and buttons come from global.css.
 
+   Every rule here is scoped to .app-modal (the <dialog> that holds all modal
+   content). Nothing in this file matches an element outside a modal.
+
    1. Modal shell
    2. Forms (field look: global.css, section 5)
    3. Buttons (layout only; look is in global.css, section 4)
@@ -60,7 +63,7 @@
   background: var(--overlay);
 }
 
-.app-modal-box {
+.app-modal .app-modal-box {
   display: flex;
   flex-direction: column;
   max-height: calc(var(--app-height) * 0.9);
@@ -68,7 +71,7 @@
   box-sizing: border-box;
 }
 
-.app-modal-header {
+.app-modal .app-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -79,7 +82,7 @@
   border-bottom: 1px solid var(--gray-100);
 }
 
-.app-modal-title {
+.app-modal .app-modal-title {
   margin: 0;
   font-size: 1.2em;
   font-weight: 700;
@@ -87,36 +90,12 @@
   color: var(--gray-900);
 }
 
-/* circle that gets a background on hover */
-.app-modal-close {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
+/* circle look (size, hover, focus) is global.css, section 6: only the glyph size lives here */
+.app-modal .app-modal-close {
   font-size: 1.5em;
-  line-height: 1;
-  color: var(--gray-700);
-  cursor: pointer;
-  transition: background-color var(--duration-fast);
 }
 
-.app-modal-close:hover {
-  background-color: var(--gray-100);
-  color: var(--gray-900);
-}
-
-.app-modal-close:focus-visible {
-  outline: 3px solid var(--green-focus);
-  outline-offset: 2px;
-}
-
-.app-modal-body {
+.app-modal .app-modal-body {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -143,7 +122,7 @@
     transform: translateY(100%);
   }
 
-  .app-modal-box {
+  .app-modal .app-modal-box {
     padding: 20px 16px calc(20px + var(--safe-bottom));
   }
 }
@@ -153,7 +132,7 @@
    2. Forms (field look: global.css, section 5)
    ========================================================================== */
 
-.modal-form {
+.app-modal .modal-form {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -166,11 +145,11 @@
    3. Buttons (layout only; look is in global.css, section 4)
    ========================================================================== */
 
-/* spacing between adjacent buttons in a row, whatever the container */
-.modal-button + .modal-button,
-.modal-button + .modal-button-main,
-.modal-button-main + .modal-button,
-.modal-button-main + .modal-button-main {
+/* spacing between adjacent buttons in a row */
+.app-modal .modal-button + .modal-button,
+.app-modal .modal-button + .modal-button-main,
+.app-modal .modal-button-main + .modal-button,
+.app-modal .modal-button-main + .modal-button-main {
   margin-left: 10px;
 }
 
@@ -179,20 +158,20 @@
    4. Share modal
    ========================================================================== */
 
-.share-social-grid {
+.app-modal .share-social-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
 
-.social-icon {
+.app-modal .social-icon {
   font-size: 22px;
   line-height: 1;
 }
 
 /* the pill box encloses the Copy button, so the button is a bit smaller */
-.share-link-box {
+.app-modal .share-link-box {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -202,7 +181,7 @@
   background: var(--gray-50);
 }
 
-.share-link-box input {
+.app-modal .share-link-box input {
   flex: 1;
   min-width: 0;   /* keeps the flex input from overflowing the box */
   border: none;
@@ -213,13 +192,25 @@
   text-overflow: ellipsis;
 }
 
-.btn-copy {
+.app-modal .btn-copy {
   padding: 8px 18px;
   font-size: 0.85rem;
   white-space: nowrap;
 }
 
-.btn-copy.copied {
+.app-modal .btn-copy.copied {
   background-color: var(--dark-green-hover);
   border-color: var(--dark-green-hover);
+}
+
+.app-modal .modal-text {
+  margin-bottom: 20px;
+  line-height: 1.5;
+  color: var(--gray-700);
+}
+
+.app-modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }

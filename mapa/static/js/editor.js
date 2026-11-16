@@ -13,6 +13,17 @@ const MIME_MAP = {
     'application/json': 'json',
 };
 
+export const SNAP_RADIUS_PX = 40;
+
+function closestPointOnSegment(px, py, x1, y1, x2, y2) {
+    const cx = x2 - x1, cy = y2 - y1;
+    const lenSq = cx * cx + cy * cy;
+    let t = lenSq === 0 ? 0 : ((px - x1) * cx + (py - y1) * cy) / lenSq;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const x = x1 + t * cx, y = y1 + t * cy;
+    return { x, y, d: (px - x) ** 2 + (py - y) ** 2 };
+}
+
 const MAX_DOT_SIZE = 16;       // maior `size` de uma Reference no editor (10 + 5 do hover) + folga
 const MAX_LINE_HALF = 8;       // maior (size + 6) / 2 de uma Connection (size chega a 9)
 const BORDER_GRAB = 15;        // espessura de captura das bordas de Area (unidades do mundo)
@@ -662,9 +673,12 @@ export class Self {
         this.updateGraphics();
     }
 
+    static rawCoordinate = null;
+
     static setPos(coordinate) {
-        this.coordinate = coordinate;
-        this.coordinate.convertTo("normal");
+        coordinate.convertTo("normal");
+        this.rawCoordinate = coordinate;                       // posição real do GPS
+        this.coordinate = page === "main" ? Connections.snap(coordinate) : coordinate;
         this.updateGraphics();
     }
 
@@ -753,6 +767,20 @@ export class Connections {
 
     static hasPair(a, b) {
         return this.pairs.get(pairKey(a, b)) || false;
+    }
+
+    static snap(coordinate, radiusPx = SNAP_RADIUS_PX) {
+        const pos = coordinate.peekNormal();
+        const R = radiusPx / Graficos.zoom;          // 10px de tela = R unidades do mundo
+        const cand = this.hash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _lineBuf);
+
+        let best = null, bestD = R * R;
+        for (let i = 0; i < cand.length; i++) {
+            const a = cand[i].start.coordinate.pos, b = cand[i].end.coordinate.pos;
+            const p = closestPointOnSegment(pos.x, pos.y, a.x, a.y, b.x, b.y);
+            if (p.d <= bestD) { best = p; bestD = p.d; }
+        }
+        return best ? newCoord(best.x, best.y, "normal") : coordinate;
     }
 
     static getOverlappingLines(coordinate, all) {
@@ -1056,6 +1084,12 @@ export class Buildings {
         } else {
             iterator = removeObj(iterator, obj);
         }
+    }
+
+    static getBannerless() {
+        let flat = Object.values(this.buildings);
+        let bannerless = flat.filter((element) => {return !(element.banner.detailed)});
+        return bannerless;
     }
 
     /**

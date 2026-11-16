@@ -1,37 +1,55 @@
+const CATEGORIES = {
+    warn:    { icon: 'fa-triangle-exclamation', role: 'alert' },
+    error:   { icon: 'fa-circle-xmark',         role: 'alert' },
+    success: { icon: 'fa-circle-check',         role: 'status' },
+    none:    { icon: null,                      role: 'status' },
+};
+
 class ToastManager {
     constructor() {
-
         this.container = document.getElementById('toast-container');
         if (!this.container) {
-        this.container = document.createElement('div');
-        this.container.id = 'toast-container';
-        document.body.appendChild(this.container);
+            this.container = document.createElement('div');
+            this.container.id = 'toast-container';
+            document.body.appendChild(this.container);
         }
     }
 
+    /**
+     * @param {Object} options
+     * @param {'warn'|'error'|'success'|'none'} [options.category='none'] - colors + icon
+     * @param {string} [options.title]    - bold first line (plain text, safe for user data)
+     * @param {string} [options.text]     - message (plain text, safe for user data)
+     * @param {string} [options.html]     - extra content under the message, e.g. action buttons
+     *                                      (raw HTML: escape anything that comes from the user)
+     * @param {number} [options.duration=5000] - 0 = stays until removed
+     * @param {number} [options.priority=1]
+     * @param {string} [options.className]     - extra class for one-off tweaks
+     */
     show(options) {
-        const { 
-        text, 
-        html = null, 
-        duration = 5000, 
-        priority = 1 
+        const {
+            text = '',
+            title = '',
+            html = null,
+            category = 'none',
+            duration = 5000,
+            priority = 1,
+            className = '',
         } = options;
 
+        const kind = Object.hasOwn(CATEGORIES, category) ? category : 'none';
+
         const toast = document.createElement('div');
-        toast.className = 'toast';
+        toast.className = `toast ${className}`.trim();   // .toast is always there: CSS is scoped to it
+        toast.dataset.category = kind;
         toast.dataset.priority = priority;
+        toast.setAttribute('role', CATEGORIES[kind].role);
 
-        if (html) {
-        toast.innerHTML = html;
-        } else {
-        toast.innerText = text;
-        }
-
-
+        this._build(toast, { kind, title, text, html });
 
         const existingToasts = Array.from(this.container.children);
         const insertBeforeTarget = existingToasts.find(
-        t => parseInt(t.dataset.priority) < priority
+            t => parseInt(t.dataset.priority) < priority
         );
 
         if (insertBeforeTarget) {
@@ -43,12 +61,58 @@ class ToastManager {
             toast.classList.add('visible');
         });
 
-
         if (duration > 0) {
-        setTimeout(() => this.remove(toast), duration);
+            setTimeout(() => this.remove(toast), duration);
         }
 
         return toast;
+    }
+
+    _build(toast, { kind, title, text, html }) {
+        // plain toast: same as before (just text, or raw html)
+        if (kind === 'none' && !title) {
+            if (html) toast.innerHTML = html;
+            else toast.innerText = text;
+            return;
+        }
+
+        const head = document.createElement('div');
+        head.className = 'toast-head';
+
+        const { icon } = CATEGORIES[kind];
+        if (icon) {
+            const iconEl = document.createElement('span');
+            iconEl.className = 'toast-icon';
+            iconEl.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i>`;
+            head.appendChild(iconEl);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'toast-body';
+
+        if (title) {
+            const titleEl = document.createElement('strong');
+            titleEl.className = 'toast-title';
+            titleEl.textContent = title;
+            body.appendChild(titleEl);
+        }
+        if (text) {
+            const textEl = document.createElement('p');
+            textEl.className = 'toast-text';
+            textEl.textContent = text;
+            body.appendChild(textEl);
+        }
+
+        head.appendChild(body);
+        toast.appendChild(head);
+
+        if (html) {
+            const extra = document.createElement('div');
+            extra.className = 'toast-extra';
+            extra.innerHTML = html;
+            toast.classList.add('has-extra');
+            toast.appendChild(extra);
+        }
     }
 
     showProgress({ title = 'Processando...', tasks = {}, labels = {}, priority = 10, closeDelay = 1200 }) {
@@ -56,17 +120,15 @@ class ToastManager {
         const totalTasks = Object.keys(state).length;
 
         const html = `
-            <div class="toast-progress-wrapper" style="min-width: 240px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.9rem;">
+            <div class="toast-progress">
+                <div class="toast-progress-head">
                     <strong class="toast-progress-title">${title}</strong>
                     <span class="toast-progress-percent">0%</span>
                 </div>
-                <div class="toast-progress-track" style="width: 100%; height: 6px; background: rgba(255,255,255,0.2); border-radius: 999px; overflow: hidden;">
-                    <div class="toast-progress-bar" style="width: 0%; height: 100%; background: #4ade80; transition: width 0.25s ease;"></div>
+                <div class="toast-progress-track">
+                    <div class="toast-progress-bar"></div>
                 </div>
-                <div class="toast-progress-status" style="margin-top: 6px; font-size: 0.78rem; opacity: 0.85;">
-                    Iniciando...
-                </div>
+                <div class="toast-progress-status">Iniciando...</div>
             </div>
         `;
 
@@ -90,6 +152,7 @@ class ToastManager {
             }
 
             if (completedCount >= totalTasks) {
+                toast.dataset.category = 'success';
                 titleEl.textContent = 'Concluído!';
                 statusEl.textContent = 'Todas as etapas finalizadas.';
                 setTimeout(() => this.remove(toast), closeDelay);
@@ -110,7 +173,8 @@ class ToastManager {
              * Caso ocorra erro no meio do processo
              */
             fail: (errorMessage = 'Erro ao salvar.') => {
-                barEl.style.background = '#f87171';
+                toast.dataset.category = 'error';
+                toast.setAttribute('role', 'alert');
                 titleEl.textContent = 'Falha';
                 statusEl.textContent = errorMessage;
                 setTimeout(() => this.remove(toast), 4000);

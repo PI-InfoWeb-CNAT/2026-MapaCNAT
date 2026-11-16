@@ -48,6 +48,19 @@ export let imageSize;
 
 export let groups;
 
+
+
+const DIM_ALPHA = 0.25;
+
+function asDisplayObjects(item) {
+    if (!item) return [];
+    if (item instanceof PIXI.Container) return [item];
+    if (typeof item === "object") {
+        return Object.values(item).filter((v) => v instanceof PIXI.Container);
+    }
+    return [];
+}
+
 export function getNormalizedCoordinates(pos) {
     const localPoint = mapContainer.toLocal(pos);
 
@@ -585,6 +598,33 @@ export function setContext(context) {
     entranceImagePath = entranceImage;
 }
 
+const MAX_ZOOM_METERS = 20;   // largura geográfica visível no zoom máximo
+const FALLBACK_MAX_ZOOM = 3;  // se `metrics` não estiver disponível
+
+function computeZoomLimits() {
+    const sw = app.screen.width;
+    const sh = app.screen.height;
+
+    // mapa inteiro visível (rotação 0)
+    minZoom = Math.min(sw / imageSize.width, sh / imageSize.height);
+
+    // lado menor da tela cobrindo MAX_ZOOM_METERS metros
+    const upm = typeof metrics !== "undefined" ? metrics?.unitsPerMeter : NaN;
+    maxZoom = Number.isFinite(upm) && upm > 0
+        ? Math.min(sw, sh) / (MAX_ZOOM_METERS * upm)
+        : FALLBACK_MAX_ZOOM;
+
+    // nunca deixa o máximo abaixo do mínimo (mapa minúsculo ou métrica estranha)
+    maxZoom = Math.max(maxZoom, minZoom);
+}
+
+function applyZoomLimits() {
+    computeZoomLimits();
+    if (!pinContainer) return;   // containers ainda não existem (resize durante a inicialização)
+    const clamped = Math.min(Math.max(zoom, minZoom), maxZoom);
+    if (clamped !== zoom) Zoom(clamped);
+}
+
 export async function main() {
     app = new PIXI.Application();
     const mapEl = document.getElementById("map");
@@ -613,6 +653,8 @@ export async function main() {
 
     imageSize = await tiles.load(); // { width, height } vindos do SVG
 
+    computeZoomLimits();            // antes de start(): a camada base usa o minZoom
+
     await tiles.start();
 
     mapContainer.x = app.screen.width / 2;
@@ -620,14 +662,12 @@ export async function main() {
 
     new ResizeObserver(() => {
         const { width, height } = mapEl.getBoundingClientRect();
+        if (!width || !height) return;
+        if (Math.abs(width - app.screen.width) < 1 && Math.abs(height - app.screen.height) < 1) return;
         app.renderer.resize(width, height);
+        applyZoomLimits();
         tiles?.requestUpdate();
     }).observe(mapEl);
-
-    minZoom =
-        Math.max(app.screen.width, app.screen.height) /
-        Math.max(imageSize.width, imageSize.height);
-    maxZoom = 3;
     
     const pinoTexture = await PIXI.Assets.load(pinImagePath);
     pinoSprite = PIXI.Sprite.from(pinoTexture);
@@ -664,6 +704,9 @@ export async function main() {
         REFERENCES: referenceContainer,
         PINS: pinContainer,
     };
+
+    Zoom(minZoom);
+
 }
 
 /////////////////// Collision (pins)
@@ -849,19 +892,40 @@ export function editorFocus(value) {
     tiles?.setDimmed(value); // antes: mapSprite.alpha = value ? 0.5 : 1
 }
 
-export function highlight(activeGroups) {
-    if (activeGroups === true) {
-        for (const group of Object.values(groups)) {
-            group.alpha = 1;
+export function highlightObjects(objects, dimAlpha = DIM_ALPHA) {
+    const containers = Object.values(groups);
+
+    if (objects === true) {
+        for (const c of containers) {
+            c.alpha = 1;
+            for (const child of c.children) child.alpha = 1;
         }
         return;
     }
-    for (const group of Object.values(groups)) {
-        group.alpha = 0.25;
+
+    const containerSet = new Set(containers);
+    const keep = new Set();
+
+    for (const item of objects) {
+        for (const obj of asDisplayObjects(item)) {
+            // sobe até o filho direto de algum grupo
+            let node = obj;
+            while (node.parent && !containerSet.has(node.parent)) node = node.parent;
+            if (node.parent) keep.add(node);
+        }
     }
-    for (const group of activeGroups) {
-        group.alpha = 1;
+
+    for (const c of containers) {
+        c.alpha = 1; // quem controla o alpha agora são os filhos
+        for (const child of c.children) {
+            child.alpha = keep.has(child) ? 1 : dimAlpha;
+        }
     }
+}
+
+export function highlight(activeGroups) {
+    if (activeGroups === true) return highlightObjects(true);
+    highlightObjects(activeGroups.flatMap((g) => g.children));
 }
 
 const TAU = Math.PI * 2;

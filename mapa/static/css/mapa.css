@@ -718,8 +718,12 @@ header {
     margin: 0 0 8px;
 }
 
-.banner-section:has(.editable-description:placeholder-shown) {
+.banner-section.is-empty .editable-description {
     display: none;
+}
+
+.banner-section.is-empty .banner-section-title {
+    margin-bottom: 0;
 }
 
 
@@ -782,88 +786,394 @@ header {
 
 /* ==========================================================================
    8. Editor UI
+   Top bar (tabs + save), left tool rail, construction flyout, banner panel.
+   The map stays full-viewport underneath: screen coordinates in JS use clientX/Y.
    ========================================================================== */
 
-#logo-wrapper {
-    display: flex;
-    justify-content: center;
-    width: 100%;
+#editor-app {
+    --topbar-h: 56px;
+    --rail-w: 72px;
+    --banner-w: 460px;
 }
 
-#editor-logo {
-    width: 56px;
-    margin: var(--body-margin);
-    margin-bottom: 0;
+#editor-app #map {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    height: auto;
+    overflow: hidden;
 }
 
-#editor-modes {
+#editor-app #map canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+}
+
+.svg-icon {
+    flex-shrink: 0;
+    width: 1.25em;
+    height: 1.25em;
+    fill: currentColor;
+}
+
+/* ---------- top bar ---------- */
+
+#editor-topbar {
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--topbar-h);
+    padding: 0 calc(var(--body-margin) + var(--safe-right)) 0 var(--safe-left);
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-100);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+}
+
+/* logo sits above the rail */
+#logo-wrapper {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    height: 100%;
-    background-color: var(--white);
-    filter: drop-shadow(var(--shadow-sm));
+    flex-shrink: 0;
+    width: var(--rail-w);
+}
+
+#editor-logo {
+    width: 32px;
+    height: auto;
+}
+
+.editor-tabs {
+    display: flex;
+    align-self: stretch;
+    gap: 4px;
+}
+
+.editor-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+    border: none;
+    background: transparent;
+    color: var(--gray-500);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color var(--duration-fast);
+}
+
+.editor-tab:hover:not(:disabled) {
+    color: var(--gray-900);
+}
+
+.editor-tab[aria-selected="true"] {
+    color: var(--dark-green-main);
+}
+
+.editor-tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 0;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--dark-green-main);
+}
+
+.editor-tab:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.editor-tab:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: -3px;
+    border-radius: var(--radius-sm);
+}
+
+.tab-soon {
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.topbar-save {
+    margin-left: auto;
+    padding: 8px 18px;
+    font-size: 0.9rem;
+}
+
+/* ---------- tool rail ---------- */
+
+#editor-modes {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: var(--rail-w);
+    padding: 12px 0 calc(12px + var(--safe-bottom));
+    background: var(--white);
+    border-right: 1px solid var(--gray-100);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.06);
 }
 
 #editor-modes hr {
+    width: 32px;
     height: 2px;
-    margin: var(--body-margin);
+    margin: 4px 0;
     border: none;
-    background-color: var(--gray-300);
+    background: var(--gray-100);
 }
 
-.editor-button {
-    margin: 0 var(--body-margin);
+.tool-btn {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: none;
     border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--gray-700);
+    font-size: 1.15rem;
+    cursor: pointer;
+    transition:
+        background-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-press);
 }
 
-.editor-button:first-child {
-    margin-top: var(--body-margin);
-}
-.editor-button:last-child {
-    margin-bottom: var(--body-margin);
+.tool-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
 }
 
-.mode-active {
-    background-color: var(--gray-300);
+.tool-btn:active {
+    transform: scale(0.95);
 }
 
-#pin-mode {
+.tool-btn:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+/* toggled by lightButton() in JS */
+.tool-btn.mode-active {
+    background: var(--dark-green-main);
+    color: var(--white);
+}
+
+/* ---------- construction: icon that pops out of the build button ---------- */
+
+.tool-group {
+    display: flex;
+    align-self: flex-start;                              /* grows to the right, the build button stays put */
+    margin-left: calc((var(--rail-w) - 48px) / 2);
+    overflow: hidden;                                    /* clips the corners of both buttons */
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    transition: box-shadow var(--duration-fast);
+}
+
+.tool-group .tool-btn {
+    flex-shrink: 0;
+    border-radius: 0;
+}
+
+.tool-group .tool-btn:focus-visible {
+    outline-offset: -3px;
+}
+
+.tool-ext {
+    display: flex;
+    flex-shrink: 0;
+    width: 0;
+    height: 48px;
+    padding: 0;
+    overflow: hidden;
+    border: none;
+    background: var(--white);
+    color: var(--dark-green-main);
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        width var(--duration-fast) ease,
+        opacity var(--duration-fast) ease,
+        visibility var(--duration-fast),
+        background-color var(--duration-fast);
+}
+
+.tool-ext-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+}
+
+.tool-ext-icon img {
+    display: block;
+}
+
+.tool-ext .icon-check {
+    display: none;
+    font-size: 1.15rem;
+}
+
+/* expanded: construction mode + hover / keyboard focus / build in progress */
+.tool-group.open:is(:hover, :has(:focus-visible), .busy) {
+    box-shadow: 0 0 0 1.5px var(--dark-green-main), var(--shadow-lg);
+}
+
+.tool-group.open:is(:hover, :has(:focus-visible), .busy) .tool-ext {
+    width: 48px;
+    opacity: 1;
+    visibility: visible;
+}
+
+.tool-ext:hover:not(:disabled) {
+    background: var(--green-tint);
+}
+
+.tool-ext:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: -3px;
+}
+
+/* waiting for the map (placing the pin / drawing the first area) */
+.tool-ext:disabled {
+    background: var(--gray-50);
+    cursor: default;
+}
+
+/* done: confirm */
+.tool-ext[data-state="done"] {
+    background: var(--dark-green-main);
+    color: var(--white);
+}
+
+.tool-ext[data-state="done"]:hover {
+    background: var(--dark-green-hover);
+}
+
+.tool-ext[data-state="done"] .icon-pin {
+    display: none;
+}
+
+.tool-ext[data-state="done"] .icon-check {
+    display: block;
+}
+
+/* ---------- banner panel: slides in from the right ---------- */
+
+#editor-app #banner {
     position: fixed;
-    left: calc(var(--body-margin) * 5 + 56px);
-    bottom: var(--body-margin);
-}
-
-#pin-mode button {
-    margin: 0 !important;
-}
-
-.button-list {
+    top: var(--topbar-h);
+    right: 0;
+    bottom: 0;
+    z-index: 4;
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    height: calc(100vh - 2 * 56px - 4 * var(--body-margin));
-    margin: var(--body-margin);
+    width: min(var(--banner-w), 100vw);
+    padding: 0;
+    overflow: hidden;
+    border-left: 1px solid var(--gray-100);
+    background: var(--white);
+    filter: none;
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.15);
+
+    transform: translateX(0);
+    visibility: visible;
+    transition:
+        transform var(--duration-base) ease,
+        visibility var(--duration-base),
+        box-shadow var(--duration-base);
+}
+
+/* not display:none, otherwise there is nothing to animate (closeBanner awaits this transition) */
+#editor-app #banner.hidden {
+    display: flex !important;
+    transform: translateX(100%);
+    visibility: hidden;
+    box-shadow: none;
+    pointer-events: none;
+}
+
+#editor-app #banner .banner-form {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.banner-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.banner-header-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
     border-radius: var(--radius-sm);
-    background-color: var(--gray-100);
+    background: var(--green-tint);
+    color: var(--dark-green-main);
 }
 
-#submit {
-    position: fixed;
-    left: 0;
-    bottom: 0;
+.banner-header h2 {
+    margin-right: auto;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--gray-900);
 }
 
-#save {
-    flex-shrink: 0;
+/* same pill language as the hub cards */
+.banner-status {
+    max-width: 200px;
+    padding: 3px 10px;
+    overflow: hidden;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-700);
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
 }
 
-#expand-banner {
-    flex-shrink: 0;
-    height: 150px !important;
-    margin-top: auto;
-    margin-bottom: auto;
+.banner-status[data-state="partial"] {
+    background: #fff3cd;
+    color: #7a5600;
+}
+
+.banner-status[data-state="complete"] {
+    background: var(--green-tint);
+    color: var(--dark-green-main);
 }
 
 

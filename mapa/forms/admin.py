@@ -48,8 +48,7 @@ class NovoMapaForm(forms.Form):
         })
     )
 
-    # preenchido pelo landmarker.js
-    coordinates = forms.CharField(required=False, widget=forms.HiddenInput)
+    coordinates = forms.CharField(required=True, widget=forms.HiddenInput)
 
     def __init__(self, *args, mapa=None, **kwargs):
         super().__init__(*args, **kwargs)
