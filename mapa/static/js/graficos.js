@@ -666,18 +666,72 @@ export async function main() {
     };
 }
 
-export function collisionTest(sprite, localPoint) {
-    if (!sprite || !sprite.visible || !sprite.children?.length) return false;
+/////////////////// Collision (pins)
 
-    for (const child of sprite.children) {
-        if (!child.visible) continue;
+// O pin é um container com position, rotation e escala uniforme; os filhos (sprite/texto)
+// são estáticos. Então os retângulos deles são calculados uma vez, em espaço local do pin,
+// e o ponto de consulta é levado para esse espaço com seno/cosseno. Sem toLocal, sem alocação.
+const HIT = Symbol("pinHit");
+let _lastRot = 0, _cos = 1, _sin = 0;
 
-        const p = child.toLocal(localPoint, mapContainer);
-        const bounds = child.getLocalBounds();
+function getHit(gfx) {
+    let hit = gfx[HIT];
+    if (hit) return hit;
 
-        if (bounds.rectangle.contains(p.x, p.y)) {
-            return true;
-        }
+    const rects = [];
+    let reach = 0;
+    let ready = true;
+
+    for (const c of gfx.children) {
+        if (!c.anchor) continue;                              // máscara (Graphics) não é alvo
+        const w = c.width, h = c.height;
+        if (!(w > 0 && h > 0)) { ready = false; continue; }   // textura ainda não carregou
+        const x0 = c.x - c.anchor.x * w;
+        const y0 = c.y - c.anchor.y * h;
+        rects.push(x0, y0, x0 + w, y0 + h);
+        reach = Math.max(
+            reach,
+            Math.hypot(
+                Math.max(Math.abs(x0), Math.abs(x0 + w)),
+                Math.max(Math.abs(y0), Math.abs(y0 + h)),
+            ),
+        );
+    }
+
+    hit = { rects, reach };
+    if (ready) gfx[HIT] = hit;                                // só guarda em cache se estiver completo
+    return hit;
+}
+
+/** Alcance do pin (unidades locais, escala 1) a partir da âncora. */
+export function pinReach(gfx) {
+    return gfx ? getHit(gfx).reach : 0;
+}
+
+/** `p` está no espaço do mapContainer (o mesmo de getNormalizedCoordinates). */
+export function collisionTest(gfx, p) {
+    if (!gfx || gfx.destroyed || !gfx.visible) return false;
+
+    const s = gfx.scale.x;
+    if (!(s > 0)) return false;
+
+    const { rects } = getHit(gfx);
+    if (rects.length === 0) return false;
+
+    const r = gfx.rotation;
+    if (r !== _lastRot) {                                     // todos os pins giram igual: cos/sin em cache
+        _lastRot = r;
+        _cos = Math.cos(r);
+        _sin = Math.sin(r);
+    }
+
+    // inverso de: mundo = pos + R(r) · (s · local)
+    const dx = p.x - gfx.x, dy = p.y - gfx.y;
+    const lx = (_cos * dx + _sin * dy) / s;
+    const ly = (-_sin * dx + _cos * dy) / s;
+
+    for (let i = 0; i < rects.length; i += 4) {
+        if (lx >= rects[i] && lx <= rects[i + 2] && ly >= rects[i + 1] && ly <= rects[i + 3]) return true;
     }
     return false;
 }
@@ -895,7 +949,6 @@ export function animateTransform({ point, screen, zoom: targetZoom, rotation: ta
     transformFrame = requestAnimationFrame(step);
 }
 
-/** Compass button: rotate around the screen center. */
 export function smoothRotation(r) {
     animateTransform({ rotation: r });
 }

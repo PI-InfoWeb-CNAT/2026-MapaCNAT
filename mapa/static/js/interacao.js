@@ -127,12 +127,12 @@ class Detail {
     }
     static detail = null;
     static set(detail) {
+        detail = detail || null;
+        if (detail === this.detail) return;      // nada mudou: não reconstrói polígono
         if (this.detail) {
             this.detail.convertTo("polygon");
         }
-
         this.detail = detail;
-
         if (this.detail) {
             this.detail.convertTo("areas");
         }
@@ -213,7 +213,14 @@ function setCursor(c) {
     }
 }
 
+function normalCoordAt(x, y) {
+    const c = Editor.newCoord(x, y, "screen");
+    c.convertTo("normal");
+    return c;
+}
+
 function pickMainTarget(coord) {
+    coord.convertTo("normal");     // uma conversão só, em vez de uma por consulta
     return (
         Editor.Self.getOverlappingPin(coord) ||
         Editor.Referencer.getOverlappingDotPins(coord) ||
@@ -442,25 +449,18 @@ class Pointer {
                     Actions.newReference(clickX, clickY);
                 }
             } else if (editorMode == EditorModes.DELETION) {
-                let coord = Editor.newCoord(clickX, clickY, "screen");
-                let overlapDots = Editor.Referencer.getOverlappingDots(
-                    coord,
-                    false,
-                );
-                let overlapLines = Editor.Connections.getOverlappingLines(
-                    coord,
-                    false,
-                );
-                let overlapAreas = Editor.Buildings.getOverlappingAreas(
-                    coord,
-                    false,
-                );
-                if (overlapDots) {
-                    Actions.destroyReference(overlapDots);
-                } else if (overlapLines) {
-                    Actions.destroyConnection(overlapLines);
-                } else if (overlapAreas) {
-                    Actions.destroyArea(overlapAreas);
+                const coord = normalCoordAt(clickX, clickY);
+                const dot = Editor.Referencer.getOverlappingDots(coord, false);
+                if (dot) {
+                    Actions.destroyReference(dot);
+                } else {
+                    const line = Editor.Connections.getOverlappingLines(coord, false);
+                    if (line) {
+                        Actions.destroyConnection(line);
+                    } else {
+                        const area = Editor.Buildings.getOverlappingAreas(coord, false);
+                        if (area) Actions.destroyArea(area);
+                    }
                 }
             } else if (editorMode == EditorModes.CONNECTION) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
@@ -621,22 +621,19 @@ class Pointer {
                     }
                 }
             } else if (editorMode == EditorModes.DELETION) {
-                let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-                let overlapDots = Editor.Referencer.getOverlappingDots(coord);
-                let overlapLines =
-                    Editor.Connections.getOverlappingLines(coord);
-                let overlapAreas = Editor.Buildings.getOverlappingAreas(coord);
-                let area = Editor.Buildings.getOverlappingAreas(coord);
-                Detail.set(false);
-                if (area) {
-                    Detail.set(area.building);
-                }
-                if (overlapDots) {
-                    hoverTargetSet.add(overlapDots);
-                } else if (overlapLines) {
-                    hoverTargetSet.add(overlapLines);
-                } else if (overlapAreas) {
-                    hoverTargetSet.add(overlapAreas);
+                const coord = normalCoordAt(e.clientX, e.clientY);
+                const dot = Editor.Referencer.getOverlappingDots(coord);
+                const line = dot ? false : Editor.Connections.getOverlappingLines(coord);
+                const area = Editor.Buildings.getOverlappingAreas(coord);
+
+                Detail.set(area ? area.building : false);
+
+                if (dot) {
+                    hoverTargetSet.add(dot);
+                } else if (line) {
+                    hoverTargetSet.add(line);
+                } else if (area) {
+                    hoverTargetSet.add(area);
                 } else {
                     if (!leftClicking) return;
                     Pointer.defaultMove(e);
@@ -704,14 +701,10 @@ class Pointer {
                         }
                     }
                 } else {
-                    let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-                    let area = Editor.Buildings.getOverlappingAreas(coord);
-                    let border =
-                        Editor.Buildings.getOverlappingAreaBorders(coord);
-                    Detail.set(false);
-                    if (area) {
-                        Detail.set(area.building);
-                    }
+                    const coord = normalCoordAt(e.clientX, e.clientY);
+                    const area = Editor.Buildings.getOverlappingAreas(coord);
+                    const border = Editor.Buildings.getOverlappingAreaBorders(coord);
+                    Detail.set(area ? area.building : false);
                     if (border) {
                         hoverTargetSet.add(border.area.sides[border.side]);
                     }
@@ -1881,24 +1874,57 @@ async function saveMapState(formData) {
     }
 }
 
+let isSaving = false;
+
 export async function save() {
-    Actions.saveBanner();
+    if (isSaving) return;
+    isSaving = true;
 
-    const { payload, files } = Editor.buildPayload();
- 
+    const progress = Toasts.toaster.showProgress({
+        title: "Salvando mapa...",
+        tasks: {
+            savedBanner: false,
+            createdPayload: false,
+            preparedFiles: false,
+            uploaded: false
+        },
+        labels: {
+            savedBanner: "Banner salvo...",
+            createdPayload: "Dados preparados...",
+            preparedFiles: "Arquivos anexados...",
+            uploaded: "Sincronizado com o servidor!"
+        }
+    });
 
-    const formData = new FormData();
-    formData.append("data", JSON.stringify(payload));
+    try {
+        Actions.saveBanner();
+        progress.completeTask("savedBanner");
 
-    if (files && typeof files === "object") {
-        for (const [bannerId, file] of Object.entries(files)) {
-            if (file instanceof File) {
-                formData.append(`file_${bannerId}`, file, file.name);
+        const { payload, files } = Editor.buildPayload();
+        progress.completeTask("createdPayload");
+
+        const formData = new FormData();
+        formData.append("data", JSON.stringify(payload));
+
+        if (files && typeof files === "object") {
+            for (const [bannerId, file] of Object.entries(files)) {
+                if (file instanceof File) {
+                    formData.append(`file_${bannerId}`, file, file.name);
+                }
             }
         }
-    }
+        progress.completeTask("preparedFiles");
 
-    await saveMapState(formData);
+        await saveMapState(formData);
+        progress.completeTask("uploaded");
+
+    } catch (error) {
+        console.error("Erro ao salvar:", error);
+        progress.fail("Não foi possível salvar o mapa.");
+        throw error;
+    } finally {
+        isSaving = false;
+    }
 }
 
 function bannerHeld() {
