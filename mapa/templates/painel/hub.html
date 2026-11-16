@@ -1,0 +1,357 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}MapaCNAT - Administração{% endblock %}
+
+{% block style %}
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" type="text/css" href="{% static 'css/painel.css' %}">
+<link rel="stylesheet" type="text/css" href="{% static 'css/hub_cards.css' %}">
+<link rel="stylesheet" type="text/css" href="{% static 'css/landmarker.css' %}">
+{% endblock %}
+
+{% comment %}
+Contexto esperado:
+    mapas -> queryset de Mapa (ver backend_mapas.py) com: pk, nome, public,
+             tem_svg (bool), coordinates_json (str), configuracao_completa (bool)
+    form  -> NovoMapaForm, com campos nome, svg e coordinates.
+
+URLs usadas: painel_hub (GET lista / POST cria), mapa_editor, mapa_svg_raw,
+             mapa_editar, mapa_apagar, mapa_publicar (todas POST, exceto as 2 primeiras).
+{% endcomment %}
+
+{% block content %}
+<div class="painel-page">
+
+    {% include 'painel/_header.html' with ativo='mapas' %}
+
+    <main class="painel-main">
+
+        <div class="painel-title">
+            <div>
+                <h1>Mapas dos campi</h1>
+                <p>
+                    Escolha um mapa para abrir no editor ou cadastre
+                    o mapa de um novo campus.
+                </p>
+            </div>
+        </div>
+
+        {% if messages %}
+        <div class="painel-alerts">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}" role="status">
+                <i class="fa-solid
+                    {% if message.tags == 'success' %}
+                        fa-circle-check
+                    {% elif message.tags == 'error' %}
+                        fa-circle-exclamation
+                    {% else %}
+                        fa-circle-info
+                    {% endif %}"
+                    aria-hidden="true"></i>
+
+                <span>{{ message }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Filtros -->
+        <form class="mapas-toolbar"
+              method="get"
+              action="{% url 'painel_hub' %}"
+              aria-label="Filtros dos mapas">
+
+            <div class="mapas-search">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+
+                <input type="search"
+                       name="nome"
+                       placeholder="Pesquisar campus..."
+                       aria-label="Pesquisar mapa pelo nome"
+                       value="{{ request.GET.nome|default:'' }}"
+                       autocomplete="off">
+            </div>
+
+            <div class="mapas-filter">
+                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+
+                <select name="estado"
+                        aria-label="Filtrar por estado"
+                        onchange="this.form.submit()">
+                    <option value="todos"
+                        {% if request.GET.estado == 'todos' or not request.GET.estado %}selected{% endif %}>
+                        Todos os mapas
+                    </option>
+                    <option value="publico"
+                        {% if request.GET.estado == 'publico' %}selected{% endif %}>
+                        Públicos
+                    </option>
+                    <option value="privado"
+                        {% if request.GET.estado == 'privado' %}selected{% endif %}>
+                        Privados
+                    </option>
+                    <option value="manutencao"
+                        {% if request.GET.estado == 'manutencao' %}selected{% endif %}>
+                        Em manutenção
+                    </option>
+                </select>
+            </div>
+
+            <button type="submit" class="modal-button">Buscar</button>
+        </form>
+
+        <!-- Cards (as URLs com /0/ são modelos: o JS troca o 0 pelo id) -->
+        <section class="painel-grid" id="mapas-grid"
+                 aria-label="Mapas cadastrados"
+                 data-url-criar="{% url 'painel_hub' %}"
+                 data-url-editar="{% url 'mapa_editar' 0 %}"
+                 data-url-apagar="{% url 'mapa_apagar' 0 %}">
+
+            <button type="button"
+                    class="mapa-card mapa-card-novo"
+                    id="btn-novo-mapa">
+                <span class="mais">
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                </span>
+                <span>Novo mapa</span>
+            </button>
+
+            {% for mapa in mapas %}
+            <article class="mapa-card mapa-card-existente"
+                     data-pk="{{ mapa.pk }}"
+                     data-nome="{{ mapa.nome }}"
+                     data-svg-url="{% if mapa.tem_svg %}{% url 'mapa_svg_raw' mapa.pk %}{% endif %}"
+                     data-landmarks="{{ mapa.coordinates_json }}">
+
+                <a class="mapa-preview-link"
+                   href="{% url 'mapa_editor' mapa.pk %}"
+                   aria-label="Abrir o mapa {{ mapa.nome }} no editor">
+                    <div class="mapa-preview">
+                        {% if mapa.tem_svg %}
+                        <img src="{% url 'mapa_svg_raw' mapa.pk %}"
+                             alt="Mapa {{ mapa.nome }}"
+                             loading="lazy">
+                        {% else %}
+                        <div class="mapa-preview-empty">
+                            <i class="fa-regular fa-image" aria-hidden="true"></i>
+                            <span>Sem prévia disponível</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </a>
+
+                <div class="mapa-corpo">
+                    <h2>{{ mapa.nome }}</h2>
+
+                    <div class="mapa-tags">
+                        <p class="mapa-status is-{{ mapa.public }}">
+                            {% if mapa.public == 'publico' %}
+                            <i class="fa-solid fa-earth-americas" aria-hidden="true"></i> Público
+                            {% elif mapa.public == 'manutencao' %}
+                            <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Em manutenção
+                            {% else %}
+                            <i class="fa-solid fa-lock" aria-hidden="true"></i> Privado
+                            {% endif %}
+                        </p>
+
+                        {% if not mapa.configuracao_completa %}
+                        <p class="mapa-aviso">
+                            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                            <span>Configuração incompleta</span>
+                        </p>
+                        {% endif %}
+                    </div>
+
+                    {% if mapa.atualizado_em %}
+                    <small>Atualizado em {{ mapa.atualizado_em|date:"d/m/Y" }}</small>
+                    {% endif %}
+                </div>
+
+                <div class="mapa-acoes">
+                    <form method="post" action="{% url 'mapa_publicar' mapa.pk %}" class="mapa-estado-form">
+                        {% csrf_token %}
+                        <label class="mapa-estado-label" for="estado-{{ mapa.pk }}">Visibilidade</label>
+                        <select name="estado"
+                                id="estado-{{ mapa.pk }}"
+                                class="mapa-estado-select"
+                                onchange="this.form.submit()">
+                            <option value="privado" {% if mapa.public == 'privado' %}selected{% endif %}>
+                                Privado
+                            </option>
+                            <option value="manutencao" {% if mapa.public == 'manutencao' %}selected{% endif %}>
+                                Em manutenção
+                            </option>
+                            <option value="publico"
+                                    {% if mapa.public == 'publico' %}selected{% endif %}
+                                    {% if not mapa.configuracao_completa %}
+                                    disabled
+                                    {% endif %}>
+                                Público{% if not mapa.configuracao_completa %} (configuração incompleta){% endif %}
+                            </option>
+                        </select>
+                        <noscript><button type="submit" class="modal-button">Salvar</button></noscript>
+                    </form>
+
+                    <button type="button"
+                            class="modal-button mapa-btn-editar"
+                            data-editar-mapa
+                            aria-label="Editar o mapa {{ mapa.nome }}">
+                        <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                        <span>Editar</span>
+                    </button>
+
+                    <button type="button"
+                            class="modal-button mapa-btn-apagar"
+                            data-apagar-mapa
+                            aria-label="Apagar o mapa {{ mapa.nome }}">
+                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                        <span>Apagar</span>
+                    </button>
+                </div>
+
+            </article>
+            {% endfor %}
+
+        </section>
+
+        {% if not mapas %}
+        <p class="painel-vazio">
+            Nenhum mapa encontrado. Ajuste a pesquisa ou adicione um novo mapa.
+        </p>
+        {% endif %}
+
+    </main>
+
+    <!-- ===================================================================
+         Modal reaproveitado: criar e editar (o JS ajusta título, action e valores)
+         =================================================================== -->
+    <template id="template-mapa-form"
+              {% if form.errors %}data-open-on-load="true"{% endif %}>
+
+        <div class="novo-mapa-content">
+
+            <form method="post"
+                  enctype="multipart/form-data"
+                  action="{% url 'painel_hub' %}"
+                  class="modal-form">
+
+                {% csrf_token %}
+
+                <div class="form-group">
+                    <label for="{{ form.nome.id_for_label }}">{{ form.nome.label }}</label>
+                    {{ form.nome }}
+                    <p class="painel-erro" aria-live="polite">{{ form.nome.errors|first }}</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.svg.id_for_label }}">{{ form.svg.label }}</label>
+                    {{ form.svg }}
+                    <p class="painel-hint" data-svg-hint>
+                        Use um SVG com <code>width</code>/<code>height</code>
+                        ou <code>viewBox</code> definidos. Máximo de 20 MB.
+                    </p>
+                    <p class="painel-erro" data-svg-erro aria-live="polite">{{ form.svg.errors|first }}</p>
+                </div>
+
+                <!-- Landmarker: 3 pontos no mapa geográfico e no SVG -->
+                <div class="form-group landmarker" data-landmarker>
+                    <span class="lm-label">Pontos de referência</span>
+                    <p class="painel-hint">
+                        Escolha um ponto, clique no mesmo lugar no SVG e no mapa geográfico.
+                        Repita para os 3 pontos, bem afastados entre si (ex.: três esquinas
+                        do campus). Com eles calculamos a posição de qualquer coisa do SVG no mundo real.
+                    </p>
+
+                    <input type="hidden" name="coordinates" data-lm-input
+                           value="{{ form.coordinates.value|default_if_none:'' }}">
+
+                    <ol class="lm-slots" data-lm-slots aria-label="Pontos de referência"></ol>
+
+                    <div class="lm-panes">
+                        <section class="lm-pane" aria-label="Mapa geográfico">
+                            <header class="lm-pane-head">
+                                <span><i class="fa-solid fa-earth-americas" aria-hidden="true"></i> Mapa geográfico</span>
+                            </header>
+                            <div class="lm-geo" data-lm-geo></div>
+                        </section>
+
+                        <section class="lm-pane" aria-label="Pré-visualização do SVG">
+                            <header class="lm-pane-head">
+                                <span><i class="fa-regular fa-image" aria-hidden="true"></i> SVG do mapa</span>
+                                <span class="lm-zoom">
+                                    <button type="button" class="icon-btn" data-lm-zoom="-" aria-label="Diminuir zoom">
+                                        <i class="fa-solid fa-minus" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn" data-lm-zoom="+" aria-label="Aumentar zoom">
+                                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn" data-lm-zoom="ajustar" aria-label="Ajustar à área">
+                                        <i class="fa-solid fa-expand" aria-hidden="true"></i>
+                                    </button>
+                                </span>
+                            </header>
+                            <div class="lm-svg" data-lm-svg tabindex="0"
+                                 aria-label="Área do SVG: clique para marcar o ponto selecionado">
+                                <div class="lm-stage" data-lm-stage>
+                                    <img alt="" draggable="false" data-lm-img>
+                                </div>
+                                <p class="lm-vazio" data-lm-vazio>Selecione um arquivo SVG acima para marcar os pontos.</p>
+                            </div>
+                        </section>
+                    </div>
+
+                    <p class="lm-status" data-lm-status aria-live="polite"></p>
+                    <p class="painel-erro" data-lm-erro aria-live="polite">{{ form.coordinates.errors|first }}</p>
+
+                    <div class="lm-acoes">
+                        <button type="button" class="modal-button" data-lm-limpar>Limpar ponto selecionado</button>
+                        <button type="button" class="modal-button" data-lm-limpar-todos>Limpar todos</button>
+                    </div>
+                </div>
+
+                <div class="painel-actions">
+                    <button type="button" class="modal-button" data-modal-cancelar>Cancelar</button>
+
+                    <button type="submit" class="modal-submit-btn">
+                        <i class="fa-solid fa-check" aria-hidden="true"></i>
+                        <span data-submit-label>Criar mapa</span>
+                    </button>
+                </div>
+
+            </form>
+
+        </div>
+
+    </template>
+
+    <!-- Modal de confirmação para apagar -->
+    <template id="template-apagar-mapa">
+        <div class="novo-mapa-content">
+            <form method="post" action="" class="modal-form">
+                {% csrf_token %}
+
+                <p class="painel-confirmar">
+                    Apagar o mapa <strong data-apagar-nome></strong>?
+                    O SVG e os pontos de referência serão removidos e essa ação não pode ser desfeita.
+                </p>
+
+                <div class="painel-actions">
+                    <button type="button" class="modal-button" data-modal-cancelar>Cancelar</button>
+
+                    <button type="submit" class="modal-submit-btn painel-danger">
+                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                        <span>Apagar mapa</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </template>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" defer></script>
+    <script src="{% static 'js/landmarker.js' %}" defer></script>
+    <script src="{% static 'js/painel.js' %}" defer></script>
+
+</div>
+{% endblock %}

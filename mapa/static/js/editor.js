@@ -1,5 +1,6 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
+import { SpatialHash } from "./spatialHash.js";
 
 let page;
 
@@ -11,6 +12,63 @@ const MIME_MAP = {
     'text/plain': 'txt',
     'application/json': 'json',
 };
+
+export const SNAP_RADIUS_PX = 40;
+
+function closestPointOnSegment(px, py, x1, y1, x2, y2) {
+    const cx = x2 - x1, cy = y2 - y1;
+    const lenSq = cx * cx + cy * cy;
+    let t = lenSq === 0 ? 0 : ((px - x1) * cx + (py - y1) * cy) / lenSq;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const x = x1 + t * cx, y = y1 + t * cy;
+    return { x, y, d: (px - x) ** 2 + (py - y) ** 2 };
+}
+
+const MAX_DOT_SIZE = 16;       // maior `size` de uma Reference no editor (10 + 5 do hover) + folga
+const MAX_LINE_HALF = 8;       // maior (size + 6) / 2 de uma Connection (size chega a 9)
+const BORDER_GRAB = 15;        // espessura de captura das bordas de Area (unidades do mundo)
+const PIN_REACH_MARGIN = 1.25; // o hover escala o pin até 1.2x
+
+// buffers de consulta reutilizados: nada de alocar array a cada pointermove
+const _dotBuf = [], _pinBuf = [], _lineBuf = [], _areaBuf = [], _clusterBuf = [], _nearBuf = [];
+const EMPTY = Object.freeze([]);
+
+const byZDesc = (a, b) => b.z - a.z;
+const byIdDesc = (a, b) => b.id - a.id;
+
+// as Areas sempre guardam start/end em "normal"
+function areaBounds(area) {
+    const s = area.start.pos, e = area.end.pos;
+    return {
+        minX: Math.min(s.x, e.x), maxX: Math.max(s.x, e.x),
+        minY: Math.min(s.y, e.y), maxY: Math.max(s.y, e.y),
+    };
+}
+
+function containsPoint(area, x, y, pad = 0) {
+    const s = area.start.pos, e = area.end.pos;
+    return x >= Math.min(s.x, e.x) - pad && x <= Math.max(s.x, e.x) + pad &&
+           y >= Math.min(s.y, e.y) - pad && y <= Math.max(s.y, e.y) + pad;
+}
+
+function overlapsBounds(area, b, tol) {
+    const s = area.start.pos, e = area.end.pos;
+    return Math.max(s.x, e.x) >= b.minX - tol && Math.min(s.x, e.x) <= b.maxX + tol &&
+           Math.max(s.y, e.y) >= b.minY - tol && Math.min(s.y, e.y) <= b.maxY + tol;
+}
+
+function distSqToSegment(px, py, x1, y1, x2, y2) {
+    const cx = x2 - x1, cy = y2 - y1;
+    const lenSq = cx * cx + cy * cy;
+    let t = lenSq === 0 ? 0 : ((px - x1) * cx + (py - y1) * cy) / lenSq;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const dx = px - (x1 + t * cx), dy = py - (y1 + t * cy);
+    return dx * dx + dy * dy;
+}
+
+function pairKey(a, b) {
+    return a.uid < b.uid ? `${a.uid}:${b.uid}` : `${b.uid}:${a.uid}`;
+}
 
 function generateRandomFileName(mimeType) {
     const extension = MIME_MAP[mimeType] || mimeType.split('/')[1] || 'bin';
@@ -81,6 +139,7 @@ export function buildPayload() {
             image: hasFile ? banner.image.name : null,
             title: banner.title,
             description: banner.description,
+            alias: banner.titleAlias,
         };
         if (hasFile) files[id] = banner.image;
 
@@ -189,15 +248,31 @@ export async function queryBanner(query) {
 
       if (!banner?.title) return acc;
 
-      const score = getFieldScore(banner.title, trimmedQuery);
+      // Collect all searchable fields.
+      const searchFields = [
+        banner.title,
+        ...(Array.isArray(banner.titleAlias)
+          ? banner.titleAlias
+          : banner.titleAlias
+            ? [banner.titleAlias]
+            : []),
+        element?.name,
+        element?.building?.name
+      ].filter(value => typeof value === "string" && value.trim());
+
+      // Get the highest score across all fields.
+      const score = Math.max(
+        0,
+        ...searchFields.map(field => getFieldScore(field, trimmedQuery))
+      );
 
       if (score > 0) {
         acc.push({
           title: banner.title,
-          image: banner.image,//.name ? "/media/banners/" + banner.image.name : "/static/img/ifrn-logo.png",
+          image: banner.image,
           description: banner.description,
           ref: element,
-          score: score
+          score
         });
       }
 
@@ -214,7 +289,6 @@ export async function load() {
         const data = await response.json();
         let refMap = {};
         let areaMap = {};
-        
         
         if (data.buildings) {
             for (const key of Object.keys(data.buildings)) {
@@ -233,6 +307,9 @@ export async function load() {
                     if (banner.description) {
                         building.banner.description = banner.description;
                         building.banner.detailed = true;
+                    }
+                    if (banner.alias) {
+                        building.banner.titleAlias = banner.alias;
                     }
                     if (banner.image) {
                         const imageFile = banner.image 
@@ -275,6 +352,9 @@ export async function load() {
                 if (banner.description) {
                     refObject.banner.description = banner.description;
                     refObject.banner.detailed = true;
+                }
+                if (banner.alias) {
+                    refObject.banner.titleAlias = banner.alias;
                 }
                 if (banner.image) {
                     const imageFile = banner.image 
@@ -328,6 +408,11 @@ export class Coordinate {
         }
 
         return pos;
+    }
+
+    // posição em "normal" sem alocar quando já está nesse espaço. SOMENTE LEITURA.
+    peekNormal() {
+        return this.space === "normal" ? this.pos : this.getIn("normal");
     }
 }
 
@@ -420,12 +505,10 @@ export class PhantomArea {
         this.end = end;
         this.end.convertTo("normal");
         this.updateGraphics();
-        
-        let areaPhantom = { ...Buildings.areas };
-        areaPhantom[-1] = this;
 
+        // a própria área fantasma entra como `extra`: não copia mais Buildings.areas a cada movimento
         for(const ref of Object.values(Referencer.references)) {
-            let validCoord = Referencer.getValidDot(ref.coordinate, areaPhantom);
+            let validCoord = Referencer.getValidDot(ref.coordinate, this);
 
             if (!validCoord.isInside) {
                 if (this.phantomDots[ref.id]) {
@@ -538,23 +621,7 @@ export class TouchPin {
     }
 
     static getOverlappingPin(coordinate) {
-        let pos = coordinate.getIn("normal");
-
-        let textSize = this.graphics;
-
-        if (!this.graphics) {
-            return false;
-        }
-        const minX = textSize.x - textSize.children[0].width * textSize.scale.x / 2;
-        const maxX = textSize.x - textSize.children[0].width * textSize.scale.x / 2 + textSize.width;
-        const minY = textSize.y - textSize.children[0].height * textSize.scale.y;
-        const maxY = textSize.y;
-
-
-        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
-            return this;
-        }
-
+        if (Graficos.collisionTest(this.graphics, coordinate.peekNormal())) return this;
         return false;
     }
     
@@ -600,6 +667,7 @@ export class Self {
     static selfPin = true;
     static location = "";
     static onSince = null;
+    // static active = false;
 
     static buildData() {
         return {
@@ -627,30 +695,17 @@ export class Self {
         this.updateGraphics();
     }
 
+    static rawCoordinate = null;
+
     static setPos(coordinate) {
-        this.coordinate = coordinate;
-        this.coordinate.convertTo("normal");
+        coordinate.convertTo("normal");
+        this.rawCoordinate = coordinate;                       // posição real do GPS
+        this.coordinate = page === "main" ? Connections.snap(coordinate) : coordinate;
         this.updateGraphics();
     }
 
     static getOverlappingPin(coordinate) {
-        let pos = coordinate.getIn("normal");
-
-        let textSize = this.graphics;
-
-        if (!this.graphics) {
-            return false;
-        }
-        const minX = textSize.x - textSize.children[0].width * textSize.scale.x / 2;
-        const maxX = textSize.x - textSize.children[0].width * textSize.scale.x / 2 + textSize.width;
-        const minY = textSize.y - textSize.children[0].height * textSize.scale.y;
-        const maxY = textSize.y;
-
-
-        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
-            return this;
-        }
-
+        if (Graficos.collisionTest(this.graphics, coordinate.peekNormal())) return this;
         return false;
     }
     
@@ -686,31 +741,37 @@ export class Connections {
         throw new Error("Classe estática. Não instancie.");
     }
 
-    static toJson() {
-        let pairs = [];
-        for(const rawKey of Object.keys(this.pairs)) {
-            const values = rawKey.split(",");
-            let start = parseInt(values[0]);
-            let end = parseInt(values[1]);
-            pairs.push([start, end]);
-        }
-        return pairs;
-    }
-    
-    static connections = {};
+    static uidTracker = 0;
+    static connections = {};              // uid -> Connection (só as ativas)
+    static pairs = new Map();             // "uidA:uidB" -> Connection (sem direção)
+    static hash = new SpatialHash(256);   // caixa do segmento
 
+    // `tracked` + chave por uid: a identidade não depende do `id` da referência,
+    // que é zerado em Referencer.untrack antes de as conexões serem desregistradas.
     static track(connection) {
-        let key = this.createKey(connection);
-
-        if (this.connections[key]) {
-            return;
-        }
-        this.connections[key] = connection;
+        if (connection.tracked) return;
+        connection.tracked = true;
+        this.connections[connection.uid] = connection;
+        this.pairs.set(pairKey(connection.start, connection.end), connection);
+        this.reindex(connection);
     }
 
     static untrack(connection) {
-        let key = this.createKey(connection);
-        delete this.connections[key];
+        if (!connection.tracked) return;
+        connection.tracked = false;
+        delete this.connections[connection.uid];
+
+        const k = pairKey(connection.start, connection.end);
+        if (this.pairs.get(k) === connection) this.pairs.delete(k);
+        this.hash.delete(connection);
+    }
+
+    /** Chamar quando uma ponta se mexe. */
+    static reindex(connection) {
+        if (!connection.tracked) return;
+        const a = connection.start.coordinate.pos;
+        const b = connection.end.coordinate.pos;
+        this.hash.set(connection, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y));
     }
 
     static setRelated(connection, state) {
@@ -726,118 +787,44 @@ export class Connections {
         }
     }
 
-    static createKey(connection) {
-        return `${connection.start.id},${connection.end.id}`;
+    static hasPair(a, b) {
+        return this.pairs.get(pairKey(a, b)) || false;
     }
 
-    static hasPair(a, b) {
-        const keyAB = `${a.id},${b.id}`;
-        const keyBA = `${b.id},${a.id}`;
+    static snap(coordinate, radiusPx = SNAP_RADIUS_PX) {
+        const pos = coordinate.peekNormal();
+        const R = radiusPx / Graficos.zoom;          // 10px de tela = R unidades do mundo
+        const cand = this.hash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _lineBuf);
 
-        if (this.connections[keyAB]) {
-            return this.connections[keyAB];
+        let best = null, bestD = R * R;
+        for (let i = 0; i < cand.length; i++) {
+            const a = cand[i].start.coordinate.pos, b = cand[i].end.coordinate.pos;
+            const p = closestPointOnSegment(pos.x, pos.y, a.x, a.y, b.x, b.y);
+            if (p.d <= bestD) { best = p; bestD = p.d; }
         }
-        if (this.connections[keyBA]) {
-            return this.connections[keyBA];
-        }
-
-        return false;
+        return best ? newCoord(best.x, best.y, "normal") : coordinate;
     }
 
     static getOverlappingLines(coordinate, all) {
-        let pos = coordinate.getIn("normal");
-        let allList = [];
+        const pos = coordinate.peekNormal();
+        const zoom = Graficos.zoom;
+        const R = MAX_LINE_HALF / zoom;
+        const cand = this.hash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _lineBuf);
 
-        for(const key of Object.keys(this.connections)) {
-            let connection = this.connections[key];
-            
-            const px = pos.x;
-            const py = pos.y;
-            const x1 = connection.start.coordinate.pos.x;
-            const y1 = connection.start.coordinate.pos.y;
-            const x2 = connection.end.coordinate.pos.x;
-            const y2 = connection.end.coordinate.pos.y;
+        let best = null, bestD = Infinity, hits = null;
+        for (let i = 0; i < cand.length; i++) {
+            const c = cand[i];
+            const a = c.start.coordinate.pos, b = c.end.coordinate.pos;
+            const half = (c.size + 6) / 2 / zoom;          // largura desenhada = (size + 6) / zoom
+            const d = distSqToSegment(pos.x, pos.y, a.x, a.y, b.x, b.y);
+            if (d > half * half) continue;
 
-            const A = px - x1;
-            const B = py - y1;
-            const C = x2 - x1;
-            const D = y2 - y1;
-            
-            const dot = A * C + B * D;
-            const lenSq = C * C + D * D;
-            
-            let param = -1;
-            if (lenSq !== 0) {
-                param = dot / lenSq;
-            }
-            
-            let closestX, closestY;
-            
-            if (param < 0) {
-                closestX = x1;
-                closestY = y1;
-            } else if (param > 1) {
-                closestX = x2;
-                closestY = y2;
-            } else {
-                closestX = x1 + param * C;
-                closestY = y1 + param * D;
-            }
-            
-            const dx = px - closestX;
-            const dy = py - closestY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            let Radius = connection.size / 2;
-            if (distance <= Radius) {
-                if (!all) {
-                    return connection;
-                }
-                allList.push(connection);
-            }
+            if (all) (hits ??= []).push({ c, d });
+            else if (d < bestD) { best = c; bestD = d; }
         }
-        if (allList.length === 0) {
-            return false;
-        }
-        return allList;
-    }
 
-    static getCollision(x, y) {
-        let mapPos = Graficos.getNormalizedCoordinates(x, y);
-
-        for (const [key, value] of Object.entries(this.pairs)) {
-            let ids = key.split(",");
-            let a = Referencer.references[ids[0]];
-            let b = Referencer.references[ids[1]];
-            let aTob = {
-                x: b.pos.x - a.pos.x,
-                y: b.pos.y - a.pos.y,
-            }
-            let aToPoint = {
-                x: mapPos.x - a.pos.x,
-                y: mapPos.y - a.pos.y,
-            }
-            let dot = aTob.x * aToPoint.x + aTob.y * aToPoint.y;
-            let mag = Math.sqrt(aTob.x * aTob.x + aTob.y * aTob.y);
-            let normal = {
-                x: aTob.x / mag / mag,
-                y: aTob.y / mag / mag
-            }
-            let projection = {
-                x: a.pos.x + normal.x * dot,
-                y: a.pos.y + normal.y * dot
-            }
-            let mapToPoint = {
-                x: mapPos.x - projection.x,
-                y: mapPos.y - projection.y,
-            }
-
-            let finalDist = Math.sqrt(mapToPoint.x * mapToPoint.x + mapToPoint.y * mapToPoint.y);
-            if (finalDist < 7.5 && dot / mag / mag > 0 && dot / mag / mag < 1) {
-                return value;
-            }
-        }
-        return false;
+        if (all) return hits ? hits.sort((p, q) => p.d - q.d).map(h => h.c) : false;
+        return best || false;
     }
 }
 
@@ -847,11 +834,14 @@ export class Referencer {
     }
     
     static idTracker = 0;
+    static uidTracker = 0;      // identidade permanente (o `id` muda quando a referência é reabilitada)
+    static zCounter = 0;        // ordem de empilhamento: maior = mais por cima
     static references = {};
-    static hashMap = {};
-    static hashSize = 100;
-    static radius = 15;
+    static dotHash = new SpatialHash(128);   // todas as referências rastreadas (ponto)
+    static pinHash = new SpatialHash(256);   // só as que têm pin (página main)
+    static maxPinReach = 0;
     static motionReport = {};
+    static reporting = false;
 
     static beginReport() {
         this.reporting = true;
@@ -863,7 +853,7 @@ export class Referencer {
     }
 
     static track(reference) {
-        if (!(reference.id === -1)) {
+        if (reference.id !== -1) {
             return;
         }
         reference.id = this.idTracker;
@@ -871,11 +861,14 @@ export class Referencer {
         this.idTracker += 1;
         
         for(const connection of reference.connections) {
-            Connections.track(connection);
+            if (connection.enabled) Connections.track(connection);   // não ressuscita conexão apagada
         }
     }
 
     static untrack(reference) {
+        if (reference.id === -1) {
+            return;
+        }
         delete this.references[reference.id];
         reference.id = -1;
 
@@ -884,26 +877,15 @@ export class Referencer {
         }
     }
 
-    static getHashKey(pos, map=true) {
-        if (map) {
-            pos = this.getHashCoord(pos);
+    // ---- rastreio de posição ----
+
+    /** Indexa a referência (ou reindexa, se já estiver indexada). */
+    static addPositionTrack(reference) {
+        if (!reference.positionTracked) {
+            reference.positionTracked = true;
+            reference.z = ++this.zCounter;
         }
-
-        let key = `${pos.x},${pos.y}`;
-
-        return key;
-    }
-
-    static getHashCoord(pos) {
-        let x = pos.x;
-        let y = pos.y;
-
-        const newPos = {
-            x: Math.floor(x / this.hashSize),
-            y: Math.floor(y / this.hashSize)
-        };
-
-        return newPos;
+        this.syncPosition(reference);
     }
 
     static removePositionTrack(reference) {
@@ -911,150 +893,110 @@ export class Referencer {
             return;
         }
         reference.positionTracked = false;
-
-        let key = this.getHashKey(reference.coordinate.pos);
-
-        this.hashMap[key] = removeObj(this.hashMap[key], reference);
+        this.dotHash.delete(reference);
+        this.pinHash.delete(reference);
     }
-    static addPositionTrack(reference) {
-        if (reference.positionTracked) {
-            return;
-        }
-        reference.positionTracked = true;
-        let key = this.getHashKey(reference.coordinate.pos);
-        
-        if (!(key in this.hashMap)) {
-            this.hashMap[key] = [];
-        }
-        this.hashMap[key].push(reference);
+
+    /** Reflete a posição atual nos hashes. coordinate.pos está sempre em "normal". */
+    static syncPosition(reference) {
+        if (!reference.positionTracked) return;
+        const p = reference.coordinate.pos;
+        this.dotHash.set(reference, p.x, p.y);
+        if (reference.name) this.pinHash.set(reference, p.x, p.y);
+        else this.pinHash.delete(reference);
     }
-    
+
+    /** Traz para o topo da ordem de picking (equivale ao bringToFront gráfico). */
+    static raise(reference) {
+        if (reference.positionTracked) reference.z = ++this.zCounter;
+    }
+
+    /** Chamado quando a referência ganha pin (setName). */
+    static notePin(reference) {
+        this.maxPinReach = Math.max(this.maxPinReach, Graficos.pinReach(reference.graphics));
+        this.syncPosition(reference);
+    }
+
+    // ---- consultas ----
+
     static getOverlappingDotPins(coordinate, all) {
-        let pos = coordinate.getIn("normal");
-        let allList = [];
+        const pos = coordinate.peekNormal();
+        const R = (this.maxPinReach * PIN_REACH_MARGIN) / Graficos.zoom;
+        const cand = this.pinHash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _pinBuf);
 
-        const references = Object.values(this.references).toReversed();
-
-        for (const reference of references) {
-            let textSize = reference.graphics;
-
-            if(!reference.name) {
-                continue;
-            }
-
-            const minX = textSize.x - textSize.children[1].width * textSize.scale.x / 2;
-            const maxX = textSize.x - textSize.children[1].width * textSize.scale.x / 2 + textSize.width;
-            const minY = textSize.y - textSize.children[1].height * textSize.scale.y;
-            const maxY = textSize.y;
-
-
-            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
-                if (!all) {
-                    return reference;
-                }
-                allList.push(reference);
-            }
+        let best = null, hits = null;
+        for (let i = 0; i < cand.length; i++) {
+            const ref = cand[i];
+            if (!Graficos.collisionTest(ref.graphics, pos)) continue;
+            if (all) (hits ??= []).push(ref);
+            else if (!best || ref.z > best.z) best = ref;
         }
 
-        if (allList.length === 0) {
-            return false;
-        }
-        return allList;
+        if (all) return hits ? hits.sort(byZDesc) : false;
+        return best || false;
     }
 
     static getOverlappingDots(coordinate, all) {
-        let pos = coordinate.getIn("normal");
-        let hashPos = this.getHashCoord(pos);
+        const pos = coordinate.peekNormal();
+        const zoom = Graficos.zoom;
+        const R = MAX_DOT_SIZE / zoom;
+        const cand = this.dotHash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _dotBuf);
 
-        let allList = [];
-
-        for (let i = 0; i < 9; i ++) {
-            let offset = {
-                x: (i % 3) - 1,
-                y: Math.floor(i / 3) - 1
-            }
-
-            const key = this.getHashKey({x: hashPos.x + offset.x, y: hashPos.y + offset.y}, false);
-            
-            if (key in this.hashMap) {
-                for (const reference of this.hashMap[key].toReversed()) {
-                    const distance = Math.sqrt(Math.pow(reference.coordinate.pos.x - pos.x, 2) + Math.pow(reference.coordinate.pos.y - pos.y, 2));
-                    if (distance < reference.size / Graficos.zoom) {
-                        if (!all) {
-                            return reference;
-                        }
-                        allList.push(reference);
-                    }
-                }
-            }
+        let best = null, hits = null;
+        for (let i = 0; i < cand.length; i++) {
+            const ref = cand[i];
+            const dx = ref.coordinate.pos.x - pos.x;
+            const dy = ref.coordinate.pos.y - pos.y;
+            const r = ref.size / zoom;
+            if (dx * dx + dy * dy >= r * r) continue;      // distância ao quadrado: sem sqrt/pow
+            if (all) (hits ??= []).push(ref);
+            else if (!best || ref.z > best.z) best = ref;
         }
 
-        if (allList.length == 0) {
-            return false;
-        }
-        return allList;
+        if (all) return hits ? hits.sort(byZDesc) : false;
+        return best || false;
     }
 
-    static getValidDot(coordinate, areas = null, tol = 1e-9) {
-        let x, y, space = "normal";
-
-        if (typeof coordinate === "object" && coordinate !== null) {
-            if (typeof coordinate.getIn === "function") {
-                const pos = coordinate.getIn("normal");
-                x = pos.x;
-                y = pos.y;
-            } else if (coordinate.pos) {
-                x = coordinate.pos.x;
-                y = coordinate.pos.y;
-                space = coordinate.space || "normal";
-            } else {
-                x = coordinate.x;
-                y = coordinate.y;
-            }
+    /**
+     * Se o ponto está dentro da união das áreas, devolve o ponto mais próximo da borda da união.
+     * `extraArea` é uma área que ainda não está rastreada (a PhantomArea).
+     */
+    static getValidDot(coordinate, extraArea = null, tol = 1e-9) {
+        let x, y;
+        if (typeof coordinate.getIn === "function") {
+            const p = coordinate.peekNormal();
+            x = p.x;
+            y = p.y;
+        } else {
+            x = coordinate.x;
+            y = coordinate.y;
         }
 
-        const areaSource = areas !== null ? areas : (Buildings.areas || {});
-        const areaList = Array.isArray(areaSource) ? areaSource : Object.values(areaSource);
+        // só o aglomerado de áreas que se tocam e contém o ponto: as outras não mudam o resultado
+        const boxes = Buildings.collectCluster(x, y, extraArea, tol);
+        if (boxes.length === 0) {
+            return { isInside: false, coord: newCoord(x, y, "normal") };
+        }
 
-        const areaListNormal = areaList.map(area => ({box: area, start: area.start.getIn("normal"), end: area.end.getIn("normal")}));
-
-        const boxes = areaListNormal.map(area => ({
-            minX: Math.min(area.start.x, area.end.x),
-            maxX: Math.max(area.start.x, area.end.x),
-            minY: Math.min(area.start.y, area.end.y),
-            maxY: Math.max(area.start.y, area.end.y),
-            box: area.box
-        }));
-        
-        // closed set: the border counts as inside
-        const inClosed = (px, py) => boxes.some(b =>
-            px >= b.minX - tol && px <= b.maxX + tol &&
-            py >= b.minY - tol && py <= b.maxY + tol);
-
-        // open interior: strictly inside a box, so NOT on the union's boundary
+        // a borda conta como dentro (conjunto fechado)
         const inOpen = (px, py) => boxes.some(b =>
             px > b.minX + tol && px < b.maxX - tol &&
             py > b.minY + tol && py < b.maxY - tol);
-
-        if (!inClosed(x, y)) {
-            return { isInside: false, coord: newCoord(x, y, space) };
-        }
 
         const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
         const allXs = boxes.flatMap(b => [b.minX, b.maxX]);
         const allYs = boxes.flatMap(b => [b.minY, b.maxY]);
 
         const candidates = [];
-
         for (const b of boxes) {
-            // horizontal edges (y fixed), x ranges over [minX, maxX]
+            // arestas horizontais (y fixo), x varia em [minX, maxX]
             const xs = [clamp(x, b.minX, b.maxX), b.minX, b.maxX,
                         ...allXs.map(v => clamp(v, b.minX, b.maxX))];
             for (const edgeY of [b.minY, b.maxY]) {
                 for (const cx of xs) candidates.push({ x: cx, y: edgeY, box: b.box });
             }
 
-            // vertical edges (x fixed), y ranges over [minY, maxY]
+            // arestas verticais (x fixo), y varia em [minY, maxY]
             const ys = [clamp(y, b.minY, b.maxY), b.minY, b.maxY,
                         ...allYs.map(v => clamp(v, b.minY, b.maxY))];
             for (const edgeX of [b.minX, b.maxX]) {
@@ -1065,7 +1007,7 @@ export class Referencer {
         let best = null;
         let minDistSq = Infinity;
         for (const c of candidates) {
-            if (inOpen(c.x, c.y)) continue;          // buried inside the union
+            if (inOpen(c.x, c.y)) continue;          // enterrado dentro da união
             const d = (c.x - x) ** 2 + (c.y - y) ** 2;
             if (d < minDistSq) {
                 minDistSq = d;
@@ -1073,8 +1015,8 @@ export class Referencer {
             }
         }
 
-        const finalPoint = best || { x, y };
-        return { isInside: best.box, coord: newCoord(finalPoint.x, finalPoint.y, space) };
+        const p = best || { x, y };
+        return { isInside: best ? best.box : boxes[0].box, coord: newCoord(p.x, p.y, "normal") };
     }
 }
 
@@ -1086,23 +1028,36 @@ export class Buildings {
     static idTracker = 0;
     static buildings = {};
     static areas = {};
+    static areaHash = new SpatialHash(256);   // caixa da área + folga de captura
+    static pinHash = new SpatialHash(256);    // pins das construções
+    static maxPinReach = 0;
     
     static trackArea(area) {
-        if (!(area.id === -1)) {
+        if (area.id !== -1) {
             return;
         }
         area.id = this.idTracker;
         this.areas[this.idTracker] = area;
         this.idTracker += 1;
+        this.indexArea(area);
     }
 
     static untrackArea(area) {
-        delete this.areas[area.id];
+        if (area.id !== -1) delete this.areas[area.id];
         area.id = -1;
+        this.areaHash.delete(area);
+    }
+
+    /** Reindexa a caixa (com a folga de captura da borda). Ignora área não rastreada. */
+    static indexArea(area) {
+        if (area.id === -1 || !area.start || !area.end) return;
+        const b = areaBounds(area);
+        const pad = Math.max(area.borderSize / 2, BORDER_GRAB / 2);
+        this.areaHash.set(area, b.minX - pad, b.minY - pad, b.maxX + pad, b.maxY + pad);
     }
 
     static track(building) {
-        if (!(building.id === -1)) {
+        if (building.id !== -1) {
             return;
         }
         building.id = this.idTracker;
@@ -1110,17 +1065,33 @@ export class Buildings {
         this.idTracker += 1;
 
         for(const area of building.areas) {
-            Buildings.trackArea(area);
+            if (area.enabled) this.trackArea(area);   // antes religava até áreas já apagadas
         }
+        this.syncPin(building);
     }
     
     static untrack(building) {
         delete this.buildings[building.id];
         building.id = -1;
+        this.pinHash.delete(building);
 
         for(const area of building.areas) {
             Buildings.untrackArea(area);
         }
+    }
+
+    static syncPin(building) {
+        if (building.id === -1 || !building.coordinate) {
+            this.pinHash.delete(building);
+            return;
+        }
+        const p = building.coordinate.pos;
+        this.pinHash.set(building, p.x, p.y);
+    }
+
+    static notePin(building) {
+        this.maxPinReach = Math.max(this.maxPinReach, Graficos.pinReach(building.graphics));
+        this.syncPin(building);
     }
 
     static setRelated(obj, state) {
@@ -1136,134 +1107,122 @@ export class Buildings {
             iterator = removeObj(iterator, obj);
         }
     }
+
+    static getBannerless() {
+        let flat = Object.values(this.buildings);
+        let bannerless = flat.filter((element) => {return !(element.banner.detailed)});
+        return bannerless;
+    }
+
+    /**
+     * Áreas (fechadas) do aglomerado conexo que contém o ponto. Devolve EMPTY, sem alocar,
+     * quando o ponto não está em nenhuma área (o caso mais comum).
+     */
+    static collectCluster(x, y, extra, tol) {
+        const cand = this.areaHash.queryPoint(x, y, _clusterBuf);
+        let any = extra ? containsPoint(extra, x, y, tol) : false;
+        for (let i = 0; i < cand.length && !any; i++) any = containsPoint(cand[i], x, y, tol);
+        if (!any) return EMPTY;
+
+        const entries = [], seen = new Set();
+        const visit = (area) => {
+            if (seen.has(area)) return;
+            seen.add(area);
+            const b = areaBounds(area);
+            b.box = area;
+            entries.push(b);
+        };
+
+        for (let i = 0; i < cand.length; i++) {
+            if (containsPoint(cand[i], x, y, tol)) visit(cand[i]);
+        }
+        if (extra && containsPoint(extra, x, y, tol)) visit(extra);
+
+        // expande (BFS) para as áreas que tocam o aglomerado; `entries` funciona como fila
+        for (let i = 0; i < entries.length; i++) {
+            const b = entries[i];
+            const near = this.areaHash.queryRect(b.minX - tol, b.minY - tol, b.maxX + tol, b.maxY + tol, _nearBuf);
+            for (let j = 0; j < near.length; j++) {
+                if (overlapsBounds(near[j], b, tol)) visit(near[j]);
+            }
+            if (extra && overlapsBounds(extra, b, tol)) visit(extra);
+        }
+        return entries;
+    }
     
     static getOverlappingPins(coordinate, all) {
-        let pos = coordinate.getIn("normal");
-        let allList = [];
+        const pos = coordinate.peekNormal();
+        const R = (this.maxPinReach * PIN_REACH_MARGIN) / Graficos.zoom;
+        const cand = this.pinHash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _pinBuf);
 
-        const buildings = Object.values(this.buildings).toReversed();
-
-        for (const building of buildings) {
-            let textSize = building.graphics;
-
-            const minX = textSize.x - textSize.children[1].width * textSize.scale.x / 2;
-            const maxX = textSize.x - textSize.children[1].width * textSize.scale.x / 2 + textSize.width;
-            const minY = textSize.y - textSize.children[1].height * textSize.scale.y;
-            const maxY = textSize.y;
-
-
-            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
-                if (!all) {
-                    return building;
-                }
-                allList.push(building);
-            }
+        let best = null, hits = null;
+        for (let i = 0; i < cand.length; i++) {
+            const building = cand[i];
+            if (!Graficos.collisionTest(building.graphics, pos)) continue;
+            if (all) (hits ??= []).push(building);
+            else if (!best || building.id > best.id) best = building;
         }
 
-        if (allList.length === 0) {
-            return false;
-        }
-        return allList;
+        if (all) return hits ? hits.sort(byIdDesc) : false;
+        return best || false;
     }
 
     static getOverlappingAreas(coordinate, all) {
-        let pos = coordinate.getIn("normal");
-        let allList = [];
-        
-        const areas = Object.values(this.areas).toReversed();
+        const pos = coordinate.peekNormal();
+        const cand = this.areaHash.queryPoint(pos.x, pos.y, _areaBuf);
 
-        for (const area of areas) {
-            const minX = Math.min(area.start.pos.x, area.end.pos.x) - area.borderSize / 2;
-            const maxX = Math.max(area.start.pos.x, area.end.pos.x) + area.borderSize / 2;
-            const minY = Math.min(area.start.pos.y, area.end.pos.y) - area.borderSize / 2;
-            const maxY = Math.max(area.start.pos.y, area.end.pos.y) + area.borderSize / 2;
-
-            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
-                if (!all) {
-                    return area;
-                }
-                allList.push(area);
-            }
+        let best = null, hits = null;
+        for (let i = 0; i < cand.length; i++) {
+            const area = cand[i];
+            if (!containsPoint(area, pos.x, pos.y, area.borderSize / 2)) continue;
+            if (all) (hits ??= []).push(area);
+            else if (!best || area.id > best.id) best = area;      // id maior = mais por cima
         }
 
-        if (allList.length === 0) {
-            return false;
-        }
-        return allList;
+        if (all) return hits ? hits.sort(byIdDesc) : false;
+        return best || false;
     }
 
     static getOverlappingAreaBorders(coordinate, all) {
-        let pos = coordinate.getIn("normal");
-        let allList = [];
+        const pos = coordinate.peekNormal();
+        const half = BORDER_GRAB / 2;
+        const cand = this.areaHash.queryPoint(pos.x, pos.y, _areaBuf);
+        if (cand.length > 1) cand.sort(byIdDesc);                  // de cima para baixo
 
-        const zoom = (typeof Graficos !== "undefined" && Graficos.zoom) ? Graficos.zoom : 1;
-        const thickness = 15;
-        const halfThick = thickness / 2;
+        let allList = null;
 
-        const areas = Object.values(this.areas).toReversed();
-        let isCovered = false;
+        for (let i = 0; i < cand.length; i++) {
+            const area = cand[i];
+            const s = area.start.pos, e = area.end.pos;
+            const minX = Math.min(s.x, e.x), maxX = Math.max(s.x, e.x);
+            const minY = Math.min(s.y, e.y), maxY = Math.max(s.y, e.y);
 
-        for (const area of areas) {
-            const minX = Math.min(area.start.pos.x, area.end.pos.x);
-            const maxX = Math.max(area.start.pos.x, area.end.pos.x);
-            const minY = Math.min(area.start.pos.y, area.end.pos.y);
-            const maxY = Math.max(area.start.pos.y, area.end.pos.y);
+            if (pos.x >= minX - half && pos.x <= maxX + half &&
+                pos.y >= minY - half && pos.y <= maxY + half) {
 
-            if (isCovered) {
-                break;
-            }
+                const dTop = Math.abs(pos.y - minY), dRight = Math.abs(pos.x - maxX);
+                const dBottom = Math.abs(pos.y - maxY), dLeft = Math.abs(pos.x - minX);
 
-            if (
-                pos.x >= minX - halfThick && pos.x <= maxX + halfThick &&
-                pos.y >= minY - halfThick && pos.y <= maxY + halfThick
-            ) {
-                const sides = [
-                    {
-                        side: "top",
-                        hit: Math.abs(pos.y - minY) <= halfThick,
-                        dist: Math.abs(pos.y - minY)
-                    },
-                    {
-                        side: "right",
-                        hit: Math.abs(pos.x - maxX) <= halfThick,
-                        dist: Math.abs(pos.x - maxX)
-                    },
-                    {
-                        side: "bottom",
-                        hit: Math.abs(pos.y - maxY) <= halfThick,
-                        dist: Math.abs(pos.y - maxY)
-                    },
-                    {
-                        side: "left",
-                        hit: Math.abs(pos.x - minX) <= halfThick,
-                        dist: Math.abs(pos.x - minX)
-                    }
-                ];
-
-                const matchedSides = sides.filter(s => s.hit);
-
-                if (matchedSides.length > 0) {
-                    matchedSides.sort((a, b) => a.dist - b.dist);
-
-                    if (!all) {
-                        return { area, side: matchedSides[0].side };
-                    }
-
-                    for (const match of matchedSides) {
-                        allList.push({ area, side: match.side });
-                    }
+                if (!all) {
+                    let side = null, bestD = Infinity;
+                    if (dTop <= half && dTop < bestD) { side = "top"; bestD = dTop; }
+                    if (dRight <= half && dRight < bestD) { side = "right"; bestD = dRight; }
+                    if (dBottom <= half && dBottom < bestD) { side = "bottom"; bestD = dBottom; }
+                    if (dLeft <= half && dLeft < bestD) { side = "left"; bestD = dLeft; }
+                    if (side) return { area, side };
+                } else {
+                    const sides = [["top", dTop], ["right", dRight], ["bottom", dBottom], ["left", dLeft]]
+                        .filter(([, d]) => d <= half)
+                        .sort((p, q) => p[1] - q[1]);
+                    for (const [side] of sides) (allList ??= []).push({ area, side });
                 }
             }
 
-            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
-                isCovered = true;
-            }
+            // uma área que cobre o ponto esconde as de baixo
+            if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) break;
         }
 
-        if (allList.length === 0) {
-            return false;
-        }
-        return allList;
+        return allList || false;
     }
 }
 
@@ -1278,6 +1237,8 @@ export class Reference {
         this.building = false;
 
         this.id = -1;
+        this.uid = Referencer.uidTracker++;
+        this.z = 0;
         this.connections = [];
         this.hover = 0;
         this.hoverTime = .2;
@@ -1309,6 +1270,7 @@ export class Reference {
             this.size = 1;
             this.name = name;
             this.graphics = Graficos.createPin(name);
+            Referencer.notePin(this);          // entra no pinHash e atualiza o alcance máximo
             this.updateGraphics();
         }
     }
@@ -1370,8 +1332,7 @@ export class Reference {
     }
 
     bringToFront() {
-        Referencer.removePositionTrack(this);
-        Referencer.addPositionTrack(this);
+        Referencer.raise(this);
         Graficos.BringToFrontReference(this.graphics);
     }
     
@@ -1402,26 +1363,17 @@ export class Reference {
             this.building = validCoord.isInside.building;
         }
 
-        
-        let coordinate = validCoord.coord;
-        if (!create) {
-            Referencer.removePositionTrack(this);
-            
-            this.coordinate = coordinate;
-            this.coordinate.convertTo("normal");
-            
-            Referencer.addPositionTrack(this);
-
-            this.updateGraphics();
-            this.bringToFront();
-
-            return report;
-        }
-        
-        this.coordinate = coordinate;
+        this.coordinate = validCoord.coord;
         this.coordinate.convertTo("normal");
-        
-        Referencer.addPositionTrack(this);
+
+        // indexa (ou reindexa). Referência desabilitada nunca volta para o hash.
+        if (this.enabled) Referencer.addPositionTrack(this);
+
+        if (create) return report;
+
+        for (const connection of this.connections) Connections.reindex(connection);
+        this.updateGraphics();
+        this.bringToFront();
 
         return report;
     }
@@ -1467,6 +1419,8 @@ export class Connection {
         this.end = end;
 
         this.id = -1;
+        this.uid = Connections.uidTracker++;
+        this.tracked = false;
         this.hover = 0;
         this.hoverTime = .2;
         Connections.track(this);
@@ -1500,7 +1454,7 @@ export class Connection {
         let ms = this.hoverTime * 1000;
         let t = this.hover * (1000 / 30) / ms;
         t = ease(t);
-        this.size = 10 + t * 5;
+        this.size = 4 + t * 5;
         this.updateGraphics();
     }
     
@@ -1563,6 +1517,7 @@ export class Building {
         this.move(coordinate, true);
 
         this.graphics = Graficos.createPin(name);
+        Buildings.notePin(this);
         
         this.points = [];
         this.alpha = 1;
@@ -1710,18 +1665,14 @@ export class Building {
     }
 
     move(coordinate, create=false) {
-        if (!create) {
-            this.coordinate = coordinate;
-            this.coordinate.convertTo("normal");
-            
-            this.updateGraphics();
-            this.bringToFront();
-
-            return;
-        }
-        
         this.coordinate = coordinate;
         this.coordinate.convertTo("normal");
+        Buildings.syncPin(this);
+
+        if (!create) {
+            this.updateGraphics();
+            this.bringToFront();
+        }
     }
 
     destroy() {
@@ -1812,11 +1763,22 @@ export class Area {
         this.updateGraphics();
     }
 
-    motionReport() {
+    motionReport(old) {
         if(!Referencer.reporting) {
             return;
         }
-        for(const ref of Object.values(Referencer.references)) {
+
+        // só referências perto da caixa antiga ou da nova podem mudar de estado
+        const now = areaBounds(this);
+        const minX = Math.min(now.minX, old ? old.minX : Infinity) - 1;
+        const minY = Math.min(now.minY, old ? old.minY : Infinity) - 1;
+        const maxX = Math.max(now.maxX, old ? old.maxX : -Infinity) + 1;
+        const maxY = Math.max(now.maxY, old ? old.maxY : -Infinity) + 1;
+
+        // array novo: validatePos reindexa as referências durante o loop
+        const refs = Referencer.dotHash.queryRect(minX, minY, maxX, maxY, []);
+
+        for(const ref of refs) {
             let refReport = ref.validatePos();
             if (refReport === false) {
                 continue;
@@ -1829,11 +1791,16 @@ export class Area {
     }
 
     move(start, end) {
+        const old = this.start ? areaBounds(this) : null;    // caixa antes da mudança
+        start.convertTo("normal");
+        end.convertTo("normal");
         this.start = start;
         this.end = end;
+
+        Buildings.indexArea(this);                            // o hash precisa estar atualizado ANTES do motionReport
         this.updateGraphics();
 
-        this.motionReport();
+        this.motionReport(old);
     }
 
     getBox() {
@@ -1919,6 +1886,7 @@ export class Banner {
     constructor() {
         this.detailed = false;
         this.title = "";
+        this.titleAlias = [];
         this.description = "";
         this.image = false;
     }
