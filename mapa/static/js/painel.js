@@ -5,6 +5,40 @@
    2. Hub de mapas: modal único de criar/editar (com landmarker) e modal de apagar
    ========================================================================== */
 
+const MAX_SVG_BYTES = 20 * 1024 * 1024;
+
+async function validarSvg(file) {
+    
+    if (!/\.svg$/i.test(file.name)) return "O arquivo precisa ser um SVG.";
+    if (file.size > MAX_SVG_BYTES) return "O SVG passa de 20 MB.";
+
+    let texto;
+    try {
+        texto = await file.text();
+    } catch {
+        return "Não foi possível ler o arquivo.";
+    }
+
+    const doc = new DOMParser().parseFromString(texto, "image/svg+xml");
+    const raiz = doc.documentElement;
+    if (doc.querySelector("parsererror") || raiz.localName !== "svg") {
+        return "O arquivo não é um SVG válido.";
+    }
+
+    const num = (v) => (v && !/%$/.test(v.trim()) ? parseFloat(v) : NaN);
+    const temTamanho =
+        num(raiz.getAttribute("width")) > 0 && num(raiz.getAttribute("height")) > 0;
+
+    const vb = (raiz.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+    const temViewBox = vb.length === 4 && vb.every(Number.isFinite) && vb[2] > 0 && vb[3] > 0;
+
+    if (!temTamanho && !temViewBox) {
+        return "Este SVG não tem viewBox nem width/height definidos. " +
+               "Abra-o num editor (Inkscape, Illustrator…) e exporte novamente com o tamanho definido.";
+    }
+    return "";
+}
+
 /* ==========================================================================
    1. Diálogos e envio duplicado
    ========================================================================== */
@@ -57,8 +91,6 @@
    2. Hub de mapas
    ========================================================================== */
 document.addEventListener("DOMContentLoaded", () => {
-    const MAX_SVG_BYTES = 20 * 1024 * 1024;
-
     const grid = document.getElementById("mapas-grid");
     const tplForm = document.getElementById("template-mapa-form");
     const tplApagar = document.getElementById("template-apagar-mapa");
@@ -142,25 +174,46 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 // valida e alimenta o landmarker assim que o arquivo é escolhido
-                arquivo.addEventListener("change", () => {
-                    const file = arquivo.files[0];
-                    let mensagem = "";
+                body.addEventListener("cancel", (e) => {
+                    if (e.target === arquivo) e.stopPropagation();
+                }, true);
 
-                    if (file && !/\.svg$/i.test(file.name)) mensagem = "O arquivo precisa ser um SVG.";
-                    else if (file && file.size > MAX_SVG_BYTES) mensagem = "O SVG passa de 20 MB.";
+                let arquivoAtual = null;   // último arquivo válido escolhido
+                let token = 0;             // descarta respostas de seleções antigas
 
+                function definirArquivo(file) {
+                    const dt = new DataTransfer();
+                    if (file) dt.items.add(file);
+                    arquivo.files = dt.files;          // não dispara `change`
+                }
+
+                function mostrarErro(mensagem) {
                     erroSvg.textContent = mensagem;
                     arquivo.setAttribute("aria-invalid", mensagem ? "true" : "false");
+                    if (mensagem) erroSvg.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                }
 
-                    if (mensagem) {
-                        arquivo.value = "";
+                arquivo.addEventListener("change", async () => {
+                    const file = arquivo.files[0] || null;
+                    const meu = ++token;
+
+                    // alguns navegadores esvaziam o input ao cancelar o seletor: mantém o que já estava
+                    if (!file) {
+                        definirArquivo(arquivoAtual);
                         return;
                     }
-                    if (file) {
-                        landmarker.setSvg(file, { resetar: editar });
-                    } else {
-                        landmarker.setSvg(editar ? mapa.svgUrl : null);
+
+                    const mensagem = await validarSvg(file);
+                    if (meu !== token) return;         // uma seleção mais nova chegou enquanto lia
+
+                    mostrarErro(mensagem);
+                    if (mensagem) {
+                        definirArquivo(arquivoAtual);  // volta ao último válido; prévia e input continuam coerentes
+                        return;
                     }
+
+                    arquivoAtual = file;
+                    landmarker.setSvg(file, { resetar: editar });
                 });
 
                 body.querySelector("[data-modal-cancelar]")?.addEventListener("click", () => manager.close());
