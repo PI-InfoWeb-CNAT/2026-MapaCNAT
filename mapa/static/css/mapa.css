@@ -1073,6 +1073,9 @@ header {
 .tool-ext[data-state="done"]:hover {
     background: var(--dark-green-hover);
 }
+.icon-pin {
+    filter: brightness(0) saturate(100%) invert(16%) sepia(99%) saturate(7404%) hue-rotate(4deg) brightness(95%) contrast(118%);
+}
 
 .tool-ext[data-state="done"] .icon-pin {
     display: none;
