@@ -4,7 +4,6 @@ import * as Editor from "./editor.js";
 import * as Toasts from './toasts.js';
 import * as Modals from './modals.js';
 import * as Localizacao from './localizacao.js';
-import { getShortestPath } from "./rota.js";
 
 let mapObj;
 let buildBtn;
@@ -29,6 +28,21 @@ let activeTab = "map";
 const DOUBLE_CLICK_MS = 350;
 const DOUBLE_CLICK_DIST = 24;
 const LONG_PRESS_MS = 500;
+
+const ROTATION_SNAP = Math.PI / 8;
+
+let panStarted = false;
+let dragStarted = false;
+
+const CLOSE_RADIUS_PX = 14;
+const AXIS_SNAP_PX = 10;
+
+const PIN_STATES = {
+    idle:    { title: "Nova construção",     hint: "Clique para começar" },
+    placing: { title: "Posicione o pin",     hint: "Clique no mapa onde fica a construção" },
+    drawing: { title: "Marque os cantos",    hint: "Clique nos cantos da construção (mínimo 3 pontos)" },
+    done:    { title: "Concluir construção", hint: "Fecha a forma e conclui (ou aperte Enter)" },
+};
 
 let lastTap = null;
 let longPressTimer = 0;
@@ -132,22 +146,256 @@ export function setContext(context) {
     zoomStep = context.scroll_ratio;
 }
 
-class Detail {
-    constructor() {
-        throw new Error("Classe estática. Não instancie.");
-    }
-    static detail = null;
-    static set(detail) {
-        detail = detail || null;
-        if (detail === this.detail) return;      // nada mudou: não reconstrói polígono
-        if (this.detail) {
-            this.detail.convertTo("polygon");
+function nearFirstVertex(building, p) {
+    const first = building.vertices[0]?.pos;
+    return !!first && Math.hypot(p.x - first.x, p.y - first.y) <= CLOSE_RADIUS_PX / Graficos.zoom;
+}
+
+function updatePhantomVertex(coordinate, e) {
+    const building =
+        Task.task === "build" && Task.taskStep === 1
+            ? Task.data["buildObject"]
+            : null;
+
+    if (!building || building.closed || !building.vertices.length) {
+        if (Holdable.type === "phantomVertex") {
+            Holdable.set(false);
         }
-        this.detail = detail;
-        if (this.detail) {
-            this.detail.convertTo("areas");
+
+        Editor.SnapGuides.clearAll();
+        return false;
+    }
+
+    const raw = coordinate.getIn("normal");
+
+    const overClose =
+        building.vertices.length >= 3 &&
+        nearFirstVertex(building, raw);
+
+    let finalCoord;
+
+    if (overClose) {
+        // Fechamento tem prioridade sobre o alinhamento.
+        finalCoord = Editor.newCoord(
+            building.vertices[0].pos.x,
+            building.vertices[0].pos.y,
+            "normal"
+        );
+
+        Editor.SnapGuides.clearAll();
+    } else {
+        const snap = snapCoordinate(
+            coordinate,
+            building.vertices,
+            {
+                enabled: e.shiftKey,
+                threshold: AXIS_SNAP_PX,
+            }
+        );
+
+        finalCoord = snap.coordinate;
+
+        // Atualiza os guias em toda interação.
+        // Se um eixo não tiver snap, seu gráfico recebe clear().
+        Editor.SnapGuides.update(snap.guides);
+    }
+
+    if (
+        Holdable.type !== "phantomVertex" ||
+        Holdable.object !== building
+    ) {
+        Holdable.set(
+            building,
+            "phantomVertex",
+            false,
+            new Editor.PhantomVertex(building, finalCoord)
+        );
+    } else {
+        Holdable.phantomObject.setEndPoint(finalCoord);
+    }
+
+    return overClose;
+}
+
+function snapCoordinate(coordinate, vertices, {
+    enabled = false,
+    threshold = AXIS_SNAP_PX,
+} = {}) {
+    const free = coordinate.getIn("screen");
+
+    const result = {
+        coordinate,
+        guides: {
+            horizontal: null,
+            vertical: null,
+        },
+    };
+
+    if (!enabled || !vertices?.length) {
+        return result;
+    }
+
+    let bestX = null;
+    let bestY = null;
+
+    let distanceX = threshold + 1;
+    let distanceY = threshold + 1;
+
+    for (const vertex of vertices) {
+        const pos = vertex?.pos;
+
+        if (
+            !pos ||
+            !Number.isFinite(pos.x) ||
+            !Number.isFinite(pos.y)
+        ) {
+            continue;
+        }
+
+        const anchor = Editor
+            .newCoord(pos.x, pos.y, "normal")
+            .getIn("screen");
+
+        const dx = Math.abs(free.x - anchor.x);
+        const dy = Math.abs(free.y - anchor.y);
+
+        if (dx <= threshold && dx < distanceX) {
+            bestX = anchor;
+            distanceX = dx;
+        }
+
+        if (dy <= threshold && dy < distanceY) {
+            bestY = anchor;
+            distanceY = dy;
         }
     }
+
+    const snapped = Editor.newCoord(
+        bestX ? bestX.x : free.x,
+        bestY ? bestY.y : free.y,
+        "screen"
+    );
+
+    const toNormal = (x, y) =>
+        Editor.newCoord(x, y, "screen").getIn("normal");
+
+    if (bestX) {
+        result.guides.vertical = {
+            start: toNormal(bestX.x, bestX.y),
+            end: toNormal(bestX.x, free.y),
+        };
+    }
+
+    if (bestY) {
+        result.guides.horizontal = {
+            start: toNormal(bestY.x, bestY.y),
+            end: toNormal(free.x, bestY.y),
+        };
+    }
+
+    result.coordinate = snapped;
+
+    return result;
+}
+
+function grabBuildingTarget(x, y) {
+    Holdable.set(false);
+    const coord = Editor.newCoord(x, y, "screen");
+    const vtx = Editor.Buildings.getOverlappingVertex(coord);
+
+    if (vtx) {
+        const b = vtx.building;
+        Holdable.set(b, "buildingVertex", {
+            index: vtx.index,
+            pos: { ...b.vertices[vtx.index].pos },
+            entrances: b.entrances
+                .filter(r => r.enabled)
+                .map(r => ({ dot: r, pos: { ...r.coordinate.pos } })),
+        });
+        return;
+    }
+
+    const pin = Editor.Buildings.getOverlappingPins(coord);
+    if (pin) {
+        const n = normalCoordAt(x, y).pos;
+        Holdable.set(pin, "buildingPin", {
+            pos: { ...pin.coordinate.pos },
+            offset: { x: n.x - pin.coordinate.pos.x, y: n.y - pin.coordinate.pos.y },
+        });
+    }
+}
+
+// true = the gesture belongs to a building handle (don't pan)
+function dragBuildingTarget(e) {
+    if (Holdable.type === "buildingVertex") {
+        if (!dragStarted && !passedDragThreshold(e)) return true;
+        dragStarted = true;
+
+        const b = Holdable.object;
+        const i = Holdable.initialPos.index;
+        const others = b.vertices.filter((_, k) => k !== i);
+        const snap = snapCoordinate(
+            Editor.newCoord(e.clientX, e.clientY, "screen"),
+            others,
+            { enabled: e.shiftKey, threshold: AXIS_SNAP_PX },
+        );
+        Editor.SnapGuides.update(snap.guides);
+        b.moveVertex(i, snap.coordinate);
+        Editor.Buildings.reattachEntrances(b);
+        return true;
+    }
+
+    if (Holdable.type === "buildingPin") {
+        if (!dragStarted && !passedDragThreshold(e)) return true;
+        dragStarted = true;
+
+        const off = Holdable.initialPos.offset;
+        const n = normalCoordAt(e.clientX, e.clientY).pos;
+        Holdable.object.move(Editor.newCoord(n.x - off.x, n.y - off.y, "normal"));
+        return true;
+    }
+
+    return false;
+}
+
+function hoverBuildingTarget(e) {
+    const coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+    const vtx = Editor.Buildings.getOverlappingVertex(coord);
+    Editor.Buildings.setHoverVertex(vtx);
+    const pin = vtx ? false : Editor.Buildings.getOverlappingPins(coord);
+    if (pin) hoverTargetSet.add(pin);
+    setCursor(vtx ? "move" : pin ? "pointer" : "");
+}
+
+function releaseBuildingTarget() {
+    if (Holdable.type === "buildingVertex") {
+        if (dragStarted) Actions.moveVertex(Holdable);
+        Editor.SnapGuides.clearAll();
+        Holdable.set(false);
+    } else if (Holdable.type === "buildingPin") {
+        const building = Holdable.object;
+        if (dragStarted) Actions.moveBuildingPin(Holdable);
+        else Actions.openModal("buildRename", { building });   // simple click
+        Holdable.set(false);
+    }
+    dragStarted = false;
+}
+
+function isDuplicateVertex(building, coordinate, threshold = 4) {
+    const p = coordinate.getIn("screen");
+
+    return building.vertices.some(vertex => {
+        if (!vertex?.pos) return false;
+
+        const existing = Editor
+            .newCoord(vertex.pos.x, vertex.pos.y, "normal")
+            .getIn("screen");
+
+        return Math.hypot(
+            p.x - existing.x,
+            p.y - existing.y
+        ) <= threshold;
+    });
 }
 
 class Holdable {
@@ -210,16 +458,6 @@ class Task {
     }
 }
 
-const hasEnabledAreas = (b) => !!b && b.areas.some((a) => a.enabled);
-
-const PIN_STATES = {
-    idle:    { title: "Nova construção",     hint: "Clique para começar" },
-    placing: { title: "Posicione o pin",     hint: "Clique no mapa onde fica a construção" },
-    drawing: { title: "Desenhe a área",      hint: "Arraste no mapa para criar a primeira área" },
-    done:    { title: "Concluir construção", hint: "Arraste para somar áreas ou conclua" },
-};
-
-// a banner is valid when it has image + title + description, or none of them
 function bannerState() {
     if (page != "editor" || !bannerHeld()) return { state: "empty", missing: [] };
 
@@ -395,7 +633,7 @@ function pickMainTarget(coord) {
     let ref;
     if ((ref = Editor.Self.getOverlappingPin(coord))) return { type: "selfPin", ref };
     if ((ref = Editor.Referencer.getOverlappingDotPins(coord))) return { type: "refPin", ref };
-    if ((ref = Editor.Buildings.getOverlappingAreas(coord)?.building)) return { type: "area", ref };
+    if ((ref = Editor.Buildings.getOverlappingBuildings(coord))) return { type: "area", ref };
     if ((ref = Editor.Buildings.getOverlappingPins(coord))) return { type: "buildPin", ref };
 
     return { type: "none", ref: null };
@@ -590,6 +828,8 @@ class Pointer {
         if (e.target === mapObj) mapObj.setPointerCapture?.(e.pointerId);
 
         moved = false;
+        dragStarted = false;   // ← add this
+        panStarted = false;
         pressedTarget = null;
         pendingTemporaryPinCoordinate = null;
         pendingMapTarget = null;
@@ -630,8 +870,8 @@ class Pointer {
                     if (line) {
                         Actions.destroyConnection(line);
                     } else {
-                        const area = Editor.Buildings.getOverlappingAreas(coord, false);
-                        if (area) Actions.destroyArea(area);
+                        const building = Editor.Buildings.getOverlappingBuildings(coord, false);
+                        if (building) Actions.destroyBuilding(building);
                     }
                 }
             } else if (editorMode == EditorModes.CONNECTION) {
@@ -654,40 +894,9 @@ class Pointer {
                 if (Task.task == "build") {
                     if (Task.taskStep == 0 && isInside(e, mapObj)) {
                         Actions.openModal("buildName");
-                    } else if (Task.taskStep == 1) {
-                        let coord = Editor.newCoord(clickX, clickY, "screen");
-                        let border =
-                            Editor.Buildings.getOverlappingAreaBorders(coord);
-                        if (border) {
-                            Holdable.set(border, "BuildAreaBorder", {
-                                start: border.area.start.getIn("normal"),
-                                end: border.area.end.getIn("normal"),
-                            });
-                            Editor.Referencer.beginReport();
-                        } else {
-                            let phantomObject = new Editor.PhantomArea(
-                                clickX,
-                                clickY,
-                            );
-                            Holdable.set(
-                                true,
-                                "BuildArea",
-                                { x: clickX, y: clickY },
-                                (phantomObject = phantomObject),
-                            );
-                        }
                     }
                 } else {
-                    let coord = Editor.newCoord(clickX, clickY, "screen");
-                    let border =
-                        Editor.Buildings.getOverlappingAreaBorders(coord);
-                    if (border) {
-                        Holdable.set(border, "BuildAreaBorder", {
-                            start: border.area.start.getIn("normal"),
-                            end: border.area.end.getIn("normal"),
-                        });
-                        Editor.Referencer.beginReport();
-                    }
+                    grabBuildingTarget(clickX, clickY);   // no task: editing closed buildings
                 }
             } else if (editorMode == EditorModes.BANNER) {
                 let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
@@ -711,27 +920,55 @@ class Pointer {
         );
     }
 
+    static rotateMove(e) {
+        const rawRotation = mapStartAngle + (e.clientX - clickX) / 300;
+        const nearestSnap = Math.round(rawRotation / ROTATION_SNAP) * ROTATION_SNAP;
+        const snapThreshold = ROTATION_SNAP * 0.2;
+
+        const rotation = (e.shiftKey && Math.abs(rawRotation - nearestSnap) <= snapThreshold)
+            ? nearestSnap
+            : rawRotation;
+
+        const delta = rotation - mapStartAngle;
+
+        Graficos.setRotation(rotation);
+
+        const p = Transformacao.rotatePoint(
+            rotateOffsetX,
+            rotateOffsetY,
+            delta
+        );
+
+        Graficos.setPosition(
+            clickX + p.x,
+            clickY + p.y
+        );
+    }
+
     static move(e) {
         if (!e.isPrimary || pinching) return;
-        
-        if(Graficos.smoothTransform) {
+
+        if (Graficos.smoothTransform) {
+            return;
+        }
+
+        if (page == "main") {
+            if ((leftClicking || rightClicking) && !moved) {
+                if (!passedDragThreshold(e)) return;   // tremida não cancela o toque nem o long-press
+                moved = true;
+                clearLongPress();
+                hoverTargetSet = new Set();
+                setCursor("default");
+            }
+            scheduleMainMove(e);
             return;
         }
 
         moved = true;
         clearLongPress();
 
-        
-        if (page == "main") {
-            if (leftClicking || rightClicking) {
-                if (!moved) {
-                    if (!passedDragThreshold(e)) return;
-                    moved = true;
-                    hoverTargetSet = new Set();   // un-highlight whatever was hovered
-                    setCursor("default");
-                }
-            }
-            scheduleMainMove(e);
+        if (page == "editor" && rightClicking) {
+            Pointer.rotateMove(e);
             return;
         }
 
@@ -743,9 +980,8 @@ class Pointer {
                 Pointer.defaultMove(e);
             } else if (editorMode == EditorModes.REFERENCE) {
                 if (Holdable.object) {
-                    let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
-
-                    Holdable.object.move(coord);
+                    const coord = Editor.newCoord(e.clientX, e.clientY, "screen");
+                    Holdable.object.move(coord, false, true);
                 } else {
                     let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
                     let overlap = Editor.Referencer.getOverlappingDots(coord);
@@ -796,134 +1032,56 @@ class Pointer {
                 const coord = normalCoordAt(e.clientX, e.clientY);
                 const dot = Editor.Referencer.getOverlappingDots(coord);
                 const line = dot ? false : Editor.Connections.getOverlappingLines(coord);
-                const area = Editor.Buildings.getOverlappingAreas(coord);
+                const building = (dot || line) ? false : Editor.Buildings.getOverlappingBuildings(coord);
 
-                Detail.set(area ? area.building : false);
-
-                if (dot) {
-                    hoverTargetSet.add(dot);
-                } else if (line) {
-                    hoverTargetSet.add(line);
-                } else if (area) {
-                    hoverTargetSet.add(area);
-                } else {
+                if (dot) hoverTargetSet.add(dot);
+                else if (line) hoverTargetSet.add(line);
+                else if (building) hoverTargetSet.add(building);
+                else {
                     if (!leftClicking) return;
                     Pointer.defaultMove(e);
                 }
             } else if (editorMode == EditorModes.CONSTRUCTION) {
-                if (Task.task == "build") {
-                    if (Holdable.type == "BuildAreaBorder") {
-                        let screenStart =
-                            Holdable.object.area.start.getIn("screen");
-                        let screenEnd =
-                            Holdable.object.area.end.getIn("screen");
-                        if (Holdable.object.side == "top") {
-                            screenStart = {
-                                x: screenStart.x,
-                                y: Math.min(e.clientY, screenEnd.y - 20),
-                            };
-                        } else if (Holdable.object.side == "left") {
-                            screenStart = {
-                                x: Math.min(e.clientX, screenEnd.x - 20),
-                                y: screenStart.y,
-                            };
-                        } else if (Holdable.object.side == "right") {
-                            screenEnd = {
-                                x: Math.max(e.clientX, screenStart.x + 20),
-                                y: screenEnd.y,
-                            };
-                        } else {
-                            screenEnd = {
-                                x: screenEnd.x,
-                                y: Math.max(e.clientY, screenStart.y + 20),
-                            };
-                        }
-                        screenStart = Editor.newCoord(
-                            screenStart.x,
-                            screenStart.y,
-                            "screen",
-                        );
-                        screenEnd = Editor.newCoord(
-                            screenEnd.x,
-                            screenEnd.y,
-                            "screen",
-                        );
-                        screenStart.convertTo("normal");
-                        screenEnd.convertTo("normal");
-                        Holdable.object.area.move(screenStart, screenEnd);
-                    }
-                    if (Holdable.type == "BuildArea") {
-                        let coord = Editor.newCoord(
-                            e.clientX,
-                            e.clientY,
-                            "screen",
-                        );
-                        Holdable.phantomObject.setEndPoint(coord);
-                    }
-                    if (Task.taskStep == 1) {
-                        let coord = Editor.newCoord(
-                            e.clientX,
-                            e.clientY,
-                            "screen",
-                        );
-                        let border =
-                            Editor.Buildings.getOverlappingAreaBorders(coord);
-                        if (border) {
-                            hoverTargetSet.add(border.area.sides[border.side]);
-                        }
-                    }
-                } else {
-                    const coord = normalCoordAt(e.clientX, e.clientY);
-                    const area = Editor.Buildings.getOverlappingAreas(coord);
-                    const border = Editor.Buildings.getOverlappingAreaBorders(coord);
-                    Detail.set(area ? area.building : false);
-                    if (border) {
-                        hoverTargetSet.add(border.area.sides[border.side]);
-                    }
-
-                    if (Holdable.type == "BuildAreaBorder") {
-                        let area = Holdable.object.area;
-                        Detail.set(area.building);
-                        let screenStart = area.start.getIn("screen");
-                        let screenEnd = area.end.getIn("screen");
-                        if (Holdable.object.side == "top") {
-                            screenStart = {
-                                x: screenStart.x,
-                                y: Math.min(e.clientY, screenEnd.y - 20),
-                            };
-                        } else if (Holdable.object.side == "left") {
-                            screenStart = {
-                                x: Math.min(e.clientX, screenEnd.x - 20),
-                                y: screenStart.y,
-                            };
-                        } else if (Holdable.object.side == "right") {
-                            screenEnd = {
-                                x: Math.max(e.clientX, screenStart.x + 20),
-                                y: screenEnd.y,
-                            };
-                        } else {
-                            screenEnd = {
-                                x: screenEnd.x,
-                                y: Math.max(e.clientY, screenStart.y + 20),
-                            };
-                        }
-                        screenStart = Editor.newCoord(
-                            screenStart.x,
-                            screenStart.y,
-                            "screen",
-                        );
-                        screenEnd = Editor.newCoord(
-                            screenEnd.x,
-                            screenEnd.y,
-                            "screen",
-                        );
-                        screenStart.convertTo("normal");
-                        screenEnd.convertTo("normal");
-                        area.move(screenStart, screenEnd);
-                    } else {
-                        if (!leftClicking) return;
+                if (!Task.task) {
+                    if (dragBuildingTarget(e)) return;
+                    if (leftClicking) {                 // nothing grabbed: pan the map
                         Pointer.defaultMove(e);
+                        return;
                     }
+                    hoverBuildingTarget(e);
+                    return;
+                }
+
+                const building =
+                    Task.task === "build" && Task.taskStep === 1
+                        ? Task.data["buildObject"]
+                        : null;
+
+                const here = () =>
+                    Editor.newCoord(e.clientX, e.clientY, "screen");
+
+                const overClose = building
+                    ? updatePhantomVertex(here(), e)
+                    : false;
+
+                if (overClose) {
+                    hoverTargetSet.add(building.closeHandle);
+                }
+
+                setCursor(overClose ? "pointer" : "");
+
+                if (!leftClicking) return;
+
+                if (building && !panStarted && !passedDragThreshold(e)) {
+                    return;
+                }
+
+                panStarted = true;
+                Pointer.defaultMove(e);
+
+                // Recalcula posição e guias após mover o mapa.
+                if (building) {
+                    updatePhantomVertex(here(), e);
                 }
             } else if (editorMode == EditorModes.BANNER) {
                 let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
@@ -1017,45 +1175,39 @@ class Pointer {
                     Holdable.phantomObject.destroy();
                     Holdable.set(false);
                 }
-            } else if (editorMode == EditorModes.CONSTRUCTION) {
-                if (Task.task == "build") {
-                    if (Holdable.object) {
-                        if (Holdable.type == "BuildArea") {
-                            let phantom = Holdable.phantomObject;
-                            if (
-                                phantom.end &&
-                                Math.abs(
-                                    phantom.end.pos.x - phantom.start.pos.x,
-                                ) >= 20 &&
-                                Math.abs(
-                                    phantom.end.pos.y - phantom.start.pos.y,
-                                ) >= 20
-                            ) {
-                                Actions.newArea(phantom.start, phantom.end);
-                            }
-                            phantom.destroy();
-                            Holdable.set(false);
-                        } else if (Holdable.type == "BuildAreaBorder") {
-                            Actions.moveAreaBorder(Holdable);
-                            Holdable.set(false);
-                        }
-                    }
+           } else if (editorMode == EditorModes.CONSTRUCTION) {
+                if (!Task.task) {
+                    releaseBuildingTarget();
                 } else {
-                    if (Holdable.type == "BuildAreaBorder") {
-                        Detail.set(false);
-                        Actions.moveAreaBorder(Holdable);
-                        Holdable.set(false);
+                    if (
+                        wasLeftClicking &&
+                        e.button === 0 &&
+                        !panStarted &&
+                        Task.task === "build" &&
+                        Task.taskStep === 1
+                    ) {
+                        Actions.placeVertex(e.clientX, e.clientY, e.shiftKey);
                     }
+                    Editor.SnapGuides.clearAll();
                 }
             }
         }
     }
     static cancel() {
         clearLongPress();
+
         leftClicking = false;
         rightClicking = false;
-        moved = true;          // a cancelled gesture must never count as a tap
+        moved = true;
+
         pressedTarget = null;
+
+        if (Holdable.type === "buildingVertex" || Holdable.type === "buildingPin") {
+            Actions.revertDrag();
+        }
+        dragStarted = false;
+
+        Editor.SnapGuides.clearAll();
     }
 
     static wheel(e) {
@@ -1082,7 +1234,7 @@ class Pointer {
         if (Holdable.phantomObject) {
             Holdable.phantomObject.updateGraphics();
         }
-        Route.redraw();
+        Editor.Route.redraw();
         Graficos.updateMap();
     }
 }
@@ -1305,7 +1457,7 @@ class Actions {
 
     static newReference(mouseX, mouseY) {
         const coord = Editor.newCoord(mouseX, mouseY, "screen");
-        let reference = new Editor.Reference(coord);
+        let reference = new Editor.Reference(coord, { snap: true });
 
         const forward = () => {
             Actions.forceMode(EditorModes.REFERENCE);
@@ -1465,8 +1617,11 @@ class Actions {
     }
 
     static applyMode(mode) {
-        Detail.set();
+        if (mode !== EditorModes.CONSTRUCTION) {
+            Editor.SnapGuides.clearAll();
+        }
         editorMode = mode;
+        setCursor("");
         Graficos.editorFocus(
             [
                 EditorModes.DELETION,
@@ -1496,17 +1651,20 @@ class Actions {
     }
 
     static resetTask() {
+        Editor.SnapGuides.clearAll();
+        if (Holdable.type === "phantomVertex") {
+            Holdable.set(false);
+        }
         if (Task.task == "build" && Task.taskStep == 1) {
             const building = Task.data["buildObject"];
-            if (building && !hasEnabledAreas(building)) {
+            if (building && !building.closed) {
+                // descarta a criação e todos os pontos já colocados (ficam no topo da pilha)
                 const idx = this.findActionIndex(building._helperCreate);
-                if (idx >= 0) this.prune(idx, 1);
+                if (idx >= 0) this.prune(idx, this.actionStack.length - idx);
             }
         }
         Task.reset();
     }
-
-    static switching = false;
 
     static async switchMode(mode = EditorModes.FREE) {
         if (this.switching) return;
@@ -1517,16 +1675,17 @@ class Actions {
         if (!bannerOk) return;
 
         if (editorMode == EditorModes.CONSTRUCTION) {
-            const building = Task.data["buildObject"];
-            if (
-                Task.task == "build" &&
-                Task.taskStep == 1 &&
-                !hasEnabledAreas(building)
-            ) {
+            const building = Task.task == "build" && Task.taskStep == 1 ? Task.data["buildObject"] : null;
+
+            if (building && !building.closed && building.vertices.length > 0) {
+                const canClose = building.vertices.length >= 3;
+
                 this.switching = true;
-                const discard = await Actions.openModal("buildConfirm");
+                const ok = await Actions.openModal(canClose ? "buildClose" : "buildConfirm");
                 this.switching = false;
-                if (!discard) return;
+
+                if (!ok) return;
+                if (canClose && !this.closePolygon(building)) return;   // forma sem área: continua desenhando
             }
             this.resetTask();
         }
@@ -1534,43 +1693,249 @@ class Actions {
         this.applyMode(mode);
     }
 
-    static finishTask() {
-        const before = Task.snapshot();
+    static addVertex(building, p) {
+        const pos = { x: p.x, y: p.y };
+        const snap = Task.snapshot();
 
-        let building = Task.data["buildObject"];
-
-        building.convertTo("polygon");
-
-        Task.reset();
-        const after = Task.snapshot();
+        building.addVertex(Editor.newCoord(pos.x, pos.y, "normal"));
+        this.syncTaskUI();
 
         this.newAction(
             () => {
                 Actions.forceMode(EditorModes.CONSTRUCTION);
-
-                building.convertTo("polygon");
-
-                Task.restore(after);
+                building.addVertex(Editor.newCoord(pos.x, pos.y, "normal"));
+                Task.restore(snap);
             },
             () => {
                 Actions.forceMode(EditorModes.CONSTRUCTION);
-
-                Task.restore(before);
-
-                building.convertTo("areas");
+                building.removeLastVertex();
+                Task.restore(snap);
             },
         );
     }
 
-    static snapshotMotion() {
-        let snapshot = Object.values(Editor.Referencer.motionReport).map(
-            ([dot, b]) => ({
-                dot,
-                before: { x: b.x, y: b.y },
-                after: { x: dot.coordinate.pos.x, y: dot.coordinate.pos.y },
-            }),
+    
+    static placeVertex(x, y, shift = false) {
+        const building = Task.data["buildObject"];
+
+        if (!building || building.closed) {
+            Editor.SnapGuides.clearAll();
+            return;
+        }
+
+        const coordinate = Editor.newCoord(x, y, "screen");
+        const raw = coordinate.getIn("normal");
+
+        // Fechamento tem prioridade.
+        if (
+            building.vertices.length >= 3 &&
+            nearFirstVertex(building, raw)
+        ) {
+            Editor.SnapGuides.clearAll();
+
+            if (this.closePolygon(building)) {
+                this.finishTask();
+            }
+
+            return;
+        }
+
+        const snap = snapCoordinate(
+            coordinate,
+            building.vertices,
+            {
+                enabled: shift,
+                threshold: AXIS_SNAP_PX,
+            }
         );
-        return snapshot;
+
+        const snapped = snap.coordinate;
+
+        // Evita duplicação de qualquer vértice existente.
+        if (isDuplicateVertex(building, snapped)) {
+            Editor.SnapGuides.clearAll();
+            return;
+        }
+
+        this.addVertex(building, snapped.getIn("normal"));
+
+        // O ponto foi confirmado. Os guias eram apenas auxiliares.
+        Editor.SnapGuides.clearAll();
+    }
+
+
+    // junta o último ponto ao primeiro. Devolve false se não deu para fechar.
+    static closePolygon(building) {
+        if (building.vertices.length < 3) {
+            this.warnOpenPolygon(building);
+            return false;
+        }
+        if (building.area() < 1) {
+            Toasts.toaster.show({ text: "Essa forma não tem área. Desfaça (Ctrl+Z) e marque os pontos de novo.", category: "warn" });
+            return false;
+        }
+
+        if (Holdable.type === "phantomVertex") Holdable.set(false);
+
+        const snap = Task.snapshot();
+        building.close();
+        const snapped = Editor.Buildings.snapReferencesTo(building);   // referências coladas na parede nova
+        this.syncTaskUI();
+
+        this.newAction(
+            () => {
+                Actions.forceMode(EditorModes.CONSTRUCTION);
+                building.close();
+                for (const { dot, after } of snapped) dot.move(Editor.newCoord(after.x, after.y, "normal"));
+                Task.restore(snap);
+            },
+            () => {
+                Actions.forceMode(EditorModes.CONSTRUCTION);
+                building.reopen();   // antes de mover: assim as referências deixam de ser entrada
+                for (const { dot, before } of snapped) dot.move(Editor.newCoord(before.x, before.y, "normal"));
+                Task.restore(snap);
+            },
+        );
+        return true;
+    }
+
+    static warnOpenPolygon(building) {
+        console.trace();
+        const faltam = 3 - (building?.vertices.length ?? 0);
+        Toasts.toaster.show({
+            text: `Uma construção precisa de pelo menos 3 pontos. Faltam ${faltam}.`,
+            category: "warn",
+        });
+    }
+
+    // botão de tick / Enter: fecha como está (se ainda aberta) e conclui
+    static finishTask() {
+        const building = Task.data["buildObject"];
+        if (!building) return;
+
+        if (!building.closed && !this.closePolygon(building)) return;
+
+        if (Holdable.type === "phantomVertex") Holdable.set(false);
+        Task.reset();
+    }
+
+    static pinAction() {
+        const state = pinBtn.dataset.state;
+        if (state === "idle") this.beginTask("build", {});
+        else if (state === "drawing") this.warnOpenPolygon(Task.data["buildObject"]);
+        else if (state === "done") this.finishTask();
+    }
+
+    static finishTask() {
+        const building = Task.data["buildObject"];
+        if (!building) return;
+
+        this.closePolygon(building);
+        
+        if (!building.closed) {
+            return;
+        }
+
+        if (Holdable.type === "phantomVertex") {
+            Holdable.set(false);
+        }
+        Task.reset();
+    }
+
+    static destroyBuilding(building) {
+        const entrances = [...building.entrances].filter(r => r.enabled);
+
+        const forward = () => {
+            Actions.forceMode(EditorModes.DELETION);
+            building.disable();
+            for (const ref of entrances) ref.validatePos();    // sem parede, deixam de ser entrada
+        };
+        const backward = () => {
+            Actions.forceMode(EditorModes.DELETION);
+            building.enable();
+            for (const ref of entrances) ref.validatePos();    // já estão na parede: voltam a ser entrada
+        };
+        const overflow = () => building.destroy();
+
+        building.disable();
+        for (const ref of entrances) ref.validatePos();
+
+        this.newAction(forward, backward, undefined, overflow);
+    }
+
+    static moveVertex(held) {
+        const building = held.object;
+        const { index, pos: from, entrances } = held.initialPos;
+        const cur = building.vertices[index].pos;
+        const to = { x: cur.x, y: cur.y };
+        if (to.x === from.x && to.y === from.y) return;
+
+        // entradas que acompanharam a parede + referências que grudaram nela agora
+        const changes = new Map();
+        for (const { dot, pos } of entrances) {
+            const now = dot.coordinate.pos;
+            if (now.x !== pos.x || now.y !== pos.y) {
+                changes.set(dot, { before: pos, after: { x: now.x, y: now.y } });
+            }
+        }
+        for (const { dot, before, after } of Editor.Buildings.snapReferencesTo(building)) {
+            const prev = changes.get(dot);
+            changes.set(dot, { before: prev ? prev.before : before, after });
+        }
+        const moved = [...changes].map(([dot, c]) => ({ dot, ...c }));
+
+        const apply = (pos, key) => {
+            Actions.forceMode(EditorModes.SELECTION);
+            building.moveVertex(index, Editor.newCoord(pos.x, pos.y, "normal"));   // parede primeiro
+            for (const m of moved) m.dot.move(Editor.newCoord(m[key].x, m[key].y, "normal"));
+        };
+
+        this.newAction(
+            () => apply(to, "after"),
+            () => apply(from, "before"),
+        );
+    }
+
+    static moveBuildingPin(held) {
+        const building = held.object;
+        const from = held.initialPos.pos;
+        const cur = building.coordinate.pos;
+        const to = { x: cur.x, y: cur.y };
+        if (to.x === from.x && to.y === from.y) return;
+
+        const apply = (pos) => {
+            Actions.forceMode(EditorModes.SELECTION);
+            building.move(Editor.newCoord(pos.x, pos.y, "normal"));
+        };
+        this.newAction(() => apply(to), () => apply(from));
+    }
+
+    static renameBuilding(building, name) {
+        const old = building.name;
+        if (name === old) return;
+
+        building.rename(name);
+
+        this.newAction(
+            () => { Actions.forceMode(EditorModes.SELECTION); building.rename(name); },
+            () => { Actions.forceMode(EditorModes.SELECTION); building.rename(old); },
+        );
+    }
+
+    // gesto cancelado pelo navegador: volta tudo ao que era antes do arrasto
+    static revertDrag() {
+        const building = Holdable.object;
+        const init = Holdable.initialPos;
+
+        if (Holdable.type === "buildingVertex") {
+            building.moveVertex(init.index, Editor.newCoord(init.pos.x, init.pos.y, "normal"));
+            for (const { dot, pos } of init.entrances) {
+                dot.move(Editor.newCoord(pos.x, pos.y, "normal"));
+            }
+        } else if (Holdable.type === "buildingPin") {
+            building.move(Editor.newCoord(init.pos.x, init.pos.y, "normal"));
+        }
+        Holdable.set(false);
     }
 
     static newBuilding(mouseX, mouseY) {
@@ -1602,190 +1967,7 @@ class Actions {
 
         this.newAction(forward, backward, prune);
         building._helperCreate = this.actionStack[this.actionStack.length - 1];
-        building._createBefore = before;
         return building;
-    }
-
-    static newArea(start, end) {
-        let parent = Task.data["buildObject"];
-        const isFirst = !hasEnabledAreas(parent);
-
-        let before = Task.snapshot();
-        let parentForwards = () => {},
-            parentBackwards = () => {},
-            parentPrune = () => {};
-
-        if (isFirst) {
-            const idx = this.findActionIndex(parent._helperCreate);
-            if (idx >= 0) {
-                this.prune(idx, 1, false);
-                before = parent._createBefore;
-                parentForwards = () => parent.enable();
-                parentBackwards = () => parent.disable();
-                parentPrune = () => {
-                    if (parent) {
-                        parent.destroy();
-                        parent = null;
-                    }
-                };
-            }
-        }
-
-        Editor.Referencer.beginReport();
-        let area = new Editor.Area(start, end, parent);
-
-        let motionReport = this.snapshotMotion();
-        Editor.Referencer.endReport();
-        area.enable();
-        this.syncTaskUI();
-        const after = Task.snapshot();
-
-        const forward = () => {
-            Actions.forceMode(EditorModes.CONSTRUCTION);
-            area.enable();
-            area.building.buildPolygon();
-
-            for (const { dot, after } of motionReport) {
-                dot.move(Editor.newCoord(after.x, after.y, "normal"));
-            }
-
-            parentForwards();
-            Task.restore(after);
-        };
-        const backward = () => {
-            Actions.forceMode(EditorModes.CONSTRUCTION);
-            area.disable();
-            area.building.buildPolygon();
-
-            for (const { dot, before } of motionReport) {
-                dot.move(Editor.newCoord(before.x, before.y, "normal"));
-            }
-
-            parentBackwards();
-            Task.restore(before);
-        };
-        const prune = () => {
-            if (area) {
-                area.destroy();
-                area = null;
-            }
-            parentPrune();
-        };
-
-        this.newAction(forward, backward, prune);
-    }
-    static moveAreaBorder(heldObject) {
-        let object = heldObject.object.area;
-        let forwardCoord = {
-            start: object.start.getIn("normal"),
-            end: object.end.getIn("normal"),
-        };
-        let backwardCoord = heldObject.initialPos;
-
-        let motionReport = this.snapshotMotion();
-
-        Editor.Referencer.endReport();
-
-        const forward = () => {
-            Actions.forceMode(EditorModes.CONSTRUCTION);
-
-            let startCoord = Editor.newCoord(
-                forwardCoord.start.x,
-                forwardCoord.start.y,
-                "normal",
-            );
-            let endCoord = Editor.newCoord(
-                forwardCoord.end.x,
-                forwardCoord.end.y,
-                "normal",
-            );
-            object.move(startCoord, endCoord);
-
-            for (const { dot, after } of motionReport) {
-                dot.move(Editor.newCoord(after.x, after.y, "normal"));
-            }
-
-            object.building.buildPolygon();
-        };
-
-        const backward = () => {
-            Actions.forceMode(EditorModes.CONSTRUCTION);
-
-            let startCoord = Editor.newCoord(
-                backwardCoord.start.x,
-                backwardCoord.start.y,
-                "normal",
-            );
-            let endCoord = Editor.newCoord(
-                backwardCoord.end.x,
-                backwardCoord.end.y,
-                "normal",
-            );
-            object.move(startCoord, endCoord);
-
-            for (const { dot, before } of motionReport) {
-                dot.move(Editor.newCoord(before.x, before.y, "normal"));
-            }
-
-            object.building.buildPolygon();
-        };
-
-        this.newAction(forward, backward);
-    }
-
-    static destroyArea(area) {
-        const building = area.building;
-        const onlyOne =
-            [...building.areas].filter((a) => a.enabled).length == 1;
-
-        const parentForwards = onlyOne ? () => building.disable() : () => {};
-        const parentBackwards = onlyOne ? () => building.enable() : () => {};
-        const parentOverflow = onlyOne ? () => building.destroy() : () => {};
-
-        const entrances = [...building.entrances].filter((a) => a.enabled);
-
-        const forward = () => {
-            Actions.forceMode(EditorModes.DELETION);
-            area.disable();
-            area.building.buildPolygon();
-
-            for (const ref of entrances) {
-                ref.validatePos();
-            }
-
-            parentForwards();
-        };
-
-        const backward = () => {
-            Actions.forceMode(EditorModes.DELETION);
-            area.enable();
-            area.building.buildPolygon();
-
-            for (const ref of entrances) {
-                ref.validatePos();
-            }
-
-            parentBackwards();
-        };
-
-        const overflow = () => {
-            if (area) {
-                area.destroy();
-                area = null;
-            }
-            parentOverflow();
-        };
-
-        area.disable();
-        parentForwards();
-
-        for (const ref of entrances) {
-            ref.validatePos();
-        }
-
-        this.newAction(forward, backward, undefined, overflow);
-
-        return area;
     }
 
     static pinMode(bool) {
@@ -1799,21 +1981,22 @@ class Actions {
     }
 
     static syncTaskUI() {
+        Editor.Buildings.setEditing(editorMode === EditorModes.CONSTRUCTION && !Task.task);
         if (!pinBtn || !constructionPanel) return;
         const inBuild = Task.task === "build";
-        const hasAreas =
-            inBuild &&
-            Task.taskStep === 1 &&
-            hasEnabledAreas(Task.data["buildObject"]);
+        const building = inBuild && Task.taskStep === 1 ? Task.data["buildObject"] : null;
 
         this.pinMode(inBuild && Task.taskStep === 0);
 
         let state = "idle";
-        if (inBuild) state = hasAreas ? "done" : Task.taskStep === 0 ? "placing" : "drawing";
+        if (inBuild) {
+            if (Task.taskStep === 0) state = "placing";
+            else state = building && (building.closed || building.vertices.length >= 3) ? "done" : "drawing";
+        }
 
-        pinDone = hasAreas;
+        pinDone = state === "done";
         pinBtn.dataset.state = state;
-        pinBtn.disabled = state === "placing" || state === "drawing";   // was hidden before; same clicks blocked
+        pinBtn.disabled = state === "placing";   
 
         const label = `${PIN_STATES[state].title}: ${PIN_STATES[state].hint}`;
         pinBtn.title = label;
@@ -1906,6 +2089,7 @@ class Actions {
 
     static async ensureBannerValid() {
         const { state, missing } = bannerState();
+
         if (state !== "partial") return true;
         if (this.confirmingBanner) return false;
 
@@ -1994,6 +2178,37 @@ class Actions {
                 });
                 }
             });
+        } else if (name == "buildRename") {
+            const building = data.building;
+
+            Modals.modal.open({
+                title: 'Renomear construção',
+                size: 'sm',
+                html: `
+                    <form class="modal-form" id="renameForm">
+                        <div class="form-group">
+                            <label for="rename-input">Nome:</label>
+                            <input type="text" id="rename-input" autocomplete="off" required>
+                        </div>
+                        <button type="submit" class="modal-submit-btn">Salvar</button>
+                    </form>
+                `,
+                onMount(body, manager) {
+                    const form = body.querySelector('#renameForm');
+                    const input = body.querySelector('#rename-input');
+                    input.value = building.name;   // por .value: sem problema com aspas no nome
+                    input.focus();
+                    input.select();
+
+                    form.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        const name = input.value.trim();
+                        if (!name) return;
+                        manager.close();
+                        Actions.renameBuilding(building, name);
+                    });
+                },
+            });
         } else if (name == "buildName") {
             let submitted = false;
 
@@ -2031,10 +2246,17 @@ class Actions {
             });
         } else if (name == "buildConfirm") {
             return Modals.modal.confirm({
-                title: 'Termine de editar a construção',
-                message: 'A construção ainda não tem nenhuma área. Se continuar, ela será descartada.',
+                title: 'Construção incompleta',
+                message: 'A construção tem menos de 3 pontos e não pode ser fechada. Se continuar, ela será descartada.',
                 cancelText: 'Voltar',
-                confirmText: 'Descartar Alterações',
+                confirmText: 'Descartar',
+            });
+        } else if (name == "buildClose") {
+            return Modals.modal.confirm({
+                title: 'Fechar a construção?',
+                message: 'A construção ainda está aberta. Deseja fechá-la agora? O último ponto será ligado ao primeiro.',
+                cancelText: 'Continuar desenhando',
+                confirmText: 'Fechar construção',
             });
         } else if (name == "bannerIncomplete") {
             return Modals.modal.confirm({
@@ -2146,7 +2368,7 @@ function confirmBannerless(bannerless) {
             if (action === "view") {
                 viewing = !viewing;
                 if (viewing) {
-                    Graficos.highlightObjects(bannerless.map((b) => b.graphics));
+                    Graficos.highlightObjects(bannerless.flatMap((b) => [b.graphics, b.polygonGraphics]));
                     btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Mostrar tudo';
                 } else {
                     Actions.syncHighlight();
@@ -2167,6 +2389,11 @@ export async function save() {
 
     try {
         if (!(await Actions.ensureBannerValid())) return;
+        const draft = Task.data["buildObject"];
+        if (Task.task == "build" && draft && !draft.closed) {
+            Toasts.toaster.show({ text: "Feche a forma da construção antes de salvar.", category: "warn" });
+            return;
+        }
         Actions.saveBanner();
 
         const bannerless = Editor.Buildings.getBannerless();
@@ -2310,14 +2537,82 @@ function createSearch(searchFn, onResults, delay = 300) {
     };
 }
 
+let locationRequestId = 0;
+
+const RouteUI = {
+    async start(place) {
+        const title = bannerTitle.value.trim() || 'Destino';
+        const wasActive = Editor.Route.active;
+
+        searchHeader.classList.add("hidden");
+        routeFields.classList.remove("hidden");
+        routeDestination.value = title;
+        if (!wasActive) routeOrigin.value = '';
+
+        Editor.Route.start(place, title);
+        if (!wasActive) await this.useMyLocation();
+    },
+
+    async useMyLocation() {
+        const id = ++locationRequestId;
+        routeOrigin.placeholder = 'Obtendo sua localização…';
+
+        const status = await Localizacao.requestLocation();
+        routeOrigin.placeholder = originPlaceholder;
+
+        // rota fechada, ou o usuário escolheu a partida na mão enquanto esperava
+        if (id !== locationRequestId || !Editor.Route.active || Editor.Route.origin) return;
+
+        if (status === 'granted') {
+            this.setPoint('origin', selfPoint());
+        } else {
+            reportLocationFailure(status);
+            routeOrigin.focus();
+        }
+    },
+
+    stop() {
+        Editor.Route.stop();
+        routeOrigin.value = '';
+        routeDestination.value = '';
+
+        routeFields.classList.add("hidden");
+        searchHeader.classList.remove("hidden");
+
+        activeInput = null;
+        expanded = false;
+        search.cancel();
+        currentResults = [];
+        currentQuery = '';
+        renderSearchList();
+    },
+
+    setPoint(which, point) {
+        Editor.Route.setPoint(which, point);
+
+        const input = which === 'origin' ? routeOrigin : routeDestination;
+        const other = which === 'origin' ? routeDestination : routeOrigin;
+        const otherPoint = which === 'origin' ? Editor.Route.destination : Editor.Route.origin;
+
+        input.value = point ? point.title : '';
+        if (point && !otherPoint) other.focus();
+        else input.blur();
+    },
+
+    swap() {
+        Editor.Route.swap();
+        [routeOrigin.value, routeDestination.value] = [routeDestination.value, routeOrigin.value];
+    },
+};
+
 function selfPoint() {
     return Editor.Self ? { ref: Editor.Self, title: 'Sua localização', self: true } : null;
 }
 
 // título do ponto já escolhido naquele campo (para não buscar o que já foi escolhido)
 function pointTitle(input) {
-    if (input === routeOrigin) return Route.origin?.title;
-    if (input === routeDestination) return Route.destination?.title;
+    if (input === routeOrigin) return Editor.Route.origin?.title;
+    if (input === routeDestination) return Editor.Route.destination?.title;
     return null;
 }
 
@@ -2334,7 +2629,7 @@ function renderSearchList() {
     let html = '';
 
     // no campo de partida, "Sua localização" é sempre uma opção rápida
-    if (Route.active && activeInput === routeOrigin && Editor.Self && !Route.origin?.self) {
+    if (Editor.Route.active && activeInput === routeOrigin && Editor.Self && !Editor.Route.origin?.self) {
         html += `
             <li class="search-element" data-self="true">
                 <div class="search-element-icon"><i class="fa-solid fa-location-crosshairs"></i></div>
@@ -2398,9 +2693,9 @@ function pickResult(item) {
     expanded = false;
     syncExpansion();
 
-    if (Route.active) {
+    if (Editor.Route.active) {
         const point = { ref: item.ref, title: item.title };
-        Route.setPoint(target === routeOrigin ? 'origin' : 'destination', point);
+        RouteUI.setPoint(target === routeOrigin ? 'origin' : 'destination', point);
     } else {
         goToPlace(item.ref, 2);
         Actions.openBanner(item.ref);
@@ -2422,193 +2717,10 @@ async function pickSelf() {
     syncExpansion();
 
     const status = await Localizacao.requestLocation();
-    if (!Route.active) return;
+    if (!Editor.Route.active) return;
 
-    if (status === 'granted') Route.setPoint('origin', selfPoint());
+    if (status === 'granted') RouteUI.setPoint('origin', selfPoint());
     else reportLocationFailure(status);
-}
-
-function nearestNodeId(coordinate, nodes) {
-    const p = coordinate.getIn("normal");
-    let best = null;
-    let bestDist = Infinity;
-
-    for (const [id, pos] of Object.entries(nodes)) {
-        const d = (pos.x - p.x) ** 2 + (pos.y - p.y) ** 2;
-        if (d < bestDist) {
-            bestDist = d;
-            best = id; // Object.entries devolve strings, que é o que o A* espera
-        }
-    }
-    return best;
-}
-
-function findRoute(fromPlace, toPlace) {
-    const edges = [];
-    const nodes = {};
-
-    // só entram referências que têm conexão, então o nó mais próximo nunca é um nó isolado
-    for (const conn of Object.values(Editor.Connections.connections)) {
-        edges.push([conn.start.id, conn.end.id]);
-        nodes[conn.start.id] = conn.start.coordinate.getIn("normal");
-        nodes[conn.end.id] = conn.end.coordinate.getIn("normal");
-    }
-
-    const startId = nearestNodeId(fromPlace.coordinate, nodes);
-    const goalId = nearestNodeId(toPlace.coordinate, nodes);
-    if (startId === null || goalId === null) return null;
-
-    const ids = getShortestPath(edges, nodes, startId, goalId);
-    return ids ? ids.map(id => Editor.Referencer.references[id]) : null;
-}
-
-class Route {
-    constructor() { throw new Error("Classe estática. Não instancie."); }
-
-    static active = false;
-    static origin = null;       // { ref, title, self? }
-    static destination = null;  // { ref, title }
-
-    static locationRequestId = 0;
-
-    static async start(place) {
-        const title = bannerTitle.value.trim() || 'Destino';
-        const wasActive = this.active;
-
-        this.active = true;
-        searchHeader.classList.add("hidden");
-        routeFields.classList.remove("hidden");
-
-        this.destination = { ref: place, title };
-        routeDestination.value = title;
-
-        if (!wasActive) {
-            this.origin = null;
-            routeOrigin.value = '';
-            this.update();
-            await this.useMyLocation();
-            return;
-        }
-        this.update();
-    }
-
-    static async useMyLocation() {
-        const id = ++this.locationRequestId;
-        routeOrigin.placeholder = 'Obtendo sua localização…';
-
-        const status = await Localizacao.requestLocation();
-        routeOrigin.placeholder = originPlaceholder;
-
-        // route closed, or the user picked an origin by hand while we waited
-        if (id !== this.locationRequestId || !this.active || this.origin) return;
-
-        if (status === 'granted') {
-            this.setPoint('origin', selfPoint());
-        } else {
-            reportLocationFailure(status);
-            routeOrigin.focus();
-        }
-    }
-
-    static stop() {
-        this.active = false;
-        this.origin = null;
-        this.destination = null;
-        routeOrigin.value = '';
-        routeDestination.value = '';
-
-        routeFields.classList.add("hidden");
-        searchHeader.classList.remove("hidden");
-
-        activeInput = null;
-        expanded = false;
-        search.cancel();
-        currentResults = [];
-        currentQuery = '';
-        renderSearchList();
-
-        this.update();
-    }
-
-    static setPoint(which, point) {
-        this[which] = point;
-
-        const input = which === 'origin' ? routeOrigin : routeDestination;
-        const other = which === 'origin' ? routeDestination : routeOrigin;
-        const otherPoint = which === 'origin' ? this.destination : this.origin;
-
-        input.value = point ? point.title : '';
-
-        if (point && !otherPoint) other.focus();
-        else input.blur();
-
-        this.update();
-    }
-
-    static clearPoint(which) {
-        if (!this[which]) return;
-        this[which] = null;
-        this.update();
-    }
-
-    static swap() {
-        [this.origin, this.destination] = [this.destination, this.origin];
-        [routeOrigin.value, routeDestination.value] = [routeDestination.value, routeOrigin.value];
-        this.update();
-    }
-    
-    static segments = [];
-    static graphics = null;
-    static points = [];
-
-    static update(redraw=true) {
-        this.points = [];
-
-        if (this.active && this.origin && this.destination) {
-            const path = findRoute(this.origin.ref, this.destination.ref);
-
-            if (path) {
-                this.points = [
-                    this.origin.ref.coordinate,
-                    ...path.map(ref => ref.coordinate),
-                    this.destination.ref.coordinate,
-                ];
-            } else {
-                Toasts.toaster.show({ text: 'Nenhum caminho encontrado', category: "error" });
-            }
-        }
-        if(!redraw) return;
-
-        this.redraw();
-    }
-
-    static async redraw() {
-        let retrack = false;
-        if (this.origin?.title == "Sua localização" || this.destination?.title == "Sua localização") {
-            retrack = true;
-            this.update(false);
-        }
-        if (this.points.length < 2) {
-            if (this.graphics) Graficos.clearConnection(this.graphics);
-            return;
-        }
-
-        if (!this.graphics) this.graphics = Graficos.createConnection();
-
-        Graficos.renderConnection(this.graphics, {
-            points: this.points,
-            colorOut: 0x1a7f37,
-            colorIn: 0x4cc36a,
-            alpha: 1,
-            size: 8,
-        });
-        if (!retrack) {
-            return;
-        }
-        await sleep(1000 / 60);
-
-        this.redraw();
-    }
 }
 
 function initSearch() {
@@ -2623,8 +2735,8 @@ function initSearch() {
     originPlaceholder = routeOrigin.placeholder;
 
     Localizacao.onPermissionChange((state) => {
-        if (state === 'granted' || !Route.active || !Route.origin?.self) return;
-        Route.clearPoint('origin');
+        if (state === 'granted' || !Editor.Route.active || !Editor.Route.origin?.self) return;
+        Editor.Route.clearPoint('origin');
         routeOrigin.value = '';
         reportLocationFailure(state === 'denied' ? 'denied' : 'unavailable');
     });
@@ -2644,7 +2756,7 @@ function initSearch() {
             activeInput = input;
             expanded = true;
             if (input !== searchField) {
-                Route.clearPoint(input === routeOrigin ? 'origin' : 'destination');
+                Editor.Route.clearPoint(input === routeOrigin ? 'origin' : 'destination');
             }
             search.schedule(input.value);
         });
@@ -2683,8 +2795,14 @@ function initSearch() {
         if (item?.ref) pickResult(item);
     });
 
-    document.getElementById("route-close").addEventListener('click', () => Route.stop());
-    document.getElementById("route-swap").addEventListener('click', () => Route.swap());
+    document.getElementById("route-close").addEventListener('click', () => RouteUI.stop());
+    document.getElementById("route-swap").addEventListener('click', () => RouteUI.swap());
+
+    Editor.Route.subscribe((type) => {
+        if (type === "nopath") {
+            Toasts.toaster.show({ text: 'Nenhum caminho encontrado', category: "error" });
+        }
+    });
 }
 
 function updateUrlParams(paramsObj, specialUrl) {
@@ -2808,7 +2926,7 @@ export async function addListeners(map) {
         backdrop.addEventListener('click', closeMenu);
 
         document.getElementById("banner-route").addEventListener("click", () => {
-            if (bannerHeld()) Route.start(Holdable.object);
+            if (bannerHeld()) RouteUI.start(Holdable.object);
         });
 
         document.getElementById("banner-share").addEventListener("click", async () => {
@@ -2887,7 +3005,18 @@ export async function addListeners(map) {
         document.addEventListener("keydown", (e) => {
             if (Modals.modal.dialog.open) return;
             if (e.target.closest?.("input, textarea, [contenteditable]")) return;
-            if (leftClicking || (Holdable.object && Holdable.type !== "banner")) return;
+
+            // o fantasma do vértice e o banner aberto não contam como "arrastando algo"
+            const dragging = Holdable.object && !["banner", "phantomVertex"].includes(Holdable.type);
+            if (leftClicking || dragging) return;
+
+            // Enter: com 3+ pontos fecha como está e conclui; com menos, avisa
+            if (e.key === "Enter" && editorMode === EditorModes.CONSTRUCTION &&
+                Task.task === "build" && Task.taskStep === 1) {
+                e.preventDefault();
+                Actions.pinAction();
+                return;
+            }
 
             const isModifierPressed = e.ctrlKey || e.metaKey;
 
@@ -2918,10 +3047,7 @@ export async function addListeners(map) {
         bannerBtn.addEventListener("click", () => Actions.switchMode(EditorModes.BANNER));
         selectionBtn.addEventListener("click", () => Actions.switchMode(EditorModes.SELECTION));
         deleteBtn.addEventListener("click", () => Actions.switchMode(EditorModes.DELETION));
-        pinBtn.addEventListener("click", () => {
-            if (!pinDone) Actions.beginTask("build", {});
-            else Actions.finishTask();
-        });
+        pinBtn.addEventListener("click", () => Actions.pinAction());
 
         saveBtn.addEventListener("click", save);
 

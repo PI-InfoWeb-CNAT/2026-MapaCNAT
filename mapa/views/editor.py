@@ -46,13 +46,10 @@ def mapa_editor_data(request: Any, mapa_id):
             data = json.loads(request.body)
 
         with transaction.atomic():
-            # Lock the map row: two simultaneous saves of the same map are serialized.
             Mapa.objects.select_for_update().get(pk=mapa.pk)
 
-            # Only this map's data is cleared (same order as before).
             Rota.objects.filter(mapa=mapa).delete()
             Referencia.objects.filter(mapa=mapa).delete()
-            ConstrucaoRegiao.objects.filter(mapa=mapa).delete()
             Construcao.objects.filter(mapa=mapa).delete()
             Banner.objects.filter(mapa=mapa).delete()
 
@@ -62,7 +59,6 @@ def mapa_editor_data(request: Any, mapa_id):
             buildings_data = data.get("buildings", {})
             references_data = data.get("references", {})
             banners_data = data.get("banners", {})
-            areas_catalog = data.get("areas", {})
             connections_data = data.get("connections", {})
 
             ref_to_build_id = {}
@@ -74,19 +70,10 @@ def mapa_editor_data(request: Any, mapa_id):
                 construcao = Construcao.objects.create(
                     mapa=mapa,
                     nome=b_info.get("name", ""),
+                    coordinates=b_info.get("polygon", []),
                     localizacao_pino=b_info.get("pin", {"x": 0, "y": 0}),
                 )
                 build_db_map[str(b_id)] = construcao
-
-                for area_id in b_info.get("areas", []):
-                    area_info = areas_catalog.get(str(area_id), {})
-                    if area_info:
-                        ConstrucaoRegiao.objects.create(
-                            mapa=mapa,
-                            min=area_info.get("min"),
-                            max=area_info.get("max"),
-                            construcao=construcao,
-                        )
 
             for ref_id, ref_info in references_data.items():
                 linked_build_id = ref_to_build_id.get(str(ref_id))
@@ -178,8 +165,6 @@ def export_db_to_json(mapa, request=None):
     build_banner_map = {}
     ref_banner_map = {}
 
-    # defer(): do not pull every image blob into memory just to build the JSON.
-    # The mime type is only ever set together with a blob, so it tells us if an image exists.
     for banner in Banner.objects.filter(mapa=mapa).defer("imagem_blob"):
         banner_id_str = str(banner.id)
 
@@ -202,16 +187,6 @@ def export_db_to_json(mapa, request=None):
         if banner.referencia_id is not None:
             ref_banner_map[banner.referencia_id] = banner.id
 
-    areas_dict = {}
-    build_areas_map = defaultdict(list)
-    for area in ConstrucaoRegiao.objects.filter(mapa=mapa):
-        areas_dict[str(area.id)] = {
-            "min": area.min,
-            "max": area.max
-        }
-        if area.construcao_id is not None:
-            build_areas_map[area.construcao_id].append(area.id)
-
     references_dict = {}
     build_entrances_map = defaultdict(list)
     for ref in Referencia.objects.filter(mapa=mapa):
@@ -227,7 +202,7 @@ def export_db_to_json(mapa, request=None):
         buildings_dict[str(build.id)] = {
             "name": build.nome or "",
             "pin": build.localizacao_pino,
-            "areas": build_areas_map.get(build.id, []),
+            "polygon": build.coordinates or [],
             "entrances": build_entrances_map.get(build.id, []),
             "banner": build_banner_map.get(build.id)
         }
@@ -246,7 +221,6 @@ def export_db_to_json(mapa, request=None):
         "buildings": buildings_dict,
         "references": references_dict,
         "banners": banners_dict,
-        "areas": areas_dict,
         "connections": connections_dict,
         "files": {}
     }

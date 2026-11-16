@@ -18,10 +18,10 @@
 
         <nav id="autenticar">
             {% if is_authenticated %}
-                <a class="botao intro-item" href="{% url 'logout' %}">
-                    <i class="fa-solid fa-user"></i>
-                    <span>Sair</span>
-                </a>
+            <a class="botao intro-item" href="{% url 'logout' %}">
+                <i class="fa-solid fa-user"></i>
+                <span>Sair</span>
+            </a>
             {% else %}
                 <a class="botao intro-item" href="{% url 'login' %}">
                     <i class="fa-solid fa-user"></i>

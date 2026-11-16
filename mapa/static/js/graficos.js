@@ -11,6 +11,7 @@ let referenceContainer;
 let connectionContainer;
 let areasContainer;
 let pinContainer;
+export let snapGuideContainer;
 let app;
 let compassButton;
 
@@ -79,6 +80,25 @@ export function getScreenCoordinates(pos) {
     };
 }
 
+export function getVisibleMapBounds() {
+    const rect = app.canvas.getBoundingClientRect();
+
+    const corners = [
+        { x: rect.left, y: rect.top },
+        { x: rect.right, y: rect.top },
+        { x: rect.right, y: rect.bottom },
+        { x: rect.left, y: rect.bottom },
+    ].map((p) => {
+        const local = mapContainer.toLocal(
+            new PIXI.Point(p.x, p.y)
+        );
+
+        return local;
+    });
+
+    return corners;
+}
+
 /////////////////// Reference
 
 export function createReference() {
@@ -115,6 +135,7 @@ export function renderReference(graphics, data) {
         graphics.door.tint = colorOut;
         graphics.door.x = pos.x;
         graphics.door.y = pos.y;
+        graphics.door.rotation = -mapContainer.rotation;
     } else {
         graphics.door.visible = false;
     }
@@ -150,6 +171,7 @@ export function createConnection() {
 
     return connection;
 }
+
 
 export function renderConnection(graphics, data) {
     let alpha = data.alpha;
@@ -213,6 +235,50 @@ export function destroyConnection(graphics) {
     });
 }
 
+export function createGuide() {
+    const guide = new PIXI.Graphics();
+
+    guide.position.set(0, 0);
+    snapGuideContainer.addChild(guide);
+
+    return guide;
+}
+
+export function renderGuide(graphics, data) {
+    const { alpha, colorOut, size, points } = data;
+    if (points.length !== 2) return;
+
+    const p0 = points[0].getIn("normal");
+    const p1 = points[1].getIn("normal");
+
+    graphics.clear();
+    graphics.moveTo(p0.x, p0.y);
+    graphics.lineTo(p1.x, p1.y);
+    graphics.stroke({
+        width: size / zoom,
+        color: colorOut,
+        alpha,
+        cap: "round",
+    });
+}
+
+export function clearGuide(graphics) {
+    graphics.clear();
+}
+
+export function destroyGuide(graphics) {
+    if (!graphics) return;
+
+    snapGuideContainer.removeChild(graphics);
+
+    graphics.destroy({
+        children: true,
+        texture: true,
+        textureSource: true,
+    });
+}
+
+
 /////////////////// Pin
 
 export function createPin(name) {
@@ -243,6 +309,11 @@ export function createPin(name) {
     pinContainer.addChild(pinGfx);
 
     return pinGfx;
+}
+
+export function setPinText(gfx, text) {
+    gfx.children[0].text = text;   // children[0] é o label (ver createPin)
+    gfx[HIT] = null;
 }
 
 export function renderPin(graphics, data) {
@@ -402,7 +473,7 @@ export function createPoly() {
 export function renderPoly(graphics, data) {
     graphics.clear();
 
-    let rawPoints = data.points;
+    let rawPoints = [...data.points, data.points[0]];
     if (!rawPoints || rawPoints.length === 0) return;
 
     const isSinglePolygon =
@@ -457,6 +528,17 @@ export function renderPoly(graphics, data) {
         cap: "round",
         join: "round",
     });
+
+    if (data.handles) {
+        const pts = data.points.map(getPos);
+        pts.forEach((p, i) => {
+            const active = i === data.handleActive;
+            graphics
+                .circle(p.x, p.y, (active ? 9 : 6) / zoom)
+                .fill({ color: active ? 0xffffff : colorIn })
+                .stroke({ width: 3 / zoom, color: colorOut });
+        });
+    }
 }
 
 export function clearPoly(graphics) {
@@ -471,6 +553,32 @@ export function destroyPoly(graphics) {
         children: true,
         texture: true,
         baseTexture: true,
+    });
+}
+
+export function renderDraft(graphics, data) {
+    graphics.clear();
+    const pts = data.points.map((p) => p.getIn("normal"));
+    if (!pts.length) return;
+
+    if (pts.length >= 2) {
+        graphics.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) graphics.lineTo(pts[i].x, pts[i].y);
+        graphics.stroke({
+            width: data.borderSize / zoom,
+            color: data.colorOut,
+            alpha: data.alpha,
+            cap: "round",
+            join: "round",
+        });
+    }
+
+    pts.forEach((p, i) => {
+        const first = i === 0;
+        graphics
+            .circle(p.x, p.y, (first ? 9 : 6) / zoom)
+            .fill({ color: first && data.closable ? data.colorOut : data.colorIn })
+            .stroke({ width: 3 / zoom, color: data.colorOut });
     });
 }
 
@@ -695,6 +803,10 @@ export async function main() {
     
     pinContainer = new PIXI.Container();
     mapContainer.addChild(pinContainer);
+    
+    snapGuideContainer = new PIXI.Container();
+    mapContainer.addChild(snapGuideContainer);
+
     temporaryPin = createPin("");
     clearPin(temporaryPin);
 
@@ -852,15 +964,12 @@ function Zoom(z) {
         ref.updateGraphics();
     }
 
-    let areas = Editor.Buildings.areas;
-    for (const area of Object.values(areas)) {
-        area.updateGraphics();
-    }
-
     let buildings = Editor.Buildings.buildings;
     for (const building of Object.values(buildings)) {
         building.updateGraphics();
     }
+
+    Editor.SnapGuides.render();
 
     clampPos();
     tiles?.requestUpdate();
@@ -876,6 +985,10 @@ function Rotation(r) {
     mapContainer.rotation = r;
     for (const child of pinContainer.children) {
         child.rotation = -r;
+    }
+    let references = Editor.Referencer.references;
+    for (const ref of Object.values(references).filter((e) => {return e.isEntrance})) {
+        ref.updateGraphics();
     }
     if(compassButton) {
         compassButton.children[0].style.transform = `rotate(${r}rad)`;
