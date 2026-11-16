@@ -16,10 +16,27 @@ def migrate_mapa(request):
         if os.path.exists(caminho_svg):
             with open(caminho_svg, 'rb') as f:
                 svg_bytes = f.read()
-        
-        mapa_padrao = Mapa.objects.create(
+
+            coordenadas_iniciais = [
+                {
+                    "svg": [2816.41, 2154.88],
+                    "geo": [-5.8127165, -35.2049893]
+                },
+                {
+                    "svg": [2816.8, 22.12],
+                    "geo": [-5.8136425, -35.2023976]
+                },
+                {
+                    "svg": [7.84, 25.94],
+                    "geo": [-5.8111207, -35.2014561]
+                }
+            ]
+
+            mapa_padrao = Mapa.objects.create(
             nome="Mapa CNAT",
-            svg_blob=svg_bytes
+            svg_blob=svg_bytes,
+            coordinates=coordenadas_iniciais,
+            public='publico'
         )
     else:
         mapa_padrao = Mapa.objects.first()
