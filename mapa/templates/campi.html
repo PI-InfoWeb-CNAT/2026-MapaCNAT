@@ -24,7 +24,9 @@ Somente leitura: sem criação, edição ou links para o editor.
 
     <header class="hub-header">
         <div class="hub-header-inner">
-            <a class="hub-brand" href="{% url 'home' %}">MapaCNAT</a>
+            <a href="{% url 'home' %}" class="painel-logo">
+                <img src="{% static 'img/logo.png' %}" alt="Mapa CNAT, página inicial">
+            </a>
             <a class="botao" href="{% url 'home' %}">Voltar ao início</a>
         </div>
     </header>
@@ -39,9 +41,14 @@ Somente leitura: sem criação, edição ou links para o editor.
                     salas, setores e caminhos.
                 </p>
             </div>
+            {% if user.is_staff or user.is_superuser %}
+                <a class="alt-botao" href="{% url 'painel_hub' %}">
+                    <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+                    <span>Administração</span>
+                </a>
+            {% endif %}
         </div>
 
-        <!-- Busca e ordenação (funciona sem JS via GET; com JS filtra na hora) -->
         <form class="mapas-toolbar"
               id="hub-form"
               method="get"

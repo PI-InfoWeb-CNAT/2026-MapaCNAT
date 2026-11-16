@@ -48,10 +48,10 @@
     </nav>
 
     <main>
-        <!-- ===== tab: map editor ===== -->
         <section class="editor-view" id="view-map" data-view="map" role="tabpanel" aria-labelledby="tab-map">
 
             <nav id="editor-modes" aria-label="Ferramentas do mapa">
+                <a class="alt-botao" href="{% url 'mapa' mapa.pk %}" title="Voltar a Exploração" aria-label="Voltar a Exploração"><i class="fa-solid fa-map"></i></a>
                 <button type="button" class="tool-btn" id="selection" title="Seleção" aria-label="Seleção"><i class="fa-solid fa-hand"></i></button>
                 <button type="button" class="tool-btn" id="delete" title="Apagar" aria-label="Apagar"><i class="fa-solid fa-trash"></i></button>
                 <hr>
@@ -59,7 +59,7 @@
                 <div class="tool-group" id="construction-group">
                     <button type="button" class="tool-btn" id="build" title="Construções" aria-label="Construções"><i class="fa-solid fa-building"></i></button>
                     <button type="button" id="pin-mode" class="tool-ext" data-state="idle"
-                            title="Nova construção: Clique para começar" aria-label="Nova construção">
+                            title="Nova construção" aria-label="Nova construção">
                         <span class="tool-ext-icon">
                             <img class="icon-pin" src="{% static 'img/pino.png' %}" width="22" alt="">
                             <i class="icon-check fa-solid fa-check"></i>

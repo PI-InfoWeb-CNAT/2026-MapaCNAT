@@ -1082,7 +1082,7 @@ class Pointer {
         if (Holdable.phantomObject) {
             Holdable.phantomObject.updateGraphics();
         }
-        Route.redraw();
+        Editor.Route.redraw();
         Graficos.updateMap();
     }
 }
@@ -1906,6 +1906,7 @@ class Actions {
 
     static async ensureBannerValid() {
         const { state, missing } = bannerState();
+
         if (state !== "partial") return true;
         if (this.confirmingBanner) return false;
 
@@ -2316,8 +2317,8 @@ function selfPoint() {
 
 // título do ponto já escolhido naquele campo (para não buscar o que já foi escolhido)
 function pointTitle(input) {
-    if (input === routeOrigin) return Route.origin?.title;
-    if (input === routeDestination) return Route.destination?.title;
+    if (input === routeOrigin) return Editor.Route.origin?.title;
+    if (input === routeDestination) return Editor.Route.destination?.title;
     return null;
 }
 
@@ -2334,7 +2335,7 @@ function renderSearchList() {
     let html = '';
 
     // no campo de partida, "Sua localização" é sempre uma opção rápida
-    if (Route.active && activeInput === routeOrigin && Editor.Self && !Route.origin?.self) {
+    if (Editor.Route.active && activeInput === routeOrigin && Editor.Self && !Editor.Route.origin?.self) {
         html += `
             <li class="search-element" data-self="true">
                 <div class="search-element-icon"><i class="fa-solid fa-location-crosshairs"></i></div>
@@ -2398,9 +2399,9 @@ function pickResult(item) {
     expanded = false;
     syncExpansion();
 
-    if (Route.active) {
+    if (Editor.Route.active) {
         const point = { ref: item.ref, title: item.title };
-        Route.setPoint(target === routeOrigin ? 'origin' : 'destination', point);
+        Editor.Route.setPoint(target === routeOrigin ? 'origin' : 'destination', point);
     } else {
         goToPlace(item.ref, 2);
         Actions.openBanner(item.ref);
@@ -2422,9 +2423,9 @@ async function pickSelf() {
     syncExpansion();
 
     const status = await Localizacao.requestLocation();
-    if (!Route.active) return;
+    if (!Editor.Route.active) return;
 
-    if (status === 'granted') Route.setPoint('origin', selfPoint());
+    if (status === 'granted') Editor.Route.setPoint('origin', selfPoint());
     else reportLocationFailure(status);
 }
 
@@ -2462,155 +2463,6 @@ function findRoute(fromPlace, toPlace) {
     return ids ? ids.map(id => Editor.Referencer.references[id]) : null;
 }
 
-class Route {
-    constructor() { throw new Error("Classe estática. Não instancie."); }
-
-    static active = false;
-    static origin = null;       // { ref, title, self? }
-    static destination = null;  // { ref, title }
-
-    static locationRequestId = 0;
-
-    static async start(place) {
-        const title = bannerTitle.value.trim() || 'Destino';
-        const wasActive = this.active;
-
-        this.active = true;
-        searchHeader.classList.add("hidden");
-        routeFields.classList.remove("hidden");
-
-        this.destination = { ref: place, title };
-        routeDestination.value = title;
-
-        if (!wasActive) {
-            this.origin = null;
-            routeOrigin.value = '';
-            this.update();
-            await this.useMyLocation();
-            return;
-        }
-        this.update();
-    }
-
-    static async useMyLocation() {
-        const id = ++this.locationRequestId;
-        routeOrigin.placeholder = 'Obtendo sua localização…';
-
-        const status = await Localizacao.requestLocation();
-        routeOrigin.placeholder = originPlaceholder;
-
-        // route closed, or the user picked an origin by hand while we waited
-        if (id !== this.locationRequestId || !this.active || this.origin) return;
-
-        if (status === 'granted') {
-            this.setPoint('origin', selfPoint());
-        } else {
-            reportLocationFailure(status);
-            routeOrigin.focus();
-        }
-    }
-
-    static stop() {
-        this.active = false;
-        this.origin = null;
-        this.destination = null;
-        routeOrigin.value = '';
-        routeDestination.value = '';
-
-        routeFields.classList.add("hidden");
-        searchHeader.classList.remove("hidden");
-
-        activeInput = null;
-        expanded = false;
-        search.cancel();
-        currentResults = [];
-        currentQuery = '';
-        renderSearchList();
-
-        this.update();
-    }
-
-    static setPoint(which, point) {
-        this[which] = point;
-
-        const input = which === 'origin' ? routeOrigin : routeDestination;
-        const other = which === 'origin' ? routeDestination : routeOrigin;
-        const otherPoint = which === 'origin' ? this.destination : this.origin;
-
-        input.value = point ? point.title : '';
-
-        if (point && !otherPoint) other.focus();
-        else input.blur();
-
-        this.update();
-    }
-
-    static clearPoint(which) {
-        if (!this[which]) return;
-        this[which] = null;
-        this.update();
-    }
-
-    static swap() {
-        [this.origin, this.destination] = [this.destination, this.origin];
-        [routeOrigin.value, routeDestination.value] = [routeDestination.value, routeOrigin.value];
-        this.update();
-    }
-    
-    static segments = [];
-    static graphics = null;
-    static points = [];
-
-    static update(redraw=true) {
-        this.points = [];
-
-        if (this.active && this.origin && this.destination) {
-            const path = findRoute(this.origin.ref, this.destination.ref);
-
-            if (path) {
-                this.points = [
-                    this.origin.ref.coordinate,
-                    ...path.map(ref => ref.coordinate),
-                    this.destination.ref.coordinate,
-                ];
-            } else {
-                Toasts.toaster.show({ text: 'Nenhum caminho encontrado', category: "error" });
-            }
-        }
-        if(!redraw) return;
-
-        this.redraw();
-    }
-
-    static async redraw() {
-        let retrack = false;
-        if (this.origin?.title == "Sua localização" || this.destination?.title == "Sua localização") {
-            retrack = true;
-            this.update(false);
-        }
-        if (this.points.length < 2) {
-            if (this.graphics) Graficos.clearConnection(this.graphics);
-            return;
-        }
-
-        if (!this.graphics) this.graphics = Graficos.createConnection();
-
-        Graficos.renderConnection(this.graphics, {
-            points: this.points,
-            colorOut: 0x1a7f37,
-            colorIn: 0x4cc36a,
-            alpha: 1,
-            size: 8,
-        });
-        if (!retrack) {
-            return;
-        }
-        await sleep(1000 / 60);
-
-        this.redraw();
-    }
-}
-
 function initSearch() {
     searchForm = document.getElementById("search");
     searchHeader = document.getElementById("search-header");
@@ -2623,8 +2475,8 @@ function initSearch() {
     originPlaceholder = routeOrigin.placeholder;
 
     Localizacao.onPermissionChange((state) => {
-        if (state === 'granted' || !Route.active || !Route.origin?.self) return;
-        Route.clearPoint('origin');
+        if (state === 'granted' || !Editor.Route.active || !Editor.Route.origin?.self) return;
+        Editor.Route.clearPoint('origin');
         routeOrigin.value = '';
         reportLocationFailure(state === 'denied' ? 'denied' : 'unavailable');
     });
@@ -2644,7 +2496,7 @@ function initSearch() {
             activeInput = input;
             expanded = true;
             if (input !== searchField) {
-                Route.clearPoint(input === routeOrigin ? 'origin' : 'destination');
+                Editor.Route.clearPoint(input === routeOrigin ? 'origin' : 'destination');
             }
             search.schedule(input.value);
         });
@@ -2683,8 +2535,8 @@ function initSearch() {
         if (item?.ref) pickResult(item);
     });
 
-    document.getElementById("route-close").addEventListener('click', () => Route.stop());
-    document.getElementById("route-swap").addEventListener('click', () => Route.swap());
+    document.getElementById("route-close").addEventListener('click', () => Editor.Route.stop());
+    document.getElementById("route-swap").addEventListener('click', () => Editor.Route.swap());
 }
 
 function updateUrlParams(paramsObj, specialUrl) {
@@ -2808,7 +2660,7 @@ export async function addListeners(map) {
         backdrop.addEventListener('click', closeMenu);
 
         document.getElementById("banner-route").addEventListener("click", () => {
-            if (bannerHeld()) Route.start(Holdable.object);
+            if (bannerHeld()) Editor.Route.start(Holdable.object);
         });
 
         document.getElementById("banner-share").addEventListener("click", async () => {

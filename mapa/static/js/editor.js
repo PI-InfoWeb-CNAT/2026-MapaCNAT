@@ -652,6 +652,155 @@ export class TouchPin {
     }
 }
 
+export class Route {
+    constructor() { throw new Error("Classe estática. Não instancie."); }
+
+    static active = false;
+    static origin = null;       // { ref, title, self? }
+    static destination = null;  // { ref, title }
+
+    static locationRequestId = 0;
+
+    static async start(place) {
+        const title = bannerTitle.value.trim() || 'Destino';
+        const wasActive = this.active;
+
+        this.active = true;
+        searchHeader.classList.add("hidden");
+        routeFields.classList.remove("hidden");
+
+        this.destination = { ref: place, title };
+        routeDestination.value = title;
+
+        if (!wasActive) {
+            this.origin = null;
+            routeOrigin.value = '';
+            this.update();
+            await this.useMyLocation();
+            return;
+        }
+        this.update();
+    }
+
+    static async useMyLocation() {
+        const id = ++this.locationRequestId;
+        routeOrigin.placeholder = 'Obtendo sua localização…';
+
+        const status = await Localizacao.requestLocation();
+        routeOrigin.placeholder = originPlaceholder;
+
+        // route closed, or the user picked an origin by hand while we waited
+        if (id !== this.locationRequestId || !this.active || this.origin) return;
+
+        if (status === 'granted') {
+            this.setPoint('origin', selfPoint());
+        } else {
+            reportLocationFailure(status);
+            routeOrigin.focus();
+        }
+    }
+
+    static stop() {
+        this.active = false;
+        this.origin = null;
+        this.destination = null;
+        routeOrigin.value = '';
+        routeDestination.value = '';
+
+        routeFields.classList.add("hidden");
+        searchHeader.classList.remove("hidden");
+
+        activeInput = null;
+        expanded = false;
+        search.cancel();
+        currentResults = [];
+        currentQuery = '';
+        renderSearchList();
+
+        this.update();
+    }
+
+    static setPoint(which, point) {
+        this[which] = point;
+
+        const input = which === 'origin' ? routeOrigin : routeDestination;
+        const other = which === 'origin' ? routeDestination : routeOrigin;
+        const otherPoint = which === 'origin' ? this.destination : this.origin;
+
+        input.value = point ? point.title : '';
+
+        if (point && !otherPoint) other.focus();
+        else input.blur();
+
+        this.update();
+    }
+
+    static clearPoint(which) {
+        if (!this[which]) return;
+        this[which] = null;
+        this.update();
+    }
+
+    static swap() {
+        [this.origin, this.destination] = [this.destination, this.origin];
+        [routeOrigin.value, routeDestination.value] = [routeDestination.value, routeOrigin.value];
+        this.update();
+    }
+    
+    static segments = [];
+    static graphics = null;
+    static points = [];
+
+    static update(redraw=true) {
+        this.points = [];
+
+        if (this.active && this.origin && this.destination) {
+            const path = findRoute(this.origin.ref, this.destination.ref);
+
+            if (path) {
+                this.points = [
+                    this.origin.ref.coordinate,
+                    ...path.map(ref => ref.coordinate),
+                    this.destination.ref.coordinate,
+                ];
+            } else {
+                Toasts.toaster.show({ text: 'Nenhum caminho encontrado', category: "error" });
+            }
+        }
+        if(!redraw) return;
+
+        this.redraw();
+    }
+
+    static async redraw() {
+        let retrack = false;
+        if (this.origin?.title == "Sua localização" || this.destination?.title == "Sua localização") {
+            retrack = true;
+            this.update(false);
+        }
+        if (this.points.length < 2) {
+            if (this.graphics) Graficos.clearConnection(this.graphics);
+            return;
+        }
+
+        if (!this.graphics) this.graphics = Graficos.createConnection();
+
+        Graficos.renderConnection(this.graphics, {
+            points: this.points,
+            colorOut: 0x1a7f37,
+            colorIn: 0x4cc36a,
+            alpha: 1,
+            size: 8,
+        });
+        if (!retrack) {
+            return;
+        }
+        await sleep(1000 / 60);
+
+        this.redraw();
+    }
+}
+
 export class Self {
     constructor() {
         throw new Error("Classe estática. Não instancie.");
