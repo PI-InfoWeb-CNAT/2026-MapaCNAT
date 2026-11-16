@@ -91,6 +91,34 @@
                     <div class="banner-content">
                         <input type="text" class="editable-title" id="place-name" placeholder="Nome da construção">
                         <hr class="banner-divider">
+                        <div class="banner-alias-field">
+                            <div class="banner-alias-heading">
+                                <label class="banner-section-title" for="banner-alias-input">
+                                    Palavras-chave
+                                </label>
+                                <span class="banner-alias-optional">Opcional</span>
+                            </div>
+
+                            <div class="banner-alias-editor" id="banner-alias-editor">
+                                <div class="banner-alias-list" id="banner-alias-list"></div>
+
+                                <input
+                                    type="text"
+                                    id="banner-alias-input"
+                                    class="banner-alias-input"
+                                    placeholder="Adicionar palavra-chave..."
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    aria-label="Adicionar palavra-chave"
+                                    aria-describedby="banner-alias-hint"
+                                >
+                            </div>
+
+                            <p class="banner-alias-hint" id="banner-alias-hint">
+                                Separe as palavras com espaço ou pressione Enter.
+                            </p>
+                        </div>
+                        <hr class="banner-divider">
                         <textarea class="editable-description" id="place-description" placeholder="Escreva uma descrição..."></textarea>
                     </div>
                 </form>

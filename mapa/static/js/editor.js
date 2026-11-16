@@ -139,6 +139,7 @@ export function buildPayload() {
             image: hasFile ? banner.image.name : null,
             title: banner.title,
             description: banner.description,
+            alias: banner.titleAlias,
         };
         if (hasFile) files[id] = banner.image;
 
@@ -247,15 +248,31 @@ export async function queryBanner(query) {
 
       if (!banner?.title) return acc;
 
-      const score = getFieldScore(banner.title, trimmedQuery);
+      // Collect all searchable fields.
+      const searchFields = [
+        banner.title,
+        ...(Array.isArray(banner.titleAlias)
+          ? banner.titleAlias
+          : banner.titleAlias
+            ? [banner.titleAlias]
+            : []),
+        element?.name,
+        element?.building?.name
+      ].filter(value => typeof value === "string" && value.trim());
+
+      // Get the highest score across all fields.
+      const score = Math.max(
+        0,
+        ...searchFields.map(field => getFieldScore(field, trimmedQuery))
+      );
 
       if (score > 0) {
         acc.push({
           title: banner.title,
-          image: banner.image,//.name ? "/media/banners/" + banner.image.name : "/static/img/ifrn-logo.png",
+          image: banner.image,
           description: banner.description,
           ref: element,
-          score: score
+          score
         });
       }
 
@@ -272,7 +289,6 @@ export async function load() {
         const data = await response.json();
         let refMap = {};
         let areaMap = {};
-        
         
         if (data.buildings) {
             for (const key of Object.keys(data.buildings)) {
@@ -291,6 +307,9 @@ export async function load() {
                     if (banner.description) {
                         building.banner.description = banner.description;
                         building.banner.detailed = true;
+                    }
+                    if (banner.alias) {
+                        building.banner.titleAlias = banner.alias;
                     }
                     if (banner.image) {
                         const imageFile = banner.image 
@@ -333,6 +352,9 @@ export async function load() {
                 if (banner.description) {
                     refObject.banner.description = banner.description;
                     refObject.banner.detailed = true;
+                }
+                if (banner.alias) {
+                    refObject.banner.titleAlias = banner.alias;
                 }
                 if (banner.image) {
                     const imageFile = banner.image 
@@ -1864,6 +1886,7 @@ export class Banner {
     constructor() {
         this.detailed = false;
         this.title = "";
+        this.titleAlias = [];
         this.description = "";
         this.image = false;
     }

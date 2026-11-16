@@ -102,6 +102,7 @@ def mapa_editor_data(request: Any, mapa_id):
             for banner_id, banner_info in banners_data.items():
                 title = banner_info.get("title", "")
                 description = banner_info.get("description", "")
+                name_alias = banner_info.get("alias", [])
                 uploaded_file = request.FILES.get(f"file_{banner_id}")
 
                 if uploaded_file is None and not title and not description:
@@ -131,6 +132,7 @@ def mapa_editor_data(request: Any, mapa_id):
                     mapa=mapa,
                     titulo=title,
                     descricao=description,
+                    name_alias=name_alias,
                     imagem_blob=image_bytes,
                     imagem_mime_type=mime_type,
                     construcao=linked_build,
@@ -191,7 +193,8 @@ def export_db_to_json(mapa, request=None):
         banners_dict[banner_id_str] = {
             "image": image_url,
             "title": banner.titulo or "",
-            "description": banner.descricao or ""
+            "description": banner.descricao or "",
+            "alias": banner.name_alias or []
         }
 
         if banner.construcao_id is not None:

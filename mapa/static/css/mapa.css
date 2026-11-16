@@ -1177,6 +1177,206 @@ header {
 }
 
 
+/* ---------- banner aliases / keywords ---------- */
+
+.banner-alias-field {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin: 5px 0 2px;
+}
+
+.banner-alias-heading {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.banner-alias-heading .banner-section-title {
+    margin: 0;
+}
+
+.banner-alias-optional {
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+/* Input container */
+
+.banner-alias-editor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+
+    min-height: 43px;
+    padding: 7px 9px;
+
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    background: var(--gray-50);
+
+    cursor: text;
+
+    transition:
+        background-color var(--duration-fast),
+        border-color var(--duration-fast),
+        box-shadow var(--duration-fast);
+}
+
+.banner-alias-editor:focus-within {
+    border-color: var(--dark-green-main);
+    background: var(--white);
+    box-shadow: 0 0 0 3px rgba(8, 115, 19, 0.10);
+}
+
+/* Container holding the chips */
+
+.banner-alias-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Individual keyword */
+
+.banner-alias-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+
+    max-width: 100%;
+    padding: 4px 5px 4px 10px;
+
+    border: 1px solid rgba(8, 115, 19, 0.10);
+    border-radius: var(--radius-pill);
+
+    background: var(--green-tint);
+    color: var(--dark-green-main);
+
+    font-size: 0.79rem;
+    font-weight: 600;
+    line-height: 1.4;
+
+    animation: banner-alias-enter 140ms ease-out;
+}
+
+.banner-alias-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Remove button */
+
+.banner-alias-remove {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+
+    width: 19px;
+    height: 19px;
+    padding: 0;
+
+    border: none;
+    border-radius: 50%;
+
+    background: transparent;
+    color: inherit;
+
+    font-family: Arial, sans-serif;
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 1;
+
+    cursor: pointer;
+
+    opacity: 0.65;
+
+    transition:
+        background-color var(--duration-fast),
+        color var(--duration-fast),
+        opacity var(--duration-fast),
+        transform var(--duration-press);
+}
+
+.banner-alias-remove:hover {
+    background: rgba(8, 115, 19, 0.13);
+    opacity: 1;
+}
+
+.banner-alias-remove:active {
+    transform: scale(0.85);
+}
+
+.banner-alias-remove:focus-visible {
+    outline: 2px solid var(--green-focus);
+    outline-offset: 1px;
+    opacity: 1;
+}
+
+/* Actual text input */
+
+.banner-alias-input {
+    flex: 1 1 135px;
+    min-width: 110px;
+    width: auto;
+
+    padding: 4px 2px;
+
+    border: none;
+    outline: none;
+
+    background: transparent;
+
+    color: var(--gray-900);
+    font-family: inherit;
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.banner-alias-input::placeholder {
+    color: var(--gray-500);
+    opacity: 0.8;
+}
+
+/* Helper text */
+
+.banner-alias-hint {
+    margin: -2px 0 0;
+
+    color: var(--gray-500);
+    font-size: 0.74rem;
+    line-height: 1.4;
+}
+
+/* Entry animation */
+
+@keyframes banner-alias-enter {
+    from {
+        opacity: 0;
+        transform: translateY(3px) scale(0.96);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .banner-alias-chip {
+        animation: none;
+    }
+}
+
 /* ==========================================================================
    9. Responsive (mobile)
    ========================================================================== */

@@ -4,6 +4,7 @@ from . import *
 class Banner(models.Model):
     titulo = models.CharField(max_length=255, blank=True, default="Nome da construção")
     descricao = models.TextField(blank=True, default="")
+    name_alias = models.JSONField(default=list, blank=True)
 
     imagem_blob = models.BinaryField(null=True, blank=True)
     imagem_mime_type = models.CharField(max_length=50, blank=True, null=True)

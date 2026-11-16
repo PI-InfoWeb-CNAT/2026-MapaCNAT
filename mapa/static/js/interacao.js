@@ -63,6 +63,9 @@ let imageWrapper;
 let imageLabel;
 let bannerTitle;
 let bannerDescription;
+let bannerAliasInput;
+let bannerAliasList;
+let bannerAliases = [];
 let pinMap;
 let constructionMap;
 let previousTitle;
@@ -248,11 +251,107 @@ function syncBannerStatus() {
         state === "complete" ? "Completo" : "Não detalhado";
 }
 
+
+function normalizeBannerAliases(values) {
+    const source = Array.isArray(values)
+        ? values
+        : typeof values === "string"
+            ? values.split(/\s+/)
+            : [];
+
+    const seen = new Set();
+
+    return source
+        .flatMap(value =>
+            typeof value === "string" ? value.split(/\s+/) : []
+        )
+        .map(value => value.trim())
+        .filter(value => {
+            if (!value) return false;
+
+            const normalized = value.toLocaleLowerCase();
+
+            if (seen.has(normalized)) return false;
+
+            seen.add(normalized);
+            return true;
+        });
+}
+
+function renderBannerAliases() {
+    if (!bannerAliasList) return;
+
+    bannerAliasList.replaceChildren();
+
+    bannerAliases.forEach((alias, index) => {
+        const chip = document.createElement("span");
+        chip.className = "banner-alias-chip";
+
+        const text = document.createElement("span");
+        text.className = "banner-alias-text";
+        text.textContent = alias;
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "banner-alias-remove";
+        remove.textContent = "×";
+        remove.setAttribute("aria-label", `Remover ${alias}`);
+        remove.title = `Remover "${alias}"`;
+
+        remove.addEventListener("click", () => {
+            bannerAliases.splice(index, 1);
+            renderBannerAliases();
+            bannerAliasInput?.focus();
+        });
+
+        chip.append(text, remove);
+        bannerAliasList.appendChild(chip);
+    });
+}
+
+function setBannerAliases(values) {
+    bannerAliases = normalizeBannerAliases(values);
+    renderBannerAliases();
+}
+
+function addBannerAliases(value) {
+    const incoming = normalizeBannerAliases(value);
+
+    if (!incoming.length) return;
+
+    const existing = new Set(
+        bannerAliases.map(alias => alias.toLocaleLowerCase())
+    );
+
+    for (const alias of incoming) {
+        const normalized = alias.toLocaleLowerCase();
+
+        if (existing.has(normalized)) continue;
+
+        bannerAliases.push(alias);
+        existing.add(normalized);
+    }
+
+    renderBannerAliases();
+}
+
+function commitBannerAliasInput() {
+    if (!bannerAliasInput) return;
+
+    addBannerAliases(bannerAliasInput.value);
+    bannerAliasInput.value = "";
+}
+
 function clearBannerFields() {
     resetDisplayImage();
+
     bannerTitle.value = "";
     bannerDescription.value = "";
+
+    setBannerAliases([]);
+
     if (bannerHeld()) Holdable.initialPos.img = false;
+
     syncBannerStatus();
 }
 
@@ -1772,11 +1871,13 @@ class Actions {
         const image = Holdable.initialPos?.img || false;
         const title = bannerTitle.value.trim();
         const description = bannerDescription.value.trim();
+        const titleAlias = [...bannerAliases];
 
         banner.detailed = !!(image || title || description);
         banner.image = image;
         banner.title = title;
         banner.description = description;
+        banner.titleAlias = titleAlias;
     }
 
     static restoreBanner(obj) {
@@ -1795,6 +1896,9 @@ class Actions {
             bannerTitle.value = obj.name;
         }
         bannerDescription.value = b.description || "";
+
+        setBannerAliases(b.titleAlias || []);
+
         if (page == "main") syncDescriptionLabel();
     }
 
@@ -2768,6 +2872,8 @@ export async function addListeners(map) {
         imageLabel = document.getElementById("image-upload-label");
         bannerTitle = document.getElementById("place-name");
         bannerDescription = document.getElementById("place-description");
+        bannerAliasInput = document.getElementById("banner-alias-input");
+        bannerAliasList = document.getElementById("banner-alias-list");
 
         selectionBtn = document.getElementById("selection");
         deleteBtn = document.getElementById("delete");
@@ -2820,6 +2926,45 @@ export async function addListeners(map) {
         saveBtn.addEventListener("click", save);
 
         imageInput.addEventListener("change", (e) => updateImageDisplay(e));
+
+        bannerAliasInput.addEventListener("keydown", (e) => {
+            if (
+                e.key === " " ||
+                e.key === "Enter" ||
+                e.key === ","
+            ) {
+                e.preventDefault();
+                commitBannerAliasInput();
+                return;
+            }
+
+            // Backspace remove a última etiqueta quando o campo está vazio.
+            // event.repeat permite remover várias ao manter a tecla pressionada.
+            if (
+                e.key === "Backspace" &&
+                !bannerAliasInput.value &&
+                bannerAliases.length > 0
+            ) {
+                e.preventDefault();
+
+                bannerAliases.pop();
+                renderBannerAliases();
+            }
+        });
+
+        // Colar "biblioteca bloco A entrada" cria quatro etiquetas.
+        bannerAliasInput.addEventListener("paste", (e) => {
+            e.preventDefault();
+
+            const pasted = e.clipboardData?.getData("text") || "";
+
+            addBannerAliases(pasted);
+        });
+
+        // Não deixa conteúdo parcialmente digitado para trás.
+        bannerAliasInput.addEventListener("blur", () => {
+            commitBannerAliasInput();
+        });     
 
         Editor.load();
     }
