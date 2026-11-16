@@ -173,3 +173,5 @@ class ModalManager {
 }
 
 export const modal = new ModalManager();
+
+window.modal = modal;

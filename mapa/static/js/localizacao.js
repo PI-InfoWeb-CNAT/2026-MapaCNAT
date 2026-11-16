@@ -32,11 +32,20 @@ const CONFIG = {
     storageKey: "geo-granted"  // hint for browsers without the Permissions API
 };
 
-let geographical = [
-    [-5.811105868698768, -35.201445594283136],
-    [-5.810082771429163, -35.204026579227964],
-    [-5.812708592957059, -35.20497480931187],
-];
+function lerGeograficas(coordinates) {
+    const pontos = typeof coordinates === 'string' ? JSON.parse(coordinates) : coordinates;
+
+    if (!Array.isArray(pontos) || pontos.length !== 3 || !pontos.every((p) => p?.geo)) {
+        return null;
+    }
+    return pontos.map((p) => p.geo);
+}
+
+let geographical;
+if(mapaCoordinates) {
+    geographical = lerGeograficas(mapaCoordinates);
+}
+
 export function mapToGeographical(point) {
     let coordinateTransform = new MatrixTransform(
         [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],

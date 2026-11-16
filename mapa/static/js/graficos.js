@@ -569,7 +569,7 @@ export function destroyTouchPin(graphics) {
 
 export function setContext(context) {
     page = context.page;
-    if(page == "main") {
+    if (page == "main") {
         compassButton = document.getElementById("orientation");
     }
     color = context.blank_color;
@@ -577,7 +577,9 @@ export function setContext(context) {
 
     zoomStep = context.scroll_ratio;
 
-    mapImagePath = mapImage;
+    const separator = mapImage.includes("?") ? "&" : "?";
+    mapImagePath = `${mapImage}${separator}v=${Date.now()}`;
+
     pinImagePath = pinImage;
     userImagePath = defaultUserImage;
     entranceImagePath = entranceImage;

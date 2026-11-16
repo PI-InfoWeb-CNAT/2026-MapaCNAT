@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}MapaCNAT | Explorar{% endblock %}
+{% block title %}MapaCNAT - Editor{% endblock %}
 
 {% block style %}
 <link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
@@ -79,14 +79,19 @@
 
     <div id="map"></div>
     
+    {{ mapa.coordinates|json_script:"coordinates-data" }}
+
     <script>
+        const mapaCoordinates = JSON.parse(
+            document.getElementById('coordinates-data').textContent
+        );
         const config = "{% static 'json/config.json' %}";
-        const mapImage =  "{% static 'svg/mapa.svg' %}";
+        const mapImage = "{% url 'mapa_svg_raw' mapa.pk %}";
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
         const defaultUserImage = "{% static 'img/default-user.png' %}";
-        const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
-        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' %}";
+        const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' mapa.pk %}";
+        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
         let sharePlaceLat = false;
         let sharePlaceLong = false;
         const bannerURL = "{% url 'banner_image' 0 %}";

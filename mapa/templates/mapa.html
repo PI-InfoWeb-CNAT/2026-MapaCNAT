@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}MapaCNAT | Explorar{% endblock %}
+{% block title %}MapaCNAT - Explorar{% endblock %}
 
 {% block style %}
 <link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
@@ -32,8 +32,7 @@
         <nav class="sidebar-links">
             {% if user.is_staff or user.is_superuser %}
             <span class="sidebar-section-title">Equipe</span>
-            <a href="{% url 'admin' %}"><i class="fa-solid fa-user-shield"></i> Administração</a>
-            <a href="{% url 'mapa_editor' %}"><i class="fa-solid fa-map"></i> Editor</a>
+            <a href="{% url 'painel_hub' %}"><i class="fa-solid fa-user-shield"></i> Administração</a>
             <span class="sidebar-section-title">Geral</span>
             {% endif %}
             <a href="{% url 'feedback' %}"><i class="fa-solid fa-comment"></i> Relatar Feedback</a>
@@ -155,14 +154,18 @@
 
     <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+    {{ mapa.coordinates|json_script:"coordinates-data" }}
+
     <script>
         const config = "{% static 'json/config.json' %}";
-        const mapImage =  "{% static 'svg/mapa.svg' %}";
+        const mapImage = "{% url 'mapa_svg_raw' mapa.pk %}";
+        const mapaCoordinates = JSON.parse(
+            document.getElementById('coordinates-data').textContent
+        );
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
         const defaultUserImage = "{% static 'img/default-user.png' %}";
-        const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
-        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' %}";
+        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
         let sharePlaceLat = "{{ lat }}";
         let sharePlaceLong = "{{ long }}";
         let shareRender = "{{ r }}";

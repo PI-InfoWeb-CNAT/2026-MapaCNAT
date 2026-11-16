@@ -22,6 +22,12 @@ class Banner(models.Model):
         null=True, 
         blank=True
     )
+    mapa = models.ForeignKey(
+        "Mapa",
+        null=True,
+        on_delete=models.CASCADE,
+        related_name="banners",
+    )
 
     def __str__(self):
         owner = self.referencia or self.construcao

@@ -1,0 +1,206 @@
+/* ==========================================================================
+   campi.css: hub público de mapas (complementa painel.css)
+   Reaproveita .painel-page, .painel-main, .painel-title, .painel-grid,
+   .mapa-card, .mapa-preview e .mapas-toolbar do painel.css.
+   ========================================================================== */
+
+/* Cabeçalho simples (sem navegação do painel) */
+.hub-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding-top: var(--safe-top);
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.hub-header-inner {
+    max-width: var(--painel-max);
+    min-height: var(--painel-header-h);
+    margin: 0 auto;
+    padding: 10px var(--painel-margin);
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.hub-brand {
+    color: var(--blue-main);
+    font-size: 1.25rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.hub-header .botao {
+    padding: 8px 16px;
+    white-space: nowrap;
+}
+
+/* Barra de busca */
+.hub-limpar {
+    width: 28px;
+    height: 28px;
+}
+
+.hub-limpar[hidden] {
+    display: none;
+}
+
+/* Com JS a busca é instantânea; o botão só serve de fallback */
+.hub-js .hub-buscar {
+    display: none;
+}
+
+.hub-contagem {
+    margin-bottom: 14px;
+    color: var(--gray-700);
+    font-size: .9rem;
+}
+
+/* Card inteiro é um link para o mapa */
+.mapa-card-publico {
+    position: relative;
+}
+
+.mapa-card-publico[hidden] {
+    display: none;
+}
+
+.mapa-card-publico .mapa-preview {
+    transition: filter var(--duration-fast);
+}
+
+.mapa-card-publico:hover .mapa-preview {
+    filter: brightness(.94);
+}
+
+.hub-card-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+}
+
+.hub-card-info > div {
+    min-width: 0;
+}
+
+.hub-card-info h2 {
+    color: var(--gray-900);
+    font-size: 1.05rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.hub-card-info small {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: .8rem;
+}
+
+.hub-abrir {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--dark-green-main);
+    font-size: .9rem;
+    font-weight: 600;
+}
+
+.hub-abrir i {
+    transition: transform var(--duration-fast);
+}
+
+.mapa-card-publico:hover .hub-abrir i,
+.mapa-card-publico:focus-visible .hub-abrir i {
+    transform: translateX(4px);
+}
+
+/* Estados vazios */
+.hub-vazio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 48px 0;
+    color: var(--gray-500);
+    text-align: center;
+}
+
+.hub-vazio[hidden] {
+    display: none;
+}
+
+.hub-vazio i {
+    font-size: 2rem;
+}
+
+@media (max-width: 480px) {
+    .hub-card-info {
+        padding: 12px 14px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hub-abrir i,
+    .mapa-card-publico .mapa-preview {
+        transition: none;
+    }
+
+    .mapa-card-publico:hover .hub-abrir i,
+    .mapa-card-publico:focus-visible .hub-abrir i {
+        transform: none;
+    }
+}
+
+
+/* ==========================================================================
+   Mapa em manutenção: acinzentado e não clicável
+   ========================================================================== */
+
+.mapa-card-publico.is-manutencao {
+    cursor: not-allowed;
+    background: var(--gray-50);
+    box-shadow: none;
+    border: 1px dashed var(--gray-300);
+}
+
+/* sem elevação nem "clique", já que não há para onde ir */
+.mapa-card-publico.is-manutencao:hover,
+.mapa-card-publico.is-manutencao:active {
+    transform: none;
+    box-shadow: none;
+}
+
+.mapa-card-publico.is-manutencao .mapa-preview {
+    filter: grayscale(1);
+    opacity: .55;
+}
+
+.mapa-card-publico.is-manutencao:hover .mapa-preview {
+    filter: grayscale(1);
+}
+
+.mapa-card-publico.is-manutencao .hub-card-info h2 {
+    color: var(--gray-500);
+}
+
+.hub-manutencao {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-700);
+    font-size: .78rem;
+    font-weight: 700;
+    white-space: nowrap;
+}

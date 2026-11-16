@@ -2,7 +2,7 @@
 
 {% load static %}
 
-{% block title %}Página não encontrada • MapaCNAT{% endblock %}
+{% block title %}MapaCNAT - 404{% endblock %}
 
 {% block style %}
 <link rel="stylesheet" type="text/css" href="{% static 'css/404.css' %}">
@@ -27,9 +27,9 @@
             <p>O endereço que você acessou não existe ou foi movido. Volte ao mapa e continue explorando o campus.</p>
 
             <div class="error-actions">
-                <a href="{% url 'mapa' %}" class="botao explorar">
+                <a href="{% url 'campi' %}" class="botao explorar">
                     <i class="fa-solid fa-map"></i>
-                    <span>Ir para o Mapa</span>
+                    <span>Explorar mapas</span>
                 </a>
 
                 <a href="{% url 'home' %}" class="botao">

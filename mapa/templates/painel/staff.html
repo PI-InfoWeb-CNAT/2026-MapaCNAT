@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+
+{% load static %}
+
+{% block title %}Painel · Staff · MapaCNAT{% endblock %}
+
+{% block style %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/painel.css' %}">
+{% endblock %}
+
+{% comment %}
+Contexto esperado:
+  membros -> queryset de usuários staff (pk, email, get_full_name, is_superuser)
+  form    -> (opcional) form de adição com erros. Campo: email
+Um único POST em painel_staff, diferenciado por "action":
+  action=add     + email
+  action=remove  + user_id
+Sugestão: a view recusa remover o próprio usuário e superusers (a UI já desabilita).
+{% endcomment %}
+
+{% block content %}
+<div class="painel-page">
+    {% include 'painel/_header.html' with ativo='staff' %}
+
+    <main class="painel-main">
+        <div class="painel-title">
+            <div>
+                <h1>Staff</h1>
+                <p>Quem tem acesso ao painel e ao editor dos mapas. Para adicionar alguém, basta informar o e-mail.</p>
+            </div>
+        </div>
+
+        {% if messages %}
+        <div class="painel-alerts">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}" role="status">
+                    <i class="fa-solid {% if message.tags == 'success' %}fa-circle-check{% elif message.tags == 'error' %}fa-circle-exclamation{% else %}fa-circle-info{% endif %}" aria-hidden="true"></i>
+                    <span>{{ message }}</span>
+                </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="staff-layout">
+            <section class="painel-card staff-add" aria-labelledby="titulo-add">
+                <h2 id="titulo-add">Adicionar membro</h2>
+
+                <form method="post" action="{% url 'painel_staff' %}" class="staff-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add">
+
+                    <div class="form-group">
+                        <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+                        {{ form.email }}
+                        <p class="painel-erro" id="staff-email-erro" aria-live="polite">{{ form.email.errors|first }}</p>
+                    </div>
+
+                    <button type="submit" class="botao alt-botao">
+                        <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+                        <span>Adicionar</span>
+                    </button>
+                </form>
+            </section>
+
+            <section class="painel-card" aria-labelledby="titulo-lista">
+                <h2 id="titulo-lista">Membros <span class="staff-count">{{ staff_users|length }}</span></h2>
+
+                {% if staff_users %}
+                <ul class="staff-list">
+                    {% for m in staff_users %}
+                    <li class="staff-item">
+                        <span class="staff-avatar" aria-hidden="true">{{ m.email|first|upper }}</span>
+
+                        <div class="staff-info">
+                            <p class="staff-nome">
+                                <span>{{ m.get_full_name|default:m.email }}</span>
+                                {% if m.pk == request.user.pk %}<span class="staff-badge">Você</span>{% endif %}
+                                {% if m.is_superuser %}<span class="staff-badge">Superadmin</span>{% endif %}
+                            </p>
+                            <p class="staff-email">{{ m.email }}</p>
+                        </div>
+
+                        {% if m.pk == request.user.pk or m.is_superuser %}
+                        <button type="button" class="icon-btn staff-remove" disabled
+                                title="{% if m.pk == request.user.pk %}Você não pode remover a si mesmo{% else %}Superadmins não podem ser removidos aqui{% endif %}"
+                                aria-label="Remover {{ m.email }} (indisponível)">
+                            <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                        </button>
+                        {% else %}
+                        <button type="button" class="icon-btn staff-remove"
+                                data-dialog-open="dialog-remover"
+                                data-user-id="{{ m.pk }}"
+                                data-user-email="{{ m.email }}"
+                                aria-label="Remover {{ m.email }}">
+                            <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                        </button>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="painel-vazio">Nenhum membro na staff.</p>
+                {% endif %}
+            </section>
+        </div>
+    </main>
+
+    <dialog id="dialog-remover" class="painel-dialog" aria-labelledby="titulo-remover">
+        <div class="painel-dialog-head">
+            <h2 id="titulo-remover">Remover da staff</h2>
+            <button type="button" class="app-modal-close" data-dialog-close aria-label="Fechar">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <form method="post" action="{% url 'painel_staff' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="user_id" value="">
+
+            <p class="painel-confirmar">
+                <strong data-remove-email></strong> perderá o acesso ao painel e ao editor dos mapas.
+            </p>
+
+            <div class="painel-actions">
+                <button type="button" class="modal-button" data-dialog-close>Cancelar</button>
+                <button type="submit" class="modal-submit-btn painel-danger">
+                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                    <span>Remover</span>
+                </button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="{% static 'js/painel.js' %}" defer></script>
+</div>
+{% endblock %}
