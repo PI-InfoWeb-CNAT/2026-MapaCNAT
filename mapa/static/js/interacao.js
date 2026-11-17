@@ -870,7 +870,9 @@ class Pointer {
                     if (line) {
                         Actions.destroyConnection(line);
                     } else {
-                        const building = Editor.Buildings.getOverlappingBuildings(coord, false);
+                        const building =
+                            Editor.Buildings.getOverlappingPins(coord) ||
+                            Editor.Buildings.getOverlappingBuildings(coord, false);
                         if (building) Actions.destroyBuilding(building);
                     }
                 }
@@ -1032,7 +1034,10 @@ class Pointer {
                 const coord = normalCoordAt(e.clientX, e.clientY);
                 const dot = Editor.Referencer.getOverlappingDots(coord);
                 const line = dot ? false : Editor.Connections.getOverlappingLines(coord);
-                const building = (dot || line) ? false : Editor.Buildings.getOverlappingBuildings(coord);
+                const building = (dot || line)
+                    ? false
+                    : (Editor.Buildings.getOverlappingPins(coord) ||
+                    Editor.Buildings.getOverlappingBuildings(coord));
 
                 if (dot) hoverTargetSet.add(dot);
                 else if (line) hoverTargetSet.add(line);
