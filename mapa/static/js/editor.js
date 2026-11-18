@@ -584,7 +584,6 @@ function polygonArea(pts) {
     return Math.abs(s) / 2;
 }
 
-// compatibilidade: mapas antigos salvos com várias áreas viram um polígono (a maior união)
 function legacyPolygon(areas) {
     const boxes = areas.filter(Boolean).map(a => [a.min.x, a.min.y, a.max.x, a.max.y]);
     if (!boxes.length) return null;
@@ -1082,7 +1081,6 @@ export class Self {
         this.rawCoordinate = coordinate;                       // posição real do GPS
         this.coordinate = page === "main" ? Connections.snap(coordinate) : coordinate;
         this.updateGraphics();
-        console.log(coordinate);
     }
 
     static getOverlappingPin(coordinate) {

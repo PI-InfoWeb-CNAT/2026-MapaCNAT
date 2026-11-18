@@ -11,10 +11,12 @@ from django.template import loader
 from django.urls import reverse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
+from django.contrib.admin.views.decorators import staff_member_required
 
 from ..models import *
 
 @login_required
+@staff_member_required
 def mapa_editor(request: Any, mapa_id):
     if not request.user.is_staff:
         template = loader.get_template('404.html')
@@ -27,8 +29,8 @@ def mapa_editor(request: Any, mapa_id):
     template = loader.get_template('mapa-editor.html')
     return HttpResponse(template.render(context=context, request=request))
 
-
 @login_required
+@staff_member_required
 @ensure_csrf_cookie
 @require_POST
 def mapa_editor_data(request: Any, mapa_id):
@@ -40,6 +42,10 @@ def mapa_editor_data(request: Any, mapa_id):
 
     try:
         raw_data = request.POST.get('data')
+        MAX_PAYLOAD_SIZE = 1024 * 100
+
+        if len(raw_data) > MAX_PAYLOAD_SIZE:
+            raise ValueError("Payload too large")
         if raw_data:
             data = json.loads(raw_data)
         else:

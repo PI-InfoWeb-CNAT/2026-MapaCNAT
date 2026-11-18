@@ -114,7 +114,6 @@ def generate_token_endpoint(request):
         'token': token
     })
 
-
 def resolve_token_endpoint(request):
     token = request.GET.get('token')
     

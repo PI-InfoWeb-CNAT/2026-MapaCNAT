@@ -175,7 +175,6 @@ function updatePhantomVertex(coordinate, e) {
     let finalCoord;
 
     if (overClose) {
-        // Fechamento tem prioridade sobre o alinhamento.
         finalCoord = Editor.newCoord(
             building.vertices[0].pos.x,
             building.vertices[0].pos.y,
@@ -195,8 +194,6 @@ function updatePhantomVertex(coordinate, e) {
 
         finalCoord = snap.coordinate;
 
-        // Atualiza os guias em toda interação.
-        // Se um eixo não tiver snap, seu gráfico recebe clear().
         Editor.SnapGuides.update(snap.guides);
     }
 
@@ -325,7 +322,6 @@ function grabBuildingTarget(x, y) {
     }
 }
 
-// true = the gesture belongs to a building handle (don't pan)
 function dragBuildingTarget(e) {
     if (Holdable.type === "buildingVertex") {
         if (!dragStarted && !passedDragThreshold(e)) return true;
@@ -2283,9 +2279,7 @@ class Actions {
                 }
             }
         } else {
-            if (bannerHeld()) {
-                Actions.openModal("share", {shareData: shareData});
-            }
+            Actions.openModal("share", {shareData: shareData});
         }
     }
 }
@@ -2965,15 +2959,15 @@ export async function addListeners(map) {
                     Toasts.toaster.show({ text: "Falha ao comparilhar.", category: "error" });
                     return;
                 }
-
+                
                 let url = buildURL(window.location.origin + window.location.pathname, {showpin: 0, lat: geocoords[0], long: geocoords[1]});
-
+                
                 const shareData = {
                     title: 'Venha ver onde eu estou!',
                     text: 'Olha só onde eu estou!',
                     url: url
                 };
-
+            
                 Actions.shareFeature(shareData);
             }
             else reportLocationFailure(status, 'Localização desativada: não é possível compartilhá-la.');

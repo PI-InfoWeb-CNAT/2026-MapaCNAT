@@ -31,10 +31,9 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'chave-insegura')
 DEBUG = os.environ.get('DJANGO_DEBUG', "False").lower() in ('true', '1', 't')
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['127.0.0.1', 'mapa-cnat.vercel.app', 'jailer-anaconda-scrimmage.ngrok-free.dev']
 
 LOGIN_URL = 'login'
-# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
