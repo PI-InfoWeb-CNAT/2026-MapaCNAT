@@ -12,6 +12,7 @@ from django.http import HttpResponse, Http404
 from django.db import IntegrityError
 from django.views.decorators.http import require_POST
 from django.db.models.functions import Length
+from django.contrib.admin.views.decorators import staff_member_required
 
 User = get_user_model()
 
@@ -42,7 +43,7 @@ def _mapas_leves():
     """Listagem sem carregar o svg_blob (até 20 MB por mapa) de cada linha."""
     return Mapa.objects.defer('svg_blob').annotate(svg_tamanho=Length('svg_blob'))
 
-
+@staff_member_required
 def admin_view(request):
     if not request.user.is_staff:
         return _nao_encontrado()
@@ -83,7 +84,7 @@ def admin_view(request):
         'form': form,
     })
 
-
+@staff_member_required
 @staff_ou_404
 @require_POST
 def mapa_editar(request, pk):
@@ -114,7 +115,7 @@ def mapa_editar(request, pk):
     messages.success(request, 'Mapa atualizado.')
     return redirect('painel_hub')
 
-
+@staff_member_required
 @staff_ou_404
 @require_POST
 def mapa_apagar(request, pk):
@@ -124,7 +125,7 @@ def mapa_apagar(request, pk):
     messages.success(request, f'Mapa “{nome}” apagado.')
     return redirect('painel_hub')
 
-
+@staff_member_required
 @staff_ou_404
 @require_POST
 def mapa_publicar(request, pk):
@@ -144,6 +145,7 @@ def mapa_publicar(request, pk):
     mapa.save(update_fields=['public'])
     return redirect('painel_hub')
 
+@staff_member_required
 def admin_staff(request):
     if not request.user.is_staff:
         template = loader.get_template('404.html')

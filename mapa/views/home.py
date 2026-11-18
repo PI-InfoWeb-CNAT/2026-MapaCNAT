@@ -8,7 +8,7 @@ from mapa.models.feedback import Feedback
 def home(request: Any):
     template = loader.get_template('home.html')
     context = {
-            "is_authenticated": request.user.is_authenticated
+            "is_authenticated": request.user.is_authenticated,
         }
     return HttpResponse(template.render(context))
 

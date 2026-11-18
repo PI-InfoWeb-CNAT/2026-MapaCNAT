@@ -2,6 +2,9 @@ import { MatrixTransform } from "./transformacao.js";
 import * as Graficos from "./graficos.js";
 import * as Editor from "./editor.js";
 
+const pin = { fromX: 0, fromY: 0, toX: 0, toY: 0, start: 0, duration: 1 };
+let lastFixAt = 0;
+
 const CONFIG = {
     debug: false,
 
@@ -15,6 +18,14 @@ const CONFIG = {
     maxSpeed: 12,
     gateSigmas: 3.5,
     gateFloor: 8,
+
+    minMoveDistance: 6,        // m: never move the pin for changes smaller than this
+    moveAccuracyFactor: 0.5,   // threshold also grows to this fraction of the reported accuracy
+    settleDistance: 1, 
+    
+    defaultGlideMs: 1000,      // duration of the first segment, before an interval is known
+    minGlideMs: 300,           // clamp for the interval between fixes
+    maxGlideMs: 4000,
 
     confirmCount: 3,
     confirmMs: 6000,
@@ -32,39 +43,69 @@ const CONFIG = {
     storageKey: "geo-granted"  // hint for browsers without the Permissions API
 };
 
-function lerGeograficas(coordinates) {
+function lerPontos(coordinates) {
     const pontos = typeof coordinates === 'string' ? JSON.parse(coordinates) : coordinates;
 
-    if (!Array.isArray(pontos) || pontos.length !== 3 || !pontos.every((p) => p?.geo)) {
+    if (!Array.isArray(pontos) || pontos.length !== 3 ||
+        !pontos.every((p) => Array.isArray(p?.geo) && Array.isArray(p?.svg))) {
         return null;
     }
-    return pontos.map((p) => p.geo);
+    return {
+        geo: pontos.map((p) => p.geo),
+        svg: pontos.map((p) => p.svg)
+    };
 }
 
-let geographical;
-if(mapaCoordinates) {
-    geographical = lerGeograficas(mapaCoordinates);
+let geographical = null;   // [[lat, lon] x3]
+let svgPoints = null;      // [[x, y] x3]
+if (mapaCoordinates) {
+    const parsed = lerPontos(mapaCoordinates);
+    if (parsed) {
+        geographical = parsed.geo;
+        svgPoints = parsed.svg;
+    }
 }
 
 export function mapToGeographical(point) {
-    let coordinateTransform = new MatrixTransform(
-        [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
-        [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-        [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-        geographical[0], geographical[1], geographical[2],
-    );
-
-    return coordinateTransform.transform([point.x, point.y]);
+    return new MatrixTransform(
+        svgPoints[0], svgPoints[1], svgPoints[2],
+        geographical[0], geographical[1], geographical[2]
+    ).transform([point.x, point.y]);
 }
-export function GeographicalToMap(point) {
-    let coordinateTransform = new MatrixTransform(
-        geographical[0], geographical[1], geographical[2],
-        [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
-        [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-        [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-    );
 
-    return coordinateTransform.transform([point.x, point.y]);
+export function GeographicalToMap(point) {
+    return new MatrixTransform(
+        geographical[0], geographical[1], geographical[2],
+        svgPoints[0], svgPoints[1], svgPoints[2]
+    ).transform([point.x, point.y]);
+}
+
+function lerPontosControle(coordinates) {
+    const pontos = typeof coordinates === 'string' ? JSON.parse(coordinates) : coordinates;
+
+    if (!Array.isArray(pontos) || pontos.length !== 3 ||
+        !pontos.every((p) => Array.isArray(p?.geo) && Array.isArray(p?.svg))) {
+        return null;
+    }
+    return pontos.map((p) => ({ geo: p.geo, svg: p.svg }));
+}
+
+const controlPoints = mapaCoordinates ? lerPontosControle(mapaCoordinates) : null;
+
+// Built lazily: Graficos may not be ready when this module loads.
+let controlCache = null;
+function getControl() {
+    if (controlCache) return controlCache;
+    if (!controlPoints) throw new Error("mapaCoordinates inválido: são necessários 3 pontos com geo e svg.");
+
+    controlCache = {
+        geo: controlPoints.map((p) => p.geo),
+        map: controlPoints.map((p) => {
+            const n = Graficos.svgToNormalized({ x: p.svg[0], y: p.svg[1] });
+            return [n.x, n.y];
+        })
+    };
+    return controlCache;
 }
 
 const log = (...args) => { if (CONFIG.debug) console.debug("[geo]", ...args); };
@@ -109,7 +150,8 @@ const track = {
     x: new Axis(),
     y: new Axis(),
     t: 0,
-    arrival: 0
+    arrival: 0,
+    acc: Infinity
 };
 
 let origin = null;
@@ -141,9 +183,7 @@ let pendingRequest = null;
 function ensureTransform() {
     latLonToMap ??= new MatrixTransform(
         geographical[0], geographical[1], geographical[2],
-        [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
-        [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-        [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2]
+        svgPoints[0], svgPoints[1], svgPoints[2]
     );
     return latLonToMap;
 }
@@ -185,6 +225,8 @@ function setOnline(value) {
 }
 
 function resetTrack() {
+    pinMoving = false;
+    lastFixAt = 0;
     track.ready = false;
     candidates = [];
     origin = null;
@@ -199,7 +241,9 @@ function draw() {
 
     const [lat, lon] = toLatLon(display.x, display.y);
     const point = transform.transform([lat, lon]);
-    Editor.Self.setPos(Editor.newCoord(point[0], point[1], "normal"));
+
+    let svgCoord = Graficos.svgToNormalized({x: point[0], y: point[1]});
+    Editor.Self.setPos(Editor.newCoord(svgCoord.x, svgCoord.y, "normal"));
 
     if (!pinShown) {
         Editor.Self.setVisible(true);
@@ -249,24 +293,48 @@ async function refreshPermission() {
         permissionApiOk = true;
         setPermission(status.state);
     } catch {
-        permissionQuery = null;    // e.g. older Safari: fall back to inference
+        permissionQuery = null;
     }
     return permission;
 }
 
-// The browser said "denied" on a read. What does that really mean?
 async function classifyDenied() {
     const state = await refreshPermission();
     if (!permissionApiOk) {
         setPermission("denied");
         return "denied";
     }
-    if (state === "prompt") return "dismissed";    // prompt closed without choosing
-    if (state === "granted") return "unavailable"; // OS-level location services off
+    if (state === "prompt") return "dismissed";
+    if (state === "granted") return "unavailable";
     return "denied";
 }
 
 /* ───────────── position pipeline ───────────── */
+
+function retarget(now) {
+    const interval = lastFixAt ? now - lastFixAt : CONFIG.defaultGlideMs;
+    lastFixAt = now;
+
+    const tx = track.x.p;
+    const ty = track.y.p;
+    const threshold = Math.max(CONFIG.minMoveDistance, track.acc * CONFIG.moveAccuracyFactor);
+
+    if (Math.hypot(tx - pin.toX, ty - pin.toY) <= threshold) return;   // too close: stay put
+
+    pin.fromX = display.x;
+    pin.fromY = display.y;
+    pin.toX = tx;
+    pin.toY = ty;
+    pin.start = now;
+    pin.duration = Math.min(Math.max(interval, CONFIG.minGlideMs), CONFIG.maxGlideMs);
+}
+
+function snapPin(x, y) {
+    display.x = pin.fromX = pin.toX = x;
+    display.y = pin.fromY = pin.toY = y;
+    pin.start = performance.now();
+    pin.duration = 1;
+}
 
 function onPosition(position) {
     const c = position.coords;
@@ -292,13 +360,14 @@ function onPosition(position) {
         origin = makeOrigin(c.latitude, c.longitude);
         track.x.reset(0, r);
         track.y.reset(0, r);
-        display.x = 0;
-        display.y = 0;
         track.t = t;
+        track.acc = acc;
         track.arrival = performance.now();
         track.ready = true;
+        lastFixAt = track.arrival;
+        snapPin(0, 0);
 
-        draw();                                    // pin is placed before anyone awaits it
+        draw();
         for (const done of [...fixWaiters]) done();
         return;
     }
@@ -327,7 +396,9 @@ function onPosition(position) {
         candidates = [];
         track.x.update(mx, r);
         track.y.update(my, r);
+        track.acc = acc;
         track.arrival = performance.now();
+        retarget(track.arrival);
     } else {
         log(`outlier: ${dist.toFixed(1)}m off (gate ${gate.toFixed(1)}m, ${impliedSpeed.toFixed(1)} m/s)`);
         handleOutlier(mx, my, acc, t);
@@ -347,9 +418,7 @@ function handleOutlier(mx, my, acc, t) {
     candidates.push({ x: mx, y: my, acc, t });
 
     const spanMs = t - candidates[0].t;
-    const confirmed =
-        candidates.length >= CONFIG.confirmCount ||
-        (candidates.length >= 2 && spanMs >= CONFIG.confirmMs);
+    const confirmed = candidates.length >= CONFIG.confirmCount || (candidates.length >= 2 && spanMs >= CONFIG.confirmMs);
 
     if (confirmed) relocate();
 }
@@ -374,8 +443,9 @@ function relocate() {
     track.arrival = performance.now();
 
     if (Math.hypot(nx - display.x, ny - display.y) > CONFIG.snapDistance) {
-        display.x = nx;
-        display.y = ny;
+        snapPin(nx, ny);
+    } else {
+        retarget(track.arrival);
     }
     candidates = [];
 }
@@ -384,20 +454,9 @@ function frame(now) {
     rafId = requestAnimationFrame(frame);
     if (!track.ready) return;
 
-    const dt = Math.min((now - lastFrameTime) / 1000, 0.1);
-    lastFrameTime = now;
-
-    const speed = Math.hypot(track.x.v, track.y.v);
-    let ahead = 0;
-    if (online && speed >= CONFIG.extrapolateMinSpeed) {
-        ahead = Math.min(now - track.arrival, CONFIG.extrapolateMaxMs) / 1000;
-    }
-    const targetX = track.x.p + track.x.v * ahead;
-    const targetY = track.y.p + track.y.v * ahead;
-
-    const k = 1 - Math.exp(-dt / CONFIG.smoothingTau);
-    display.x += (targetX - display.x) * k;
-    display.y += (targetY - display.y) * k;
+    const t = Math.min((now - pin.start) / pin.duration, 1);
+    display.x = pin.fromX + (pin.toX - pin.fromX) * t;
+    display.y = pin.fromY + (pin.toY - pin.fromY) * t;
 
     if (Math.abs(display.x - lastDrawn.x) < 0.02 && Math.abs(display.y - lastDrawn.y) < 0.02) return;
     draw();

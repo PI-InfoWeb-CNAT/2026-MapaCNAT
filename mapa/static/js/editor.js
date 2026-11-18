@@ -1,6 +1,6 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
-import { SpatialHash } from "./spatialHash.js";
+import { SpatialHash } from "./spatial-hash.js";
 import { getShortestPath } from "./rota.js";
 
 export const Palette = Object.freeze({
@@ -9,6 +9,7 @@ export const Palette = Object.freeze({
     building:   { out: 0xe8730c, in: 0xfcd5a8, hover: 0xc2410c, hoverFill: 0xffe8cc },
     route:      { out: 0x1a7f37, in: 0x4cc36a },                    // rota calculada (página main)
     accent:     { out: 0x16a34a, in: 0xbbf7d0 },                    // alvo clicável (fechar a forma)
+    selection:  { out: 0x1d47b0, in: 0x1411ff },
 });
 
 let page;
@@ -223,10 +224,8 @@ export async function queryBanner(query) {
       const banner = element?.banner;
       const title = banner?.title || element?.name;
 
-      // Skip only if both banner.title and element.name are missing.
       if (!title) return acc;
 
-      // Collect all searchable fields.
       const searchFields = [
         title,
         ...(Array.isArray(banner?.titleAlias)
@@ -238,7 +237,6 @@ export async function queryBanner(query) {
         element?.building?.name
       ].filter(value => typeof value === "string" && value.trim());
 
-      // Get the highest score across all fields.
       const score = Math.max(
         0,
         ...searchFields.map(field => getFieldScore(field, trimmedQuery))
@@ -490,6 +488,450 @@ export class SnapGuides {
     }
 }
 
+const _aabb = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+
+// Retângulo do frame da tela -> caixa alinhada ao mapa que o contém (broad-phase), com folga.
+function frameRectToLocalAABB(c, s, minX, minY, maxX, maxY, pad) {
+    let lx0 = Infinity, ly0 = Infinity, lx1 = -Infinity, ly1 = -Infinity;
+    for (let i = 0; i < 4; i++) {
+        const fx = i & 1 ? maxX : minX;
+        const fy = i & 2 ? maxY : minY;
+        const x = c * fx + s * fy, y = -s * fx + c * fy;      // R(-rot)
+        if (x < lx0) lx0 = x;
+        if (x > lx1) lx1 = x;
+        if (y < ly0) ly0 = y;
+        if (y > ly1) ly1 = y;
+    }
+    _aabb.minX = lx0 - pad; _aabb.minY = ly0 - pad;
+    _aabb.maxX = lx1 + pad; _aabb.maxY = ly1 + pad;
+    return _aabb;
+}
+
+// Os 4 cantos da caixa local estão no retângulo (convexo) => o polígono todo está.
+function boxInsideFrameRect(box, c, s, minX, minY, maxX, maxY) {
+    for (let i = 0; i < 4; i++) {
+        const x = i & 1 ? box.maxX : box.minX;
+        const y = i & 2 ? box.maxY : box.minY;
+        const fx = c * x - s * y, fy = s * x + c * y;
+        if (fx < minX || fx > maxX || fy < minY || fy > maxY) return false;
+    }
+    return true;
+}
+
+// Polígono x retângulo do frame. Sem aresta tocando, o retângulo está inteiro dentro OU
+// inteiro fora: um teste de ponto (no espaço local) decide.
+function polygonTouchesRectF(verts, c, s, minX, minY, maxX, maxY) {
+    const n = verts.length;
+    let p = verts[n - 1].pos;
+    let px = c * p.x - s * p.y, py = s * p.x + c * p.y;
+    for (let i = 0; i < n; i++) {
+        const q = verts[i].pos;
+        const qx = c * q.x - s * q.y, qy = s * q.x + c * q.y;
+        if (segmentIntersectsRect(px, py, qx, qy, minX, minY, maxX, maxY)) return true;
+        px = qx; py = qy;
+    }
+    return pointInPolygon(c * minX + s * minY, -s * minX + c * minY, verts);
+}
+
+function polygonInsideRectF(verts, c, s, minX, minY, maxX, maxY) {
+    for (let i = 0; i < verts.length; i++) {
+        const q = verts[i].pos;
+        const fx = c * q.x - s * q.y, fy = s * q.x + c * q.y;
+        if (fx < minX || fx > maxX || fy < minY || fy > maxY) return false;
+    }
+    return true;
+}
+
+export class SelectRegion {
+    constructor() {
+        throw new Error("Classe estática. Não instancie.");
+    }
+
+    static startCoord = null;
+    static currCoord = null;
+    static selected = {
+        "buildVertices": [],
+        "build": [],
+        "references": [],
+    };
+    static graphics = null;
+
+    static box = null;
+    static _box = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    static boxGraphics = null;
+    static boxPadPx = 10;
+    static boxAlpha = [1, .3];
+    static boxBorderSize = 0.1;
+    static boxColorOut = Palette.selection.out;
+    static boxColorIn = Palette.selection.in;
+
+    static maxItemBoxes = 16;      // acima disso, só a caixa justa
+    static itemGraphics = null;
+    static itemPadPx = 3;          // folga ao redor de cada referência / construção
+    static vertexBoxPx = 7;        // meia-largura da caixa de um vértice (px de tela)
+    static itemAlpha = [0.8, 0.08];
+    static itemBorderSize = 1;
+
+    static _rot = 0;
+    static _cos = 1;
+    static _sin = 0;
+    static _tmpBox = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+
+    static vertexMode = false;     // modo da seleção atual (shift = vértices, senão construções)
+    static _shift = false;
+
+    static touch = true;
+    static _rect = { minX: NaN, minY: NaN, maxX: NaN, maxY: NaN };
+    static _zoom = NaN;
+
+    static resetBox(box) {
+        box.minX = box.minY = Infinity;
+        box.maxX = box.maxY = -Infinity;
+        return box;
+    }
+
+    static growBox(box, minX, minY, maxX, maxY) {
+        if (minX < box.minX) box.minX = minX;
+        if (minY < box.minY) box.minY = minY;
+        if (maxX > box.maxX) box.maxX = maxX;
+        if (maxY > box.maxY) box.maxY = maxY;
+    }
+
+    static boundsWithVertices(selected = this.selected, out = {}) {
+        return this.selectionBox(selected, out, { vertices: true, buildings: false });
+    }
+    static boundsWithBuildings(selected = this.selected, out = {}) {
+        return this.selectionBox(selected, out, { vertices: false, buildings: true });
+    }
+
+    // ---- ciclo do arrasto ----
+
+    static start(coordinate) {
+        this.startCoord = coordinate;
+        this.startCoord.convertTo("normal");
+        this.currCoord = null;
+        this.clearSelection();
+    }
+
+    static move(coordinate, shift) {
+        this.currCoord = coordinate;
+        this.currCoord.convertTo("normal");
+        this.updateSelection(shift);
+        this.updateGraphics();
+    }
+
+    static release() {
+        this.startCoord = null;
+        this.currCoord = null;
+        this.updateGraphics();
+    }
+
+    static clear() {
+        this.release();
+        this.clearSelection();
+    }
+    
+    static refresh() {
+        this.clear();
+        this.refreshBox();
+    }
+
+    static clearSelection() {
+        this.selected.references.length = 0;
+        this.selected.buildVertices.length = 0;
+        this.selected.build.length = 0;
+        this._rect.minX = NaN;
+        this.updateBoxGraphics();
+    }
+
+    static refreshBox(shift = this.vertexMode) {
+        this.vertexMode = !!shift;
+        this.box = this.selectionBox(this.selected, this._box, {
+            vertices: this.vertexMode,
+            buildings: !this.vertexMode,
+        });
+        this.updateBoxGraphics();
+    }
+
+    static itemBoxes(zoom) {
+        const sel = this.selected;
+        const vm = this.vertexMode;
+        const refs = sel.references;
+        const second = vm ? sel.buildVertices : sel.build;
+
+        const n = refs.length + second.length;
+        if (n === 0 || n > this.maxItemBoxes) return null;
+
+        const out = [];
+        const gap = this.itemPadPx / zoom;
+
+        for (let i = 0; i < refs.length; i++) {
+            const ref = refs[i];
+            const p = ref.coordinate.pos;
+            const r = ref.size / zoom + gap;               // mesmo raio do teste de colisão
+            out.push([p.x - r, p.y - r, p.x + r, p.y + r]);
+        }
+
+        if (vm) {
+            const r = this.vertexBoxPx / zoom;
+            for (let i = 0; i < second.length; i++) {
+                const p = second[i].building.vertices[second[i].index].pos;
+                out.push([p.x - r, p.y - r, p.x + r, p.y + r]);
+            }
+        } else {
+            for (let i = 0; i < second.length; i++) {
+                const b = Buildings.polyHash.box(second[i]) ?? second[i].bounds();
+                out.push([b.minX - gap, b.minY - gap, b.maxX + gap, b.maxY + gap]);
+            }
+        }
+        return out;
+    }
+
+    // ---- gráficos ----
+
+    static ensureGraphics() {
+        if (this.graphics) return;
+        this.graphics = Graficos.createGuide();
+    }
+
+    static alpha = [0.6, 1];
+    static colorIn = Palette.selection.in;
+    static colorOut = Palette.selection.out;
+    static borderSize = .1;
+    static radius = 0;
+
+    static syncFrame() {
+        const rot = Graficos.mapContainer?.rotation ?? 0;
+        if (rot === this._rot) return false;
+        this._rot = rot;
+        this._cos = Math.cos(rot);
+        this._sin = Math.sin(rot);
+        return true;
+    }
+
+    /** Caixa de uma construção NO FRAME DA TELA (sem rotação: usa a caixa do hash, O(1)). */
+    static frameBounds(building, out) {
+        const c = this._cos, s = this._sin;
+        if (c === 1 && s === 0) {
+            const b = Buildings.polyHash.box(building) ?? building.bounds();
+            out.minX = b.minX; out.minY = b.minY; out.maxX = b.maxX; out.maxY = b.maxY;
+            return out;
+        }
+        this.resetBox(out);
+        const verts = building.vertices;
+        for (let k = 0; k < verts.length; k++) {
+            const p = verts[k].pos;
+            const fx = c * p.x - s * p.y, fy = s * p.x + c * p.y;
+            this.growBox(out, fx, fy, fx, fy);
+        }
+        return out;
+    }
+
+    /** Caixa justa no frame da tela (alinhada à tela). null se não há nada. */
+    static selectionBox(selected = this.selected, out = {}, { vertices = true, buildings = true } = {}) {
+        this.syncFrame();
+        const c = this._cos, s = this._sin;
+        const box = this.resetBox(out);
+
+        const refs = selected.references;
+        for (let i = 0; i < refs.length; i++) {
+            const p = refs[i].coordinate.pos;
+            const fx = c * p.x - s * p.y, fy = s * p.x + c * p.y;
+            this.growBox(box, fx, fy, fx, fy);
+        }
+
+        if (vertices) {
+            const verts = selected.buildVertices;
+            for (let i = 0; i < verts.length; i++) {
+                const p = verts[i].building.vertices[verts[i].index].pos;
+                const fx = c * p.x - s * p.y, fy = s * p.x + c * p.y;
+                this.growBox(box, fx, fy, fx, fy);
+            }
+        }
+
+        if (buildings) {
+            const builds = selected.build, t = this._tmpBox;
+            for (let i = 0; i < builds.length; i++) {
+                const b = this.frameBounds(builds[i], t);
+                this.growBox(box, b.minX, b.minY, b.maxX, b.maxY);
+            }
+        }
+
+        return box.minX === Infinity ? null : box;
+    }
+
+    static updateSelection(shift) {
+        if (!this.startCoord || !this.currCoord) return;
+        this.syncFrame();
+        const c = this._cos, s = this._sin;
+
+        const a = this.startCoord.pos, b = this.currCoord.pos;
+        const ax = c * a.x - s * a.y, ay = s * a.x + c * a.y;      // arrasto no frame da tela
+        const bx = c * b.x - s * b.y, by = s * b.x + c * b.y;
+        const minX = Math.min(ax, bx), maxX = Math.max(ax, bx);
+        const minY = Math.min(ay, by), maxY = Math.max(ay, by);
+
+        const r = this._rect, zoom = Graficos.zoom, sh = !!shift;
+        if (r.minX === minX && r.minY === minY && r.maxX === maxX && r.maxY === maxY &&
+            this._zoom === zoom && this._shift === sh) return;
+        r.minX = minX; r.minY = minY; r.maxX = maxX; r.maxY = maxY;
+        this._zoom = zoom;
+        this._shift = sh;
+
+        const t = this.touch;
+        Referencer.getReferencesInRect(minX, minY, maxX, maxY, this.selected.references, t, c, s);
+        Buildings.getVerticesInRect(minX, minY, maxX, maxY, this.selected.buildVertices, t, c, s);
+        Buildings.getPolygonsInRect(minX, minY, maxX, maxY, this.selected.build, t, c, s);
+
+        this.refreshBox(sh);
+    }
+
+    /** A câmera girou (chamado por Graficos.Rotation). */
+    static onCameraRotate() {
+        if (!this.syncFrame()) return;
+        if (this.startCoord && this.currCoord) {
+            this._rect.minX = NaN;                  // refaz a consulta no frame novo
+            this.updateSelection(this._shift);
+            this.updateGraphics();
+        } else if (this.box) {
+            this.refreshBox();
+        }
+    }
+
+    static itemBoxes(zoom) {
+        const sel = this.selected;
+        const vm = this.vertexMode;
+        const refs = sel.references;
+        const second = vm ? sel.buildVertices : sel.build;
+
+        const n = refs.length + second.length;
+        if (n === 0 || n > this.maxItemBoxes) return null;
+
+        const c = this._cos, s = this._sin;
+        const out = [];
+        const gap = this.itemPadPx / zoom;
+
+        for (let i = 0; i < refs.length; i++) {
+            const ref = refs[i];
+            const p = ref.coordinate.pos;
+            const fx = c * p.x - s * p.y, fy = s * p.x + c * p.y;
+            const r = ref.size / zoom + gap;
+            out.push([fx - r, fy - r, fx + r, fy + r]);
+        }
+
+        if (vm) {
+            const r = this.vertexBoxPx / zoom;
+            for (let i = 0; i < second.length; i++) {
+                const p = second[i].building.vertices[second[i].index].pos;
+                const fx = c * p.x - s * p.y, fy = s * p.x + c * p.y;
+                out.push([fx - r, fy - r, fx + r, fy + r]);
+            }
+        } else {
+            const t = this._tmpBox;
+            for (let i = 0; i < second.length; i++) {
+                const b = this.frameBounds(second[i], t);
+                out.push([b.minX - gap, b.minY - gap, b.maxX + gap, b.maxY + gap]);
+            }
+        }
+        return out;
+    }
+
+    // retângulo de arrasto: no frame da tela, desenhado com a rotação da câmera
+    static buildData() {
+        const c = this._cos, s = this._sin;
+        const a = this.startCoord.pos, b = this.currCoord.pos;
+        return {
+            points: [[
+                c * a.x - s * a.y, s * a.x + c * a.y,
+                c * b.x - s * b.y, s * b.x + c * b.y,
+            ]],
+            frameRotation: this._rot,
+            alpha: this.alpha,
+            colorOut: this.colorOut,
+            colorIn: this.colorIn,
+            borderSize: this.borderSize,
+            radius: this.radius,
+            handles: false,
+            handleActive: false
+        };
+    }
+
+    static updateGraphics() {
+        this.ensureGraphics();
+        if (this.startCoord && this.currCoord) {
+            Graficos.renderSelect(this.graphics, this.buildData());
+        } else {
+            Graficos.clearGuide(this.graphics);
+        }
+        this.updateBoxGraphics();
+    }
+
+    static updateBoxGraphics() {
+        if (this.box && this.syncFrame()) { this.refreshBox(); return; }   // rede de segurança: câmera girou
+        const b = this.box;
+        if (!b && !this.boxGraphics) return;
+        this.boxGraphics ??= Graficos.createGuide();
+        this.itemGraphics ??= Graficos.createGuide();
+
+        if (!b) {
+            Graficos.clearGuide(this.boxGraphics);
+            Graficos.clearGuide(this.itemGraphics);
+            return;
+        }
+
+        const zoom = Graficos.zoom;
+        const items = this.itemBoxes(zoom);
+
+        // caixa justa: com caixas individuais, envolve todas elas (nunca corta nenhuma);
+        // sem elas (passou do limite), usa os extremos da seleção com folga que cobre o ponto
+        let x0, y0, x1, y1, pad;
+        if (items) {
+            x0 = y0 = Infinity;
+            x1 = y1 = -Infinity;
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                if (it[0] < x0) x0 = it[0];
+                if (it[1] < y0) y0 = it[1];
+                if (it[2] > x1) x1 = it[2];
+                if (it[3] > y1) y1 = it[3];
+            }
+            pad = this.boxPadPx / zoom;
+        } else {
+            x0 = b.minX; y0 = b.minY; x1 = b.maxX; y1 = b.maxY;
+            pad = Math.max(this.boxPadPx, MAX_DOT_SIZE) / zoom;
+        }
+
+        Graficos.renderSelect(this.boxGraphics, {
+            points: [[x0 - pad, y0 - pad, x1 + pad, y1 + pad]],
+            frameRotation: this._rot,
+            alpha: this.boxAlpha,
+            colorOut: this.boxColorOut,
+            colorIn: this.boxColorIn,
+            borderSize: 2,
+            radius: 2,
+            handles: false,
+            handleActive: false
+        });
+
+        // com 1 elemento a caixa justa já é a dele: sem caixa duplicada
+        if (items && items.length > 1) {
+            Graficos.renderSelect(this.itemGraphics, {
+                points: items,
+                frameRotation: this._rot,
+                alpha: this.itemAlpha,
+                colorOut: this.boxColorOut,
+                colorIn: this.boxColorIn,
+                borderSize: this.itemBorderSize,
+                radius: 2,
+                handles: false,
+                handleActive: false
+            });
+        } else {
+            Graficos.clearGuide(this.itemGraphics);
+        }
+    }
+}
+
 export class Coordinate {
     constructor(pos, space = "screen") {
         this.pos = { x: pos.x, y: pos.y };
@@ -556,6 +998,46 @@ const WALL_SNAP_PX = 12;   // referência gruda na parede dentro desse raio (tel
 const WALL_EPS = 1e-4;     // redetecta quem já está exatamente na parede (undo/redo/load)
 const _wallBuf = [], _polyBuf = [];
 
+const _selBuf = [];   // buffer de broad-phase das consultas de região
+
+// Distância² do ponto ao retângulo (0 se estiver dentro).
+function distSqPointRect(x, y, minX, minY, maxX, maxY) {
+    const dx = x < minX ? minX - x : x > maxX ? x - maxX : 0;
+    const dy = y < minY ? minY - y : y > maxY ? y - maxY : 0;
+    return dx * dx + dy * dy;
+}
+
+// Segmento x retângulo: aceita/rejeita rápido, senão método das lajes (slab).
+function segmentIntersectsRect(x1, y1, x2, y2, minX, minY, maxX, maxY) {
+    if (x1 >= minX && x1 <= maxX && y1 >= minY && y1 <= maxY) return true;
+    if (x2 >= minX && x2 <= maxX && y2 >= minY && y2 <= maxY) return true;
+    if ((x1 < minX && x2 < minX) || (x1 > maxX && x2 > maxX) ||
+        (y1 < minY && y2 < minY) || (y1 > maxY && y2 > maxY)) return false;
+
+    let t0 = 0, t1 = 1;
+    const dx = x2 - x1, dy = y2 - y1;
+
+    if (dx === 0) {
+        if (x1 < minX || x1 > maxX) return false;
+    } else {
+        let ta = (minX - x1) / dx, tb = (maxX - x1) / dx;
+        if (ta > tb) { const s = ta; ta = tb; tb = s; }
+        if (ta > t0) t0 = ta;
+        if (tb < t1) t1 = tb;
+        if (t0 > t1) return false;
+    }
+    if (dy === 0) {
+        if (y1 < minY || y1 > maxY) return false;
+    } else {
+        let ta = (minY - y1) / dy, tb = (maxY - y1) / dy;
+        if (ta > tb) { const s = ta; ta = tb; tb = s; }
+        if (ta > t0) t0 = ta;
+        if (tb < t1) t1 = tb;
+        if (t0 > t1) return false;
+    }
+    return true;
+}
+
 function pointInPolygon(x, y, verts) {
     let inside = false;
     for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
@@ -584,7 +1066,6 @@ function polygonArea(pts) {
     return Math.abs(s) / 2;
 }
 
-// compatibilidade: mapas antigos salvos com várias áreas viram um polígono (a maior união)
 function legacyPolygon(areas) {
     const boxes = areas.filter(Boolean).map(a => [a.min.x, a.min.y, a.max.x, a.max.y]);
     if (!boxes.length) return null;
@@ -1325,6 +1806,23 @@ export class Referencer {
         if (all) return hits ? hits.sort(byZDesc) : false;
         return best || false;
     }
+    
+    static getReferencesInRect(minX, minY, maxX, maxY, out = [], touch = true, cos = 1, sin = 0) {
+        const zoom = Graficos.zoom;
+        const pad = touch ? MAX_DOT_SIZE / zoom : 0;
+        const a = frameRectToLocalAABB(cos, sin, minX, minY, maxX, maxY, pad);
+        const cand = this.dotHash.queryRect(a.minX, a.minY, a.maxX, a.maxY, _selBuf);
+
+        out.length = 0;
+        for (let i = 0; i < cand.length; i++) {
+            const ref = cand[i];
+            const p = ref.coordinate.pos;
+            const fx = cos * p.x - sin * p.y, fy = sin * p.x + cos * p.y;
+            const r = touch ? ref.size / zoom : 0;
+            if (distSqPointRect(fx, fy, minX, minY, maxX, maxY) <= r * r) out.push(ref);
+        }
+        return out;
+    }
 }
 
 export class Buildings {
@@ -1341,6 +1839,47 @@ export class Buildings {
     static editing = false;   // mostra as alças (modo Seleção)
     static hovered = null;    // { building, index }
 
+    static getVerticesInRect(minX, minY, maxX, maxY, out = [], touch = true, cos = 1, sin = 0) {
+        const R = touch ? VERTEX_GRAB_PX / Graficos.zoom : 0;
+        const a = frameRectToLocalAABB(cos, sin, minX, minY, maxX, maxY, R);
+        const cand = this.polyHash.queryRect(a.minX, a.minY, a.maxX, a.maxY, _selBuf);
+        const r2 = R * R;
+
+        out.length = 0;
+        for (let i = 0; i < cand.length; i++) {
+            const b = cand[i], verts = b.vertices;
+            for (let k = 0; k < verts.length; k++) {
+                const v = verts[k].pos;
+                const fx = cos * v.x - sin * v.y, fy = sin * v.x + cos * v.y;
+                if (distSqPointRect(fx, fy, minX, minY, maxX, maxY) <= r2) out.push({ building: b, index: k });
+            }
+        }
+        return out;
+    }
+
+    static getPolygonsInRect(minX, minY, maxX, maxY, out = [], touch = true, cos = 1, sin = 0) {
+        const a = frameRectToLocalAABB(cos, sin, minX, minY, maxX, maxY, 0);
+        const cand = this.polyHash.queryRect(a.minX, a.minY, a.maxX, a.maxY, _selBuf);
+        const aligned = cos === 1 && sin === 0;
+
+        out.length = 0;
+        for (let i = 0; i < cand.length; i++) { 
+            const b = cand[i];
+
+            if (boxInsideFrameRect(this.polyHash.box(b), cos, sin, minX, minY, maxX, maxY)) {
+                out.push(b);                               // inteira dentro: serve nos dois modos
+                continue;
+            }
+            if (!touch) {
+                if (aligned) continue;                     // sem rotação, a caixa já decide
+                if (polygonInsideRectF(b.vertices, cos, sin, minX, minY, maxX, maxY)) out.push(b);
+                continue;
+            }
+            if (polygonTouchesRectF(b.vertices, cos, sin, minX, minY, maxX, maxY)) out.push(b);
+        }
+        return out;
+    }
+
     static setEditing(on) {
         if (this.editing === on) return;
         this.editing = on;
@@ -1356,7 +1895,6 @@ export class Buildings {
         hit?.building.updateGraphics();
     }
 
-    /** Canto de construção fechada sob o ponto (raio em pixels de tela). */
     static getOverlappingVertex(coordinate) {
         const pos = coordinate.peekNormal();
         const R = VERTEX_GRAB_PX / Graficos.zoom;
@@ -1517,6 +2055,7 @@ export class Reference {
         this.size = 10;
         this.isEntrance = false;
         this.building = false;
+        this.selected = false;
 
         this.id = -1;
         this.uid = Referencer.uidTracker++;
@@ -1928,7 +2467,7 @@ export class Building {
             colorIn: this.colorIn,
             borderSize: this.borderSize,
             radius: this.radius,
-            handles: this.closed && Buildings.editing && page === "editor",
+            handles: this.closed && (Buildings.editing) && page === "editor",
             handleActive: Buildings.hovered?.building === this ? Buildings.hovered.index : -1,
         };
         
@@ -1941,7 +2480,7 @@ export class Building {
 
     enable() {
         this.enabled = true;
-        Buildings.track(this);          // reindexa o polígono se estiver fechado
+        Buildings.track(this);
         this.updateGraphics();
     }
     disable() {

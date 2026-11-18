@@ -175,7 +175,6 @@ function updatePhantomVertex(coordinate, e) {
     let finalCoord;
 
     if (overClose) {
-        // Fechamento tem prioridade sobre o alinhamento.
         finalCoord = Editor.newCoord(
             building.vertices[0].pos.x,
             building.vertices[0].pos.y,
@@ -195,8 +194,6 @@ function updatePhantomVertex(coordinate, e) {
 
         finalCoord = snap.coordinate;
 
-        // Atualiza os guias em toda interação.
-        // Se um eixo não tiver snap, seu gráfico recebe clear().
         Editor.SnapGuides.update(snap.guides);
     }
 
@@ -325,7 +322,6 @@ function grabBuildingTarget(x, y) {
     }
 }
 
-// true = the gesture belongs to a building handle (don't pan)
 function dragBuildingTarget(e) {
     if (Holdable.type === "buildingVertex") {
         if (!dragStarted && !passedDragThreshold(e)) return true;
@@ -718,7 +714,7 @@ class Touch {
         if (e.touches.length >= 2) {
             clearLongPress();
             pinching = true;
-            moved = true;            // cancels any pending tap
+            moved = true;
             pressedTarget = null;
         }
         if (e.touches.length == 2) {
@@ -846,7 +842,9 @@ class Pointer {
             return;
         } else if (page == "editor") {
             if (e.button !== 0) return;
-            if (editorMode == EditorModes.REFERENCE) {
+            if (editorMode == EditorModes.SELECTION) {
+                Editor.SelectRegion.start(Editor.newCoord(clickX, clickY, "screen"));
+            } else if (editorMode == EditorModes.REFERENCE) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
                 let overlap = Editor.Referencer.getOverlappingDots(
                     coord,
@@ -971,13 +969,16 @@ class Pointer {
 
         if (page == "editor" && rightClicking) {
             Pointer.rotateMove(e);
+            Editor.SelectRegion.onCameraRotate();
             return;
         }
 
         hoverTargetSet = new Set();
         
         if (page == "editor") {
-            if (editorMode == EditorModes.FREE) {
+            if (editorMode == EditorModes.SELECTION) {
+                Editor.SelectRegion.move(Editor.newCoord(e.clientX, e.clientY, "screen"), e.shiftKey);
+            } else if (editorMode == EditorModes.FREE) {
                 if (!leftClicking) return;
                 Pointer.defaultMove(e);
             } else if (editorMode == EditorModes.REFERENCE) {
@@ -1049,7 +1050,7 @@ class Pointer {
             } else if (editorMode == EditorModes.CONSTRUCTION) {
                 if (!Task.task) {
                     if (dragBuildingTarget(e)) return;
-                    if (leftClicking) {                 // nothing grabbed: pan the map
+                    if (leftClicking) {
                         Pointer.defaultMove(e);
                         return;
                     }
@@ -1084,7 +1085,6 @@ class Pointer {
                 panStarted = true;
                 Pointer.defaultMove(e);
 
-                // Recalcula posição e guias após mover o mapa.
                 if (building) {
                     updatePhantomVertex(here(), e);
                 }
@@ -1121,6 +1121,8 @@ class Pointer {
             pressedTarget = null;
             return;
         }
+
+        Editor.SelectRegion.clear();
 
         if (page == "main") {
             clearLongPress();
@@ -1201,6 +1203,8 @@ class Pointer {
     static cancel() {
         clearLongPress();
 
+        Editor.SelectRegion.refresh();
+
         leftClicking = false;
         rightClicking = false;
         moved = true;
@@ -1240,6 +1244,7 @@ class Pointer {
             Holdable.phantomObject.updateGraphics();
         }
         Editor.Route.redraw();
+        Editor.SelectRegion.updateBoxGraphics();
         Graficos.updateMap();
     }
 }
@@ -1622,6 +1627,7 @@ class Actions {
     }
 
     static applyMode(mode) {
+        Editor.SelectRegion.refresh();
         if (mode !== EditorModes.CONSTRUCTION) {
             Editor.SnapGuides.clearAll();
         }
@@ -1673,7 +1679,7 @@ class Actions {
 
     static async switchMode(mode = EditorModes.FREE) {
         if (this.switching) return;
-
+    
         this.switching = true;
         const bannerOk = await this.ensureBannerValid();
         this.switching = false;
@@ -2283,9 +2289,7 @@ class Actions {
                 }
             }
         } else {
-            if (bannerHeld()) {
-                Actions.openModal("share", {shareData: shareData});
-            }
+            Actions.openModal("share", {shareData: shareData});
         }
     }
 }
@@ -2965,15 +2969,15 @@ export async function addListeners(map) {
                     Toasts.toaster.show({ text: "Falha ao comparilhar.", category: "error" });
                     return;
                 }
-
+                
                 let url = buildURL(window.location.origin + window.location.pathname, {showpin: 0, lat: geocoords[0], long: geocoords[1]});
-
+                
                 const shareData = {
                     title: 'Venha ver onde eu estou!',
                     text: 'Olha só onde eu estou!',
                     url: url
                 };
-
+            
                 Actions.shareFeature(shareData);
             }
             else reportLocationFailure(status, 'Localização desativada: não é possível compartilhá-la.');
@@ -3010,31 +3014,50 @@ export async function addListeners(map) {
         document.addEventListener("keydown", (e) => {
             if (Modals.modal.dialog.open) return;
             if (e.target.closest?.("input, textarea, [contenteditable]")) return;
-
+            
             // o fantasma do vértice e o banner aberto não contam como "arrastando algo"
             const dragging = Holdable.object && !["banner", "phantomVertex"].includes(Holdable.type);
             if (leftClicking || dragging) return;
-
+            
             // Enter: com 3+ pontos fecha como está e conclui; com menos, avisa
             if (e.key === "Enter" && editorMode === EditorModes.CONSTRUCTION &&
                 Task.task === "build" && Task.taskStep === 1) {
-                e.preventDefault();
-                Actions.pinAction();
-                return;
+                    e.preventDefault();
+                    Actions.pinAction();
+                    return;
+                }
+                
+                if (e.shiftKey) {
+                    if (editorMode == EditorModes.SELECTION) {
+                        Editor.Buildings.editing = true;
+                        for (let build of Object.values(Editor.Buildings.buildings)) {
+                            build.updateGraphics()
+                        }
+                }
             }
-
+            
             const isModifierPressed = e.ctrlKey || e.metaKey;
-
+            
             if (!isModifierPressed) return;
-
+            
             const key = e.key.toLowerCase();
-
+            
             if (key === "y" || (e.shiftKey && key === "z")) {
                 e.preventDefault();
                 Actions.ensureBannerValid().then((ok) => ok && Actions.redo());
             } else if (key === "z" && !e.shiftKey) {
                 e.preventDefault();
                 Actions.ensureBannerValid().then((ok) => ok && Actions.undo());
+            }
+        });
+        document.addEventListener("keyup", (e) => {
+             if (e.key === 'Shift') {
+                if (editorMode == EditorModes.SELECTION) {
+                    Editor.Buildings.editing = false;
+                    for (let build of Object.values(Editor.Buildings.buildings)) {
+                        build.updateGraphics();
+                    }
+                }
             }
         });
 

@@ -18,22 +18,17 @@ import dj_database_url
 mimetypes.add_type('text/javascript', '.js')
 mimetypes.add_type('text/javascript', '.mjs')
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/4.0/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'chave-insegura')
 
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', "False").lower() in ('true', '1', 't')
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['127.0.0.1', 'mapa-cnat.vercel.app']
+if DEBUG:
+    ALLOWED_HOSTS += ['jailer-anaconda-scrimmage.ngrok-free.dev', 'localhost']
 
 LOGIN_URL = 'login'
-# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -85,10 +80,12 @@ ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -115,12 +112,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'mapa_cnat.wsgi.application'
 
-SUAP_CLIENT_ID = "zLYHlhQPdsADHyoAy9Jkg9qWzHIzCP0KJLjKJhgz"
-SUAP_CLIENT_SECRET = "skXJBrmbAAALxBshze9QZ2V9VNTsHiYsZ0JzaKaAlOg0CBz7gGvxd86QqCewmffiHB5l6OxxBgntZGNIgPMf56Qaeauez8n37nAHRsMoOQzdVdYICF6pfOyotDnTw723"
-
-# Database
-# https://docs.djangoproject.com/en/4.0/ref/settings/#databases
-
 DATABASES = {
     'default': dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
@@ -128,9 +119,6 @@ DATABASES = {
         conn_health_checks=True,
     )
 }
-
-# Password validation
-# https://docs.djangoproject.com/en/4.0/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -147,10 +135,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-# Internationalization
-# https://docs.djangoproject.com/en/4.0/topics/i18n/
-
 LANGUAGE_CODE = 'pt-br'
 
 TIME_ZONE = "America/Fortaleza"
@@ -158,8 +142,6 @@ TIME_ZONE = "America/Fortaleza"
 USE_I18N = True
 
 USE_TZ = True
-
-# SSL
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True

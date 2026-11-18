@@ -15,6 +15,8 @@ export class SpatialHash {
         this._multi = 0;             // quantas entradas ocupam mais de uma célula
     }
 
+    box(item) { return this._entries.get(item); }
+
     get size() { return this._entries.size; }
     has(item) { return this._entries.has(item); }
 
