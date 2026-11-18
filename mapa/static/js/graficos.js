@@ -258,6 +258,56 @@ export function createGuide() {
     return guide;
 }
 
+const getPos = (p) => {
+    if (!p) return { x: 0, y: 0 };
+    if (typeof p.getIn === "function") return p.getIn("normal");
+    if (Array.isArray(p)) return { x: p[0], y: p[1] };
+    return p;
+};
+
+export function renderSelect(graphics, data) {
+    graphics.clear();
+    graphics.rotation = -(data.frameRotation ?? 0);   // pontos estão no frame da tela
+    if (!data.points?.length) return;
+
+    const { alpha, colorOut, colorIn, borderSize, radius = 12 } = data;
+    const cornerRadius = Math.min(radius, 20);
+
+    for (const [x1, y1, x2, y2] of data.points) {
+        graphics.roundRect(
+            Math.min(x1, x2),
+            Math.min(y1, y2),
+            Math.abs(x2 - x1),
+            Math.abs(y2 - y1),
+            cornerRadius
+        );
+    }
+
+    graphics
+        .fill({ color: colorIn, alpha: alpha[1] * 0.45 })
+        .stroke({
+            width: borderSize / zoom + 1,
+            color: colorOut,
+            alpha: alpha[0],
+        });
+
+    if (data.handles) {
+        const handles = data.points.flatMap(([x1, y1, x2, y2]) => [
+            [x1, y1],
+            [x2, y2],
+        ]);
+
+        handles.forEach(([x, y], i) => {
+            const active = i === data.handleActive;
+
+            graphics
+                .circle(x, y, (active ? 9 : 6) / zoom)
+                .fill({ color: active ? 0xffffff : colorIn })
+                .stroke({ width: 3 / zoom, color: colorOut });
+        });
+    }
+}
+
 export function renderGuide(graphics, data) {
     const { alpha, colorOut, size, points } = data;
     if (points.length !== 2) return;
