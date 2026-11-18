@@ -21,7 +21,7 @@ urlpatterns = [
     path('', include('mapa.urls')),
     path('accounts/', include('allauth.urls')),
 ]
-
+print(settings.DEBUG)
 if settings.DEBUG:
     urlpatterns += [
         path('admin/', admin.site.urls),

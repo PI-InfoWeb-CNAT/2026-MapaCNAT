@@ -1,6 +1,6 @@
 import * as Transformacao from "./transformacao.js";
 import * as Editor from "./editor.js";
-import { SvgTileEngine } from "./mapTiling.js";
+import { SvgTileEngine } from "./map-tiling.js";
 
 let tiles;
 
@@ -77,6 +77,20 @@ export function getScreenCoordinates(pos) {
     return {
         x: screenPoint.x,
         y: screenPoint.y,
+    };
+}
+
+export function svgToNormalized(p) {
+    return {
+        x: p.x - imageSize.width / 2,
+        y: p.y - imageSize.height / 2,
+    };
+}
+
+export function normalizedToSvg(p) {
+    return {
+        x: p.x + imageSize.width / 2,
+        y: p.y + imageSize.height / 2,
     };
 }
 

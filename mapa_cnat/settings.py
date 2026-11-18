@@ -29,6 +29,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'chave-insegura')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', "False").lower() in ('true', '1', 't')
+DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -85,10 +86,12 @@ ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -114,9 +117,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'mapa_cnat.wsgi.application'
-
-SUAP_CLIENT_ID = "zLYHlhQPdsADHyoAy9Jkg9qWzHIzCP0KJLjKJhgz"
-SUAP_CLIENT_SECRET = "skXJBrmbAAALxBshze9QZ2V9VNTsHiYsZ0JzaKaAlOg0CBz7gGvxd86QqCewmffiHB5l6OxxBgntZGNIgPMf56Qaeauez8n37nAHRsMoOQzdVdYICF6pfOyotDnTw723"
 
 # Database
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases

@@ -1,6 +1,6 @@
 import * as Graficos from "./graficos.js";
 import * as Geometria from "./geometria.js";
-import { SpatialHash } from "./spatialHash.js";
+import { SpatialHash } from "./spatial-hash.js";
 import { getShortestPath } from "./rota.js";
 
 export const Palette = Object.freeze({
@@ -1082,6 +1082,7 @@ export class Self {
         this.rawCoordinate = coordinate;                       // posição real do GPS
         this.coordinate = page === "main" ? Connections.snap(coordinate) : coordinate;
         this.updateGraphics();
+        console.log(coordinate);
     }
 
     static getOverlappingPin(coordinate) {
@@ -1941,7 +1942,7 @@ export class Building {
 
     enable() {
         this.enabled = true;
-        Buildings.track(this);          // reindexa o polígono se estiver fechado
+        Buildings.track(this);
         this.updateGraphics();
     }
     disable() {
