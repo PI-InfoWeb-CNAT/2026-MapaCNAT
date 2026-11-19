@@ -4,12 +4,13 @@ import { SpatialHash } from "./spatial-hash.js";
 import { getShortestPath } from "./rota.js";
 
 export const Palette = Object.freeze({
-    reference:  { out: 0x3d97e0, in: 0xa4d1f5, hover: 0x00aaff },   // referências
-    connection: { out: 0x3d97e0, in: 0xa4d1f5 },                    // conexões (a rede de rotas)
+    reference:  { out: 0x1a7f37, in: 0x4cc36a, hover: 0x00aaff },   // referências
+    connection: { out: 0x1a7f37, in: 0x4cc36a },                    // conexões (a rede de rotas)
     building:   { out: 0xe8730c, in: 0xfcd5a8, hover: 0xc2410c, hoverFill: 0xffe8cc },
     route:      { out: 0x1a7f37, in: 0x4cc36a },                    // rota calculada (página main)
     accent:     { out: 0x16a34a, in: 0xbbf7d0 },                    // alvo clicável (fechar a forma)
-    selection:  { out: 0x1d47b0, in: 0x1411ff },
+    selection:  { out: 0x3d97e0, in: 0xa4d1f5 },
+    hardSelection: { out: 0x134ec3, in: 0x5c8ff5 },
 });
 
 let page;
@@ -542,6 +543,18 @@ function polygonInsideRectF(verts, c, s, minX, minY, maxX, maxY) {
     return true;
 }
 
+const ANGLE_SNAP = Math.PI / 12;   // Shift ao girar a seleção: passos de 15°
+
+const ROTATE_CURSOR = (() => {
+    const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">` +
+        `<path d="M20 12a8 8 0 1 1-2.6-5.9" fill="none" stroke="white" stroke-width="4.5" stroke-linecap="round"/>` +
+        `<path d="M20 12a8 8 0 1 1-2.6-5.9" fill="none" stroke="black" stroke-width="2" stroke-linecap="round"/>` +
+        `<path d="M20 3v5h-5" fill="none" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+        `<path d="M20 3v5h-5" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 12 12, crosshair`;
+})();
+
 export class SelectRegion {
     constructor() {
         throw new Error("Classe estática. Não instancie.");
@@ -583,6 +596,13 @@ export class SelectRegion {
     static touch = true;
     static _rect = { minX: NaN, minY: NaN, maxX: NaN, maxY: NaN };
     static _zoom = NaN;
+
+    static boxRect = null;                 // retângulo desenhado (com folga), no frame da tela
+    static _boxRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
+    static _f = { x: 0, y: 0 };
+    static handlePx = 7;                   // tolerância para agarrar a borda (pixels de tela)
+    static resize = null;                  // estado do gesto em andamento
+    static get resizing() { return this.resize !== null; }
 
     static resetBox(box) {
         box.minX = box.minY = Infinity;
@@ -641,7 +661,19 @@ export class SelectRegion {
         this.selected.buildVertices.length = 0;
         this.selected.build.length = 0;
         this._rect.minX = NaN;
+        this.box = null;                 // ← de volta
         this.updateBoxGraphics();
+    }
+
+    static selectAll() {
+        this.release();
+        const sel = this.selected;
+        sel.references.length = 0;
+        sel.buildVertices.length = 0;
+        sel.build.length = 0;
+        for (const r of Object.values(Referencer.references)) sel.references.push(r);
+        for (const b of Object.values(Buildings.buildings)) if (b.closed) sel.build.push(b);
+        this.refreshBox(false);
     }
 
     static refreshBox(shift = this.vertexMode) {
@@ -695,8 +727,8 @@ export class SelectRegion {
     }
 
     static alpha = [0.6, 1];
-    static colorIn = Palette.selection.in;
-    static colorOut = Palette.selection.out;
+    static colorIn = Palette.hardSelection.in;
+    static colorOut = Palette.hardSelection.out;
     static borderSize = .1;
     static radius = 0;
 
@@ -789,6 +821,7 @@ export class SelectRegion {
     /** A câmera girou (chamado por Graficos.Rotation). */
     static onCameraRotate() {
         if (!this.syncFrame()) return;
+        if (this.resize) this.cancelResize();
         if (this.startCoord && this.currCoord) {
             this._rect.minX = NaN;                  // refaz a consulta no frame novo
             this.updateSelection(this._shift);
@@ -867,8 +900,10 @@ export class SelectRegion {
     }
 
     static updateBoxGraphics() {
-        if (this.box && this.syncFrame()) { this.refreshBox(); return; }   // rede de segurança: câmera girou
+        if (this.box && this.syncFrame()) { this.refreshBox(); return; }   // câmera girou
+
         const b = this.box;
+        if (!b) this.boxRect = null;
         if (!b && !this.boxGraphics) return;
         this.boxGraphics ??= Graficos.createGuide();
         this.itemGraphics ??= Graficos.createGuide();
@@ -882,8 +917,6 @@ export class SelectRegion {
         const zoom = Graficos.zoom;
         const items = this.itemBoxes(zoom);
 
-        // caixa justa: com caixas individuais, envolve todas elas (nunca corta nenhuma);
-        // sem elas (passou do limite), usa os extremos da seleção com folga que cobre o ponto
         let x0, y0, x1, y1, pad;
         if (items) {
             x0 = y0 = Infinity;
@@ -901,8 +934,18 @@ export class SelectRegion {
             pad = Math.max(this.boxPadPx, MAX_DOT_SIZE) / zoom;
         }
 
+        // retângulo desenhado: é nele que o hitHandle procura a borda
+        const br = this._boxRect;
+        br.x0 = x0 - pad; br.y0 = y0 - pad; br.x1 = x1 + pad; br.y1 = y1 + pad;
+
+        if (this.resize?.cur) {                               // <-- novo
+            const k = this.resize.cur;
+            br.x0 = k.x0; br.y0 = k.y0; br.x1 = k.x1; br.y1 = k.y1;
+        }
+        this.boxRect = br;
+
         Graficos.renderSelect(this.boxGraphics, {
-            points: [[x0 - pad, y0 - pad, x1 + pad, y1 + pad]],
+            points: [[br.x0, br.y0, br.x1, br.y1]],
             frameRotation: this._rot,
             alpha: this.boxAlpha,
             colorOut: this.boxColorOut,
@@ -913,7 +956,6 @@ export class SelectRegion {
             handleActive: false
         });
 
-        // com 1 elemento a caixa justa já é a dele: sem caixa duplicada
         if (items && items.length > 1) {
             Graficos.renderSelect(this.itemGraphics, {
                 points: items,
@@ -929,6 +971,309 @@ export class SelectRegion {
         } else {
             Graficos.clearGuide(this.itemGraphics);
         }
+    }
+
+    static pointerFrame(clientX, clientY, out) {
+        const p = Graficos.getNormalizedCoordinates({ x: clientX, y: clientY });
+        out.x = this._cos * p.x - this._sin * p.y;
+        out.y = this._sin * p.x + this._cos * p.y;
+        return out;
+    }
+
+    /** "n" "s" "e" "w" "ne" "nw" "se" "sw" ou null. */
+    static hitHandle(clientX, clientY) {
+        const r = this.boxRect;
+        if (!r || this.startCoord) return null;           // sem caixa, ou arrastando uma região
+
+        const f = this.pointerFrame(clientX, clientY, this._f);
+        const tol = this.handlePx / Graficos.zoom;
+        if (f.x < r.x0 - tol || f.x > r.x1 + tol || f.y < r.y0 - tol || f.y > r.y1 + tol) return null;
+
+        const dl = Math.abs(f.x - r.x0), dr = Math.abs(f.x - r.x1);
+        const dt = Math.abs(f.y - r.y0), db = Math.abs(f.y - r.y1);
+        const xs = Math.min(dl, dr) <= tol ? (dl <= dr ? "w" : "e") : "";
+        const ys = Math.min(dt, db) <= tol ? (dt <= db ? "n" : "s") : "";
+        return (ys + xs) || null;
+    }
+
+    static rotatePx = 26;   // alcance da zona de rotação além dos cantos (px de tela)
+
+    /** { kind: "resize", handle } | { kind: "move" } | { kind: "rotate" } | null */
+    static hitZone(clientX, clientY) {
+        const r = this.boxRect;
+        if (!r || this.startCoord) return null;
+
+        const handle = this.hitHandle(clientX, clientY);
+        if (handle) return { kind: "resize", handle };
+
+        const f = this.pointerFrame(clientX, clientY, this._f);
+
+        if (f.x >= r.x0 && f.x <= r.x1 && f.y >= r.y0 && f.y <= r.y1) {
+            return { kind: "move" };
+        }
+
+        // fora do retângulo, na "quina" (fora nos dois eixos) e perto do canto
+        const outX = f.x < r.x0 || f.x > r.x1;
+        const outY = f.y < r.y0 || f.y > r.y1;
+        if (outX && outY) {
+            const cx = f.x < r.x0 ? r.x0 : r.x1;
+            const cy = f.y < r.y0 ? r.y0 : r.y1;
+            if (Math.hypot(f.x - cx, f.y - cy) <= this.rotatePx / Graficos.zoom) {
+                return { kind: "rotate" };
+            }
+        }
+        return null;
+    }
+
+    static cursorForZone(zone) {
+        if (!zone) return "";
+        if (zone.kind === "resize") return this.cursorFor(zone.handle);
+        if (zone.kind === "move") return "move";
+        return ROTATE_CURSOR;
+    }
+
+    static cursorFor(handle) {
+        switch (handle) {
+            case "n": case "s": return "ns-resize";
+            case "e": case "w": return "ew-resize";
+            case "nw": case "se": return "nwse-resize";
+            default: return "nesw-resize";                // ne, sw
+        }
+    }
+
+    static captureLayout() {
+        const R = this.resize;
+        return {
+            builds: R.builds.map((rec) => ({
+                building: rec.building,
+                verts: rec.building.vertices.map((v) => ({ x: v.pos.x, y: v.pos.y })),
+                pin: rec.pin ? { x: rec.building.coordinate.pos.x, y: rec.building.coordinate.pos.y } : null,
+            })),
+            refs: [...R.free, ...R.owned, ...R.slide].map((o) => ({
+                ref: o.ref, x: o.ref.coordinate.pos.x, y: o.ref.coordinate.pos.y,
+            })),
+        };
+    }
+
+    /** Aplica posições guardadas: construções primeiro, para as entradas reencontrarem a parede. */
+    static applyLayout(layout) {
+        for (const b of layout.builds) {
+            b.building.setPolygon(b.verts);
+            if (b.pin) b.building.move(newCoord(b.pin.x, b.pin.y, "normal"));
+        }
+        for (const r of layout.refs) r.ref.move(newCoord(r.x, r.y, "normal"));
+    }
+
+    static beginGesture(zone, coord) {
+        this.syncFrame();
+        const sel = this.selected, vm = this.vertexMode;
+        const c = this._cos, s = this._sin;
+        const p = coord.peekNormal();
+
+        // referência = retângulo VISÍVEL (com folga)
+        const r = this.boxRect;
+        const ref = r
+            ? { minX: r.x0, minY: r.y0, maxX: r.x1, maxY: r.y1 }
+            : { ...this.box };
+
+        const grab = { x: c * p.x - s * p.y, y: s * p.x + c * p.y };
+        const pivot = { x: (ref.minX + ref.maxX) / 2, y: (ref.minY + ref.maxY) / 2 };
+
+        const R = {
+            kind: zone.kind,
+            handle: zone.handle ?? "",
+            vm, c, s,
+            box: ref,
+            cur: null,                                   // retângulo atual (só no resize)
+            grab,                                        // ponteiro no frame da tela
+            grabN: { x: p.x, y: p.y },                   // ponteiro no espaço do mapa (move)
+            pivot,                                       // centro, frame da tela (rotate)
+            pivotN: { x: c * pivot.x + s * pivot.y, y: -s * pivot.x + c * pivot.y },
+            angle0: Math.atan2(grab.y - pivot.y, grab.x - pivot.x),
+            last: null,
+            builds: [], free: [], owned: [], slide: [],
+            before: null,
+        };
+        const taken = new Set();
+        const snap = (r) => ({ ref: r, x: r.coordinate.pos.x, y: r.coordinate.pos.y });
+
+        if (!vm) {
+            // modo polígono: construções inteiras; as entradas delas acompanham
+            for (const b of sel.build) {
+                if (!b.enabled) continue;
+                const verts = b.vertices.map((v) => ({ x: v.pos.x, y: v.pos.y }));
+                const rec = {
+                    building: b, verts, idx: null,
+                    pin: { x: b.coordinate.pos.x, y: b.coordinate.pos.y },
+                    centroid: polygonCentroid(verts), dx: 0, dy: 0,
+                };
+                R.builds.push(rec);
+                for (const r of b.entrances) {
+                    if (!r.enabled || taken.has(r)) continue;
+                    taken.add(r);
+                    R.owned.push({ ...snap(r), rec });
+                }
+            }
+        } else {
+            // modo vértice: só os vértices escolhidos; as entradas deslizam na parede
+            const groups = new Map();
+            for (const { building, index } of sel.buildVertices) {
+                if (!building.enabled) continue;
+                let g = groups.get(building);
+                if (!g) {
+                    g = {
+                        building, idx: new Set(), pin: null, centroid: null, dx: 0, dy: 0,
+                        verts: building.vertices.map((v) => ({ x: v.pos.x, y: v.pos.y })),
+                    };
+                    groups.set(building, g);
+                }
+                g.idx.add(index);
+            }
+            const picked = new Set(sel.references);
+            for (const g of groups.values()) {
+                R.builds.push(g);
+                for (const r of g.building.entrances) {
+                    if (!r.enabled || picked.has(r)) continue;
+                    R.slide.push({ ...snap(r), rec: g });
+                }
+            }
+        }
+
+        for (const r of sel.references) {
+            if (r.enabled && !taken.has(r)) R.free.push(snap(r));
+        }
+
+        this.resize = R;
+        R.before = this.captureLayout();
+    }
+
+    static updateResize(coord, shift) {
+        const R = this.resize;
+        if (!R) return;
+        R.last = coord;
+
+        const { c, s } = R;
+        const p = coord.peekNormal();
+        const o = { x: 0, y: 0 };
+        let T;
+
+        if (R.kind === "move") {
+            const dx = p.x - R.grabN.x, dy = p.y - R.grabN.y;
+            T = (x, y) => { o.x = x + dx; o.y = y + dy; return o; };
+            shift = false;                               // sempre rígido: usa o ramo "T em tudo"
+
+        } else if (R.kind === "rotate") {
+            const fx = c * p.x - s * p.y, fy = s * p.x + c * p.y;
+            let d = Math.atan2(fy - R.pivot.y, fx - R.pivot.x) - R.angle0;
+            if (shift) d = Math.round(d / ANGLE_SNAP) * ANGLE_SNAP;   // Shift = trava em 15°
+            const cd = Math.cos(d), sd = Math.sin(d);
+            const px = R.pivotN.x, py = R.pivotN.y;
+            T = (x, y) => {
+                const rx = x - px, ry = y - py;
+                o.x = px + cd * rx - sd * ry;
+                o.y = py + sd * rx + cd * ry;
+                return o;
+            };
+            shift = false;
+
+        } else {                                         // resize (como antes)
+            const b = R.box;
+            const dx = (c * p.x - s * p.y) - R.grab.x;
+            const dy = (s * p.x + c * p.y) - R.grab.y;
+
+            const h = R.handle;
+            const [nx0, nx1] = resizeAxis(b.minX, b.maxX, h.includes("w"), h.includes("e"), dx);
+            const [ny0, ny1] = resizeAxis(b.minY, b.maxY, h.includes("n"), h.includes("s"), dy);
+
+            const wx = b.maxX - b.minX, wy = b.maxY - b.minY;
+            const sx = wx > 1e-6 ? (nx1 - nx0) / wx : 1;
+            const sy = wy > 1e-6 ? (ny1 - ny0) / wy : 1;
+            R.cur = { x0: nx0, y0: ny0, x1: nx1, y1: ny1 };
+
+            const cxo = (b.minX + b.maxX) / 2, cyo = (b.minY + b.maxY) / 2;
+            const cxn = (nx0 + nx1) / 2, cyn = (ny0 + ny1) / 2;
+
+            T = (x, y) => {
+                const fx = c * x - s * y, fy = s * x + c * y;
+                const gx = cxn + (fx - cxo) * sx, gy = cyn + (fy - cyo) * sy;
+                o.x = c * gx + s * gy;
+                o.y = -s * gx + c * gy;
+                return o;
+            };
+        }
+
+        // 1) construções (antes das referências)
+        for (const rec of R.builds) {
+            let pts, pin = null;
+
+            if (rec.idx) {                                     // modo vértice
+                pts = rec.verts.map((v, i) => {
+                    if (!rec.idx.has(i)) return { x: v.x, y: v.y };
+                    T(v.x, v.y);
+                    return { x: o.x, y: o.y };
+                });
+            } else if (shift) {                                // resize rígido (Shift)
+                T(rec.centroid.x, rec.centroid.y);
+                rec.dx = o.x - rec.centroid.x;
+                rec.dy = o.y - rec.centroid.y;
+                pts = rec.verts.map((v) => ({ x: v.x + rec.dx, y: v.y + rec.dy }));
+                pin = { x: rec.pin.x + rec.dx, y: rec.pin.y + rec.dy };
+            } else {                                           // estica / move / gira
+                pts = rec.verts.map((v) => { T(v.x, v.y); return { x: o.x, y: o.y }; });
+                T(rec.pin.x, rec.pin.y);
+                pin = { x: o.x, y: o.y };
+            }
+
+            rec.building.setPolygon(pts);
+            if (pin) rec.building.move(newCoord(pin.x, pin.y, "normal"));
+        }
+
+        // 2) entradas que acompanham a construção inteira
+        for (const e of R.owned) {
+            if (shift) e.ref.move(newCoord(e.x + e.rec.dx, e.y + e.rec.dy, "normal"));
+            else { T(e.x, e.y); e.ref.move(newCoord(o.x, o.y, "normal")); }
+        }
+        // 3) entradas que deslizam na parede (modo vértice)
+        for (const e of R.slide) {
+            const q = closestOnPolygon(e.x, e.y, e.rec.building.vertices);
+            e.ref.move(newCoord(q.x, q.y, "normal"));
+        }
+        // 4) referências selecionadas
+        for (const f of R.free) {
+            T(f.x, f.y);
+            f.ref.move(newCoord(o.x, o.y, "normal"));
+        }
+
+        this.refreshBox();
+    }
+
+    static reapplyResize(shift) {
+        if (this.resize?.last) this.updateResize(this.resize.last, shift);
+    }
+
+    /** Fim do gesto: { before, after } se algo mudou (para o desfazer), senão null. */
+    static endResize() {
+        const R = this.resize;
+        if (!R) return null;
+
+        const before = R.before;
+        const after = this.captureLayout();
+        this.resize = null;
+        this.refreshBox();
+
+        const moved =
+            after.refs.some((a, i) => a.x !== before.refs[i].x || a.y !== before.refs[i].y) ||
+            after.builds.some((a, i) =>
+                a.verts.some((v, k) => v.x !== before.builds[i].verts[k].x || v.y !== before.builds[i].verts[k].y));
+        return moved ? { before, after } : null;
+    }
+
+    static cancelResize() {
+        const R = this.resize;
+        if (!R) return;
+        this.resize = null;
+        this.applyLayout(R.before);
+        this.refreshBox();
     }
 }
 
@@ -1076,6 +1421,31 @@ function legacyPolygon(areas) {
         if (a > bestArea) { best = pts; bestArea = a; }
     }
     return best;
+}
+
+function polygonCentroid(pts) {
+    let a = 0, cx = 0, cy = 0;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const f = pts[j].x * pts[i].y - pts[i].x * pts[j].y;
+        a += f;
+        cx += (pts[j].x + pts[i].x) * f;
+        cy += (pts[j].y + pts[i].y) * f;
+    }
+    if (Math.abs(a) < 1e-9) {                       // degenerado: média dos vértices
+        let mx = 0, my = 0;
+        for (const p of pts) { mx += p.x; my += p.y; }
+        return { x: mx / pts.length, y: my / pts.length };
+    }
+    return { x: cx / (3 * a), y: cy / (3 * a) };
+}
+
+// Move a borda arrastada de um eixo. Nunca inverte nem colapsa; eixo degenerado vira translação.
+function resizeAxis(lo, hi, grabLo, grabHi, d) {
+    if (!grabLo && !grabHi) return [lo, hi];
+    const span = hi - lo;
+    if (span < 1e-6) return [lo + d, hi + d];
+    const min = span * 0.02;
+    return grabLo ? [Math.min(lo + d, hi - min), hi] : [lo, Math.max(hi + d, lo + min)];
 }
 
 export class PhantomReference {

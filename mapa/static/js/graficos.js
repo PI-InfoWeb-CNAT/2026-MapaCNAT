@@ -1035,6 +1035,8 @@ function Zoom(z) {
 
     Editor.SnapGuides.render();
 
+    Editor.SelectRegion.updateBoxGraphics();
+
     clampPos();
     tiles?.requestUpdate();
 }
@@ -1057,6 +1059,7 @@ function Rotation(r) {
     if(compassButton) {
         compassButton.children[0].style.transform = `rotate(${r}rad)`;
     }
+    Editor.SelectRegion.onCameraRotate();
 }
 
 export function setRotation(r) {
