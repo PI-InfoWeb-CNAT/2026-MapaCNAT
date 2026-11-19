@@ -49,7 +49,124 @@ export let imageSize;
 
 export let groups;
 
+const origin = { x: 0, y: 0 };
 
+/** Posição do canvas na janela (para converter clientX/Y <-> coordenadas do canvas). */
+export function canvasOrigin() {
+    return origin;
+}
+
+function syncOrigin() {
+    const r = app.canvas.getBoundingClientRect();
+    origin.x = r.left;
+    origin.y = r.top;
+}
+
+const RECENTER_ON_INSET = true;   // true: o conteúdo acompanha o centro da área livre; false: fica parado na tela
+const MIN_VISIBLE = 120;          // a área livre nunca fica menor que isso (px)
+
+export const viewport = { x: 0, y: 0, width: 0, height: 0, cx: 0, cy: 0 };
+let occluders = [];
+let viewportReady = false;
+let lastCx = null, lastCy = null;
+let viewportLoop = 0;
+
+export function getViewport() {
+    return viewport;
+}
+
+function buildOccluders() {
+    const mobile = () => window.matchMedia("(max-width: 700px)").matches;
+    const defs = page === "editor"
+        ? [["#editor-topbar", "top"], ["#editor-modes", "left"], ["#banner", "right"]]
+        : [["#user-tab", "bottom"], ["#screen-ui", () => (mobile() ? "bottom" : "right")]];
+
+    occluders = defs
+        .map(([sel, side]) => ({ el: document.querySelector(sel), side }))
+        .filter((o) => o.el);
+}
+
+function fitAxis(a, b, total) {
+    const room = Math.max(total - MIN_VISIBLE, 0);
+    const sum = a + b;
+    if (sum <= room) return [a, b];
+    const k = sum > 0 ? room / sum : 0;
+    return [a * k, b * k];
+}
+
+/** Remede a UI. Devolve true se o viewport mudou. */
+export function updateViewport() {
+    if (!app) return false;
+    const W = app.screen.width, H = app.screen.height;
+    let l = 0, t = 0, r = 0, b = 0;
+
+    for (const o of occluders) {
+        if (!o.el.isConnected) continue;
+        const rc = o.el.getBoundingClientRect();           // já inclui transform/margin no meio da animação
+        if (rc.width === 0 && rc.height === 0) continue;   // display:none
+        const side = typeof o.side === "function" ? o.side() : o.side;
+        if (side === "left")   l = Math.max(l, rc.right);
+        if (side === "right")  r = Math.max(r, W - rc.left);
+        if (side === "top")    t = Math.max(t, rc.bottom);
+        if (side === "bottom") b = Math.max(b, H - rc.top);
+    }
+
+    const cl = (v, max) => Math.min(Math.max(v, 0), max);
+    [l, r] = fitAxis(cl(l, W), cl(r, W), W);
+    [t, b] = fitAxis(cl(t, H), cl(b, H), H);
+
+    const width = W - l - r, height = H - t - b;
+    const cx = l + width / 2, cy = t + height / 2;
+
+    const v = viewport;
+    if (v.x === l && v.y === t && v.width === width && v.height === height) return false;
+
+    const dx = lastCx === null ? 0 : cx - lastCx;
+    const dy = lastCy === null ? 0 : cy - lastCy;
+    v.x = l; v.y = t; v.width = width; v.height = height; v.cx = cx; v.cy = cy;
+    lastCx = cx; lastCy = cy;
+
+    if (!viewportReady) return true;
+
+    applyZoomLimits();
+    // durante animateTransform quem manda é a animação (ela relê o centro a cada frame)
+    if (RECENTER_ON_INSET && !smoothTransform && (dx || dy)) {
+        Position(mapContainer.x + dx, mapContainer.y + dy);
+    } else {
+        clampPos();
+        tiles?.requestUpdate();
+    }
+    return true;
+}
+
+/** Enquanto a UI anima, remede a cada frame; fora disso, só quando algo muda. */
+function watchViewport() {
+    let calm = 0;
+
+    const tick = () => {
+        viewportLoop = 0;
+        updateViewport();
+        const animating = occluders.some((o) =>
+            o.el.getAnimations().some((a) => a.playState === "running" || a.playState === "pending"));
+        calm = animating ? 0 : calm + 1;
+        if (calm < 3) viewportLoop = requestAnimationFrame(tick);
+    };
+    const kick = () => {
+        calm = 0;
+        if (!viewportLoop) viewportLoop = requestAnimationFrame(tick);
+    };
+
+    window.addEventListener("resize", kick);
+    window.visualViewport?.addEventListener("resize", kick);
+
+    const mo = new MutationObserver(kick);   // troca de classe/estilo inicia a transição
+    const ro = new ResizeObserver(kick);
+    for (const o of occluders) {
+        mo.observe(o.el, { attributes: true, attributeFilter: ["class", "style", "hidden"] });
+        ro.observe(o.el);
+        o.el.addEventListener("transitionrun", kick);
+    }
+}
 
 const DIM_ALPHA = 0.25;
 
@@ -63,21 +180,13 @@ function asDisplayObjects(item) {
 }
 
 export function getNormalizedCoordinates(pos) {
-    const localPoint = mapContainer.toLocal(pos);
-
-    return {
-        x: localPoint.x,
-        y: localPoint.y,
-    };
+    const localPoint = mapContainer.toLocal({ x: pos.x - origin.x, y: pos.y - origin.y });
+    return { x: localPoint.x, y: localPoint.y };
 }
 
 export function getScreenCoordinates(pos) {
     const screenPoint = mapContainer.toGlobal(pos);
-
-    return {
-        x: screenPoint.x,
-        y: screenPoint.y,
-    };
+    return { x: screenPoint.x + origin.x, y: screenPoint.y + origin.y };
 }
 
 export function svgToNormalized(p) {
@@ -95,22 +204,11 @@ export function normalizedToSvg(p) {
 }
 
 export function getVisibleMapBounds() {
-    const rect = app.canvas.getBoundingClientRect();
-
-    const corners = [
-        { x: rect.left, y: rect.top },
-        { x: rect.right, y: rect.top },
-        { x: rect.right, y: rect.bottom },
-        { x: rect.left, y: rect.bottom },
-    ].map((p) => {
-        const local = mapContainer.toLocal(
-            new PIXI.Point(p.x, p.y)
-        );
-
-        return local;
-    });
-
-    return corners;
+    const { width, height } = app.screen;
+    return [
+        { x: 0, y: 0 }, { x: width, y: 0 },
+        { x: width, y: height }, { x: 0, y: height },
+    ].map((p) => mapContainer.toLocal(new PIXI.Point(p.x, p.y)));
 }
 
 /////////////////// Reference
@@ -774,19 +872,17 @@ const MAX_ZOOM_METERS = 20;   // largura geográfica visível no zoom máximo
 const FALLBACK_MAX_ZOOM = 3;  // se `metrics` não estiver disponível
 
 function computeZoomLimits() {
-    const sw = app.screen.width;
-    const sh = app.screen.height;
+    const sw = viewport.width || app.screen.width;
+    const sh = viewport.height || app.screen.height;
 
-    // mapa inteiro visível (rotação 0)
+    // mapa inteiro cabe na área livre (rotação 0)
     minZoom = Math.min(sw / imageSize.width, sh / imageSize.height);
 
-    // lado menor da tela cobrindo MAX_ZOOM_METERS metros
     const upm = typeof metrics !== "undefined" ? metrics?.unitsPerMeter : NaN;
     maxZoom = Number.isFinite(upm) && upm > 0
         ? Math.min(sw, sh) / (MAX_ZOOM_METERS * upm)
         : FALLBACK_MAX_ZOOM;
 
-    // nunca deixa o máximo abaixo do mínimo (mapa minúsculo ou métrica estranha)
     maxZoom = Math.max(maxZoom, minZoom);
 }
 
@@ -810,6 +906,10 @@ export async function main() {
     gl = app.renderer.gl;
     map = document.getElementById("map");
     map.appendChild(app.canvas);
+    buildOccluders();
+    updateViewport();   
+    syncOrigin();
+    window.addEventListener("resize", syncOrigin);
 
     mapContainer = new PIXI.Container();
     app.stage.addChild(mapContainer);
@@ -831,13 +931,17 @@ export async function main() {
 
     mapContainer.x = app.screen.width / 2;
     mapContainer.y = app.screen.height / 2;
+    mapContainer.x = viewport.cx;
+    mapContainer.y = viewport.cy;
 
     new ResizeObserver(() => {
         const { width, height } = mapEl.getBoundingClientRect();
-        if (!width || !height) return;
-        if (Math.abs(width - app.screen.width) < 1 && Math.abs(height - app.screen.height) < 1) return;
-        app.renderer.resize(width, height);
-        applyZoomLimits();
+        if (width && height &&
+            (Math.abs(width - app.screen.width) >= 1 || Math.abs(height - app.screen.height) >= 1)) {
+            app.renderer.resize(width, height);
+            app.render();          // pinta no mesmo frame: sem tela preta
+        }
+        updateViewport();          // sempre: o Pixi (resizeTo) pode ter redimensionado antes
         tiles?.requestUpdate();
     }).observe(mapEl);
     
@@ -882,7 +986,8 @@ export async function main() {
     };
 
     Zoom(minZoom);
-
+    viewportReady = true;
+    watchViewport();
 }
 
 /////////////////// Collision (pins)
@@ -984,19 +1089,14 @@ export function updateMap() {
 }
 
 function clampPos() {
+    const v = viewport;
     mapContainer.x = Math.max(
-        (-imageSize.width / 2) * zoom + (3 * app.screen.width) / 4,
-        Math.min(
-            (imageSize.width / 2) * zoom + app.screen.width / 4,
-            mapContainer.x,
-        ),
+        (-imageSize.width / 2) * zoom + v.x + (3 * v.width) / 4,
+        Math.min((imageSize.width / 2) * zoom + v.x + v.width / 4, mapContainer.x),
     );
     mapContainer.y = Math.max(
-        (-imageSize.height / 2) * zoom + (3 * app.screen.height) / 4,
-        Math.min(
-            (imageSize.height / 2) * zoom + app.screen.height / 4,
-            mapContainer.y,
-        ),
+        (-imageSize.height / 2) * zoom + v.y + (3 * v.height) / 4,
+        Math.min((imageSize.height / 2) * zoom + v.y + v.height / 4, mapContainer.y),
     );
 }
 
@@ -1111,7 +1211,7 @@ export function highlight(activeGroups) {
 const TAU = Math.PI * 2;
 const normalizeAngle = (a) => a - TAU * Math.round(a / TAU);   // → [-π, π]
 
-const screenCenter = () => ({ x: app.screen.width / 2, y: app.screen.height / 2 });
+const screenCenter = () => ({ x: viewport.cx, y: viewport.cy });
 
 // screen = pos + R(rot) · (scale · point)
 function worldToScreen(p, pos, scale, rot) {
@@ -1155,9 +1255,7 @@ export function animateTransform({ point, screen, zoom: targetZoom, rotation: ta
     const endZoom = Math.min(Math.max(targetZoom ?? startZoom, minZoom), maxZoom);
     const endRotation = startRotation + normalizeAngle((targetRotation ?? startRotation) - startRotation);
 
-    // the anchor is pinned to a screen position that slides from where it is now to `target`
-    const target = screen ?? screenCenter();
-    const anchor = point ?? screenToWorld(target, startPos, startZoom, startRotation);
+    const anchor = point ?? screenToWorld(screen ?? screenCenter(), startPos, startZoom, startRotation);
     const startScreen = worldToScreen(anchor, startPos, startZoom, startRotation);
 
     const startTime = performance.now();
@@ -1166,6 +1264,8 @@ export function animateTransform({ point, screen, zoom: targetZoom, rotation: ta
         const raw = duration <= 0 ? 1 : (now - startTime) / duration;
         const t = Math.min(Math.max(raw, 0), 1);
         const e = t * t * (3 - 2 * t);
+
+        const target = screen ?? screenCenter();
 
         const z = startZoom + (endZoom - startZoom) * e;
         const rot = startRotation + (endRotation - startRotation) * e;

@@ -662,7 +662,8 @@ function flushMainMove() {
 function applyMainMove(m) {
     if (rightClicking) {
         const delta = (m.clientX - clickX) / 300;
-        Graficos.setRotation(mapStartAngle + delta);
+        const o = Graficos.canvasOrigin();
+        Graficos.setPosition(clickX - o.x + p.x, clickY - o.y + p.y);
         const p = Transformacao.rotatePoint(rotateOffsetX, rotateOffsetY, delta);
         Graficos.setPosition(clickX + p.x, clickY + p.y);
     } else if (leftClicking) {
@@ -720,11 +721,13 @@ class Touch {
         if (e.touches.length == 2) {
             const a = e.touches[0];
             const b = e.touches[1];
+            const o = Graficos.canvasOrigin();
             const mid = Transformacao.midpoint(a, b);
-            startMidX = mid.x;
-            startMidY = mid.y;
+            startMidX = mid.x - o.x;
+            startMidY = mid.y - o.y;
             startDistance = Transformacao.distance(a, b);
             startAngle = Transformacao.angle(a, b);
+            zoom = Graficos.zoom;
             startZoom = zoom;
             startRotation = Graficos.mapContainer.rotation;
             startOffsetX = (Graficos.mapContainer.x - startMidX) / zoom;
@@ -767,9 +770,10 @@ class Touch {
                 startOffsetY,
                 deltaAngle,
             );
+            const o = Graficos.canvasOrigin();
             Graficos.setPosition(
-                mid.x + rotated.x * zoom,
-                mid.y + rotated.y * zoom,
+                mid.x - o.x + rotated.x * zoom,
+                mid.y - o.y + rotated.y * zoom,
             );
         }
     }
@@ -807,6 +811,7 @@ function stopCarry() {
 }
 
 function startCarry(e) {
+    carryView(e);
     carrying = setInterval(() => {
         carryView(e);
         Editor.SelectRegion.move(Editor.newCoord(e.clientX, e.clientY, "screen"), e.shiftKey);
@@ -815,15 +820,21 @@ function startCarry(e) {
 
 function carryView(e) {
     const rect = mapObj.getBoundingClientRect();
-    let pad = 100;
-    let spd = 5;
+    const vp = Graficos.getViewport();
+    const pad = 100, spd = 5;
 
-    const left = e.clientX < rect.left + pad && e.clientX > rect.left;
-    const right = e.clientX > rect.right - pad && e.clientX < rect.right;
-    const top = e.clientY < rect.top + pad && e.clientY > rect.top;
-    const bottom = e.clientY > rect.bottom - pad && e.clientY < rect.bottom;
-    
-    Graficos.setPosition(Graficos.mapContainer.x + (left ? spd : right ? -spd : 0), Graficos.mapContainer.y + (top ? spd : bottom ? -spd : 0));
+    const inX = e.clientX > rect.left && e.clientX < rect.right;
+    const inY = e.clientY > rect.top && e.clientY < rect.bottom;
+
+    const left   = inX && e.clientX < vp.x + pad;
+    const right  = inX && e.clientX > vp.x + vp.width - pad;
+    const top    = inY && e.clientY < vp.y + pad;
+    const bottom = inY && e.clientY > vp.y + vp.height - pad;
+
+    Graficos.setPosition(
+        Graficos.mapContainer.x + (left ? spd : right ? -spd : 0),
+        Graficos.mapContainer.y + (top ? spd : bottom ? -spd : 0),
+    );
 }
 
 class Pointer {
@@ -843,8 +854,9 @@ class Pointer {
         mapStartX = Graficos.mapContainer.x;
         mapStartY = Graficos.mapContainer.y;
         mapStartAngle = Graficos.mapContainer.rotation;
-        rotateOffsetX = mapStartX - clickX;
-        rotateOffsetY = mapStartY - clickY;
+        const o = Graficos.canvasOrigin();
+        rotateOffsetX = mapStartX - (clickX - o.x);
+        rotateOffsetY = mapStartY - (clickY - o.y);
 
         if (e.button === 0) leftClicking = true;
         else if (e.button === 2) rightClicking = true;
@@ -972,9 +984,10 @@ class Pointer {
             delta
         );
 
+        const o = Graficos.canvasOrigin();
         Graficos.setPosition(
-            clickX + p.x,
-            clickY + p.y
+            clickX - o.x + p.x,
+            clickY - o.y + p.y
         );
     }
 
@@ -1216,8 +1229,12 @@ class Pointer {
                     lastTap = null;
                 }
 
-                if (pressed.selfPin) Actions.openUser(pressed);
-                else Actions.openBanner(pressed);
+                if (pressed.selfPin) {
+                    Actions.openUser(pressed);
+                } else {
+                    Actions.openBanner(pressed);
+                    goToPlace(pressed);
+                }
                 return;
             }
 
@@ -1285,13 +1302,13 @@ class Pointer {
 
     static wheel(e) {
         e.preventDefault();
+        if (Graficos.smoothTransform) return;
 
-        if(Graficos.smoothTransform) {
-            return;
-        }
 
-        const mX = e.offsetX;
-        const mY = e.offsetY;
+        zoom = Graficos.zoom;                       // o resize pode ter reajustado o zoom
+        const o = Graficos.canvasOrigin();
+        const mX = e.clientX - o.x;
+        const mY = e.clientY - o.y;
 
         let zoomFactor = e.deltaY < 0 ? zoomStep : 1 / zoomStep;
         const nextZoom = Math.min(Math.max(zoom * zoomFactor, Graficos.minZoom), Graficos.maxZoom);
@@ -2776,9 +2793,9 @@ class Keys {
             const c = Math.cos(S._rot), s = Math.sin(S._rot);
             point = { x: c * cx + s * cy, y: -s * cx + c * cy };
 
-            const rect = mapObj.getBoundingClientRect();
+            const vp = Graficos.getViewport();
             const w = Math.max(b.maxX - b.minX, 1), h = Math.max(b.maxY - b.minY, 1);
-            target = Math.min(rect.width / w, rect.height / h) * 0.7;   // margem
+            target = Math.min(vp.width / w, vp.height / h) * 0.7;   // margem
         }
 
         target = Math.min(Math.max(target, Graficos.minZoom), Graficos.maxZoom);
@@ -3464,7 +3481,7 @@ export async function addListeners(map) {
                     return;
                 }
                 
-                let url = buildURL(window.location.origin + window.location.pathname, {showpin: 0, lat: geocoords[0], long: geocoords[1]});
+                let url = buildURL(window.location.origin + window.location.pathname, {showpin: 1, lat: geocoords[0], long: geocoords[1]});
                 
                 const shareData = {
                     title: 'Venha ver onde eu estou!',
