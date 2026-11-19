@@ -798,6 +798,34 @@ function isInside(event, target) {
     );
 }
 
+let carrying = null;
+
+function stopCarry() {
+    if(carrying) {
+        clearInterval(carrying);
+    }
+}
+
+function startCarry(e) {
+    carrying = setInterval(() => {
+        carryView(e);
+        Editor.SelectRegion.move(Editor.newCoord(e.clientX, e.clientY, "screen"), e.shiftKey);
+    }, 1000 / 60);
+}
+
+function carryView(e) {
+    const rect = mapObj.getBoundingClientRect();
+    let pad = 100;
+    let spd = 5;
+
+    const left = e.clientX < rect.left + pad && e.clientX > rect.left;
+    const right = e.clientX > rect.right - pad && e.clientX < rect.right;
+    const top = e.clientY < rect.top + pad && e.clientY > rect.top;
+    const bottom = e.clientY > rect.bottom - pad && e.clientY < rect.bottom;
+    
+    Graficos.setPosition(Graficos.mapContainer.x + (left ? spd : right ? -spd : 0), Graficos.mapContainer.y + (top ? spd : bottom ? -spd : 0));
+}
+
 class Pointer {
     constructor() {
         throw new Error("Classe estática. Não instancie.");
@@ -986,14 +1014,18 @@ class Pointer {
 
         hoverTargetSet = new Set();
         
+        stopCarry();
+
         if (page == "editor") {
             if (editorMode == EditorModes.SELECTION) {
                 const S = Editor.SelectRegion;
                 const here = Editor.newCoord(e.clientX, e.clientY, "screen");
                 if (S.resizing) {
                     S.updateResize(here, e.shiftKey);
+                    startCarry(e);
                 } else if (leftClicking) {
                     S.move(here, e.shiftKey);
+                    startCarry(e);
                 } else {
                     setCursor(S.cursorForZone(S.hitZone(e.clientX, e.clientY)));
                 }
@@ -1757,11 +1789,13 @@ class Actions {
                 Actions.forceMode(EditorModes.CONSTRUCTION);
                 building.addVertex(Editor.newCoord(pos.x, pos.y, "normal"));
                 Task.restore(snap);
+                building.updateGraphics();
             },
             () => {
                 Actions.forceMode(EditorModes.CONSTRUCTION);
                 building.removeLastVertex();
                 Task.restore(snap);
+                building.updateGraphics();
             },
         );
     }
