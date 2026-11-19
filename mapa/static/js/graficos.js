@@ -1088,16 +1088,25 @@ export function updateMap() {
     tiles?.requestUpdate();
 }
 
+const PAN_SLACK = 0.25;      // fração do viewport que deve continuar coberta ao arrastar
+const SLACK_RAMP = 0.5;      // a folga volta por completo em minZoom * (1 + SLACK_RAMP)
+
+function clampAxis(value, center, mapSize, viewSize, slack) {
+    // mapa inteiro cabe nesse eixo → sem folga, só centraliza
+    const overflow = (mapSize - viewSize) / 2;
+    const allowed = Math.max(0, overflow + viewSize * PAN_SLACK * slack);
+    return Math.min(center + allowed, Math.max(center - allowed, value));
+}
+
 function clampPos() {
     const v = viewport;
-    mapContainer.x = Math.max(
-        (-imageSize.width / 2) * zoom + v.x + (3 * v.width) / 4,
-        Math.min((imageSize.width / 2) * zoom + v.x + v.width / 4, mapContainer.x),
-    );
-    mapContainer.y = Math.max(
-        (-imageSize.height / 2) * zoom + v.y + (3 * v.height) / 4,
-        Math.min((imageSize.height / 2) * zoom + v.y + v.height / 4, mapContainer.y),
-    );
+
+    // 0 em minZoom (sempre centralizado) → 1 um pouco acima dele (folga original)
+    const t = minZoom > 0 ? (zoom / minZoom - 1) / SLACK_RAMP : 1;
+    const slack = Math.min(Math.max(t, 0), 1);
+
+    mapContainer.x = clampAxis(mapContainer.x, v.cx, imageSize.width * zoom, v.width, slack);
+    mapContainer.y = clampAxis(mapContainer.y, v.cy, imageSize.height * zoom, v.height, slack);
 }
 
 function Position(x, y) {

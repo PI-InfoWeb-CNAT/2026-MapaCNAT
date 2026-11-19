@@ -812,9 +812,9 @@ function stopCarry() {
 
 function startCarry(e) {
     carryView(e);
-    carrying = setInterval(() => {
+        carrying = setInterval(() => {
         carryView(e);
-        Editor.SelectRegion.move(Editor.newCoord(e.clientX, e.clientY, "screen"), e.shiftKey);
+        Editor.SelectRegion.move(Editor.newCoord(e.clientX, e.clientY, "screen"), Keys.vertexSelect);
     }, 1000 / 60);
 }
 
@@ -887,8 +887,18 @@ class Pointer {
                 const S = Editor.SelectRegion;
                 const here = Editor.newCoord(clickX, clickY, "screen");
                 const zone = S.hitZone(clickX, clickY);
-                if (zone) S.beginGesture(zone, here);   // borda, interior ou canto: não zera a seleção
-                else S.start(here);
+                const additive = e.shiftKey;
+                const pick = S.pickAt(here, Keys.vertexSelect);   // antes do start(): ele converte `here`
+
+                selBefore = S.snapshot();
+                selDragging = false;
+                selClick = { pick, additive };
+
+                // shift+clique num objeto ainda não selecionado, mesmo dentro da caixa: soma em vez de mover
+                const takeover = zone?.kind === "move" && additive && pick && !S.isSelected(pick);
+
+                if (zone && !takeover) S.beginGesture(zone, here);
+                else S.start(here, { keep: additive });
             } else if (editorMode == EditorModes.REFERENCE) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
                 let overlap = Editor.Referencer.getOverlappingDots(
@@ -1033,11 +1043,17 @@ class Pointer {
             if (editorMode == EditorModes.SELECTION) {
                 const S = Editor.SelectRegion;
                 const here = Editor.newCoord(e.clientX, e.clientY, "screen");
+
+                if (leftClicking && (S.resizing || S.startCoord)) {
+                    if (!selDragging && !passedDragThreshold(e)) return;   // tremida ainda é clique
+                    selDragging = true;
+                }
+
                 if (S.resizing) {
-                    S.updateResize(here, e.shiftKey);
+                    S.updateResize(here, e.shiftKey);   // Shift continua = redimensionar rígido / girar em 15°
                     startCarry(e);
                 } else if (leftClicking) {
-                    S.move(here, e.shiftKey);
+                    S.move(here, Keys.vertexSelect);
                     startCarry(e);
                 } else {
                     setCursor(S.cursorForZone(S.hitZone(e.clientX, e.clientY)));
@@ -1172,6 +1188,7 @@ class Pointer {
     }
 
     static up(e) {
+        stopCarry();
         const wasRightClicking = rightClicking;
         if (!e.isPrimary) return;
         if (page == "main") flushMainMove();
@@ -1193,11 +1210,16 @@ class Pointer {
         if (page == "editor" && Editor.SelectRegion.resizing) {
             const change = Editor.SelectRegion.endResize();
             if (change) Actions.resizeSelection(change.before, change.after);
+            else if (wasLeftClicking && e.button === 0) endSelectionGesture();   // clique, não arrasto
+            selBefore = null;
             setCursor("");
             return;
         }
 
         Editor.SelectRegion.release();
+        if (page == "editor" && editorMode == EditorModes.SELECTION && wasLeftClicking && e.button === 0) {
+            endSelectionGesture();
+        }
 
         if (page == "main") {
             clearLongPress();
@@ -1285,6 +1307,13 @@ class Pointer {
         Editor.SelectRegion.release();
 
         panGesture = false;
+
+        if (selBefore) {
+            Editor.SelectRegion.restoreSelection(selBefore);
+            selBefore = null;
+        }
+        selClick = null;
+        selDragging = false;
 
         leftClicking = false;
         rightClicking = false;
@@ -1399,7 +1428,7 @@ async function waitForTransition(element, timeout = 1000) {
 function syncHandles() {
     Editor.Buildings.setEditing(
         (editorMode === EditorModes.CONSTRUCTION && !Task.task) ||
-        (editorMode === EditorModes.SELECTION && Keys.shiftDown)
+        (editorMode === EditorModes.SELECTION && Keys.vertexSelect)
     );
 }
 
@@ -1407,7 +1436,7 @@ class Actions {
     static actionStack = [];
     static actionStackReferencial = {};
     static actionStackTraversal = 0;
-    static actionStackLimit = 64;
+    static actionStackLimit = 128;
 
     static prune(startIndex, deleteCount = 1, pruneOut = true) {
         const total = this.actionStack.length;
@@ -1475,7 +1504,16 @@ class Actions {
         }
     }
 
-    static newAction(forward, backward, prune = () => {}, overflow = () => {}) {
+    static newAction(forward, backward, prune = () => {}, overflow = () => {}, sel = null) {
+        // sel = { before, after } (snapshots de SelectRegion): restaurados depois de cada replay,
+        // porque forceMode → applyMode zera a seleção
+        if (sel) {
+            const S = Editor.SelectRegion;
+            const f = forward, b = backward;
+            forward  = () => { f(); S.restoreSelection(sel.after); };
+            backward = () => { b(); S.restoreSelection(sel.before); };
+        }
+
         if (this.actionStackTraversal > 0) {
             const prunedActions = this.actionStack.splice(
                 this.actionStack.length - this.actionStackTraversal,
@@ -2046,7 +2084,9 @@ class Actions {
             Actions.forceMode(EditorModes.SELECTION);
             Editor.SelectRegion.applyLayout(layout);
         };
-        this.newAction(() => apply(after), () => apply(before));
+        // a seleção não muda: é a mesma antes e depois, só as posições mudam
+        const sel = Editor.SelectRegion.snapshot();
+        this.newAction(() => apply(after), () => apply(before), undefined, undefined, { before: sel, after: sel });
     }
 
     static newBuilding(mouseX, mouseY) {
@@ -2079,6 +2119,20 @@ class Actions {
         this.newAction(forward, backward, prune);
         building._helperCreate = this.actionStack[this.actionStack.length - 1];
         return building;
+    }
+
+    static recordSelection(before) {
+        if (!before) return;
+        const S = Editor.SelectRegion;
+        const after = S.snapshot();
+        if (S.sameSelection(before, after)) return;
+
+        // forceMode → applyMode zera a seleção, então restauramos depois dele
+        const apply = (snap) => {
+            Actions.forceMode(EditorModes.SELECTION);
+            S.restoreSelection(snap);
+        };
+        this.newAction(() => apply(after), () => apply(before));
     }
 
     static pinMode(bool) {
@@ -2405,9 +2459,10 @@ class Actions {
         }
         if (!refs.length && !builds.length) return false;
 
+        const selBefore = S.snapshot();                                   // NOVO
+
         const gone = new Set(refs);
         const connections = [...new Set(refs.flatMap((r) => r.connections.filter((c) => c.enabled)))];
-        // entradas de construções apagadas deixam de ser entrada (as apagadas juntas não precisam)
         const revalidate = [...new Set(
             builds.flatMap((b) => b.entrances.filter((r) => r.enabled && !gone.has(r)))
         )];
@@ -2420,25 +2475,45 @@ class Actions {
         };
         const restore = () => {
             for (const b of builds) b.enable();
-            for (const r of refs) r.enable();            // referências antes das conexões
+            for (const r of refs) r.enable();
             for (const c of connections) c.enable();
-            for (const r of revalidate) r.validatePos(); // voltam a grudar na parede
+            for (const r of revalidate) r.validatePos();
         };
 
         remove();
+        S.refresh();
+        const selAfter = S.snapshot();                                    // NOVO (vazia)
+
         this.newAction(
             () => { Actions.forceMode(EditorModes.DELETION); remove(); },
             () => { Actions.forceMode(EditorModes.DELETION); restore(); },
             undefined,
             () => { refs.forEach((r) => r.destroy()); builds.forEach((b) => b.destroy()); },
+            { before: selBefore, after: selAfter },                       // NOVO
         );
 
-        S.refresh();
         return true;
     }
 }
 
 let panGesture = false;        // pan iniciado com X (o arrasto continua mesmo se soltar o X)
+let selClick = null;       // { pick, additive } do pointerdown atual no modo Seleção
+let selDragging = false;   // passou do limiar: é arrasto, não clique
+let selBefore = null;      // seleção antes do gesto atual (para virar ação)
+
+function endSelectionGesture() {
+    finishSelectionClick();
+    Actions.recordSelection(selBefore);
+    selBefore = null;
+}
+
+function finishSelectionClick() {
+    const c = selClick;
+    selClick = null;
+    if (!c || selDragging || !c.pick) return;
+    Editor.SelectRegion.pick(c.pick, c.additive);
+    setCursor("");
+}
 
 const HOLD_MS = 280;           // segurar mais que isso = modo temporário
 const MODE_KEYS = {
@@ -2453,6 +2528,7 @@ const MODE_KEYS = {
 const SHORTCUTS = [
     ["S R C B N D", "Seleção, Referência, Conexão, Construção, Banner, Excluir (toque alterna, segurar é temporário)"],
     ["X (segurar)", "Mover o mapa rapidamente"],
+    ["Clique / Shift+Clique", "Seleção: seleciona o objeto / soma ao grupo (Shift em vértice soma o vértice)"],
     ["Delete / Backspace", "Apaga a seleção ou o que está na mão; sem nada, segurar = modo Excluir"],
     ["Esc", "Cancela o gesto, fecha o banner, sai do modo"],
     ["Enter", "Concluir construção"],
@@ -2460,7 +2536,10 @@ const SHORTCUTS = [
     ["Ctrl+S", "Salvar"],
     ["Ctrl+A", "Selecionar tudo"],
     ["T", "Seleção: tocar ↔ conter"],
-    ["Shift", "Seleção: vértices em vez de construções"],
+    ["Clique", "Seleção: seleciona só aquele objeto"],
+    ["Shift + clique / arrasto", "Seleção: soma ao grupo atual em vez de substituir"],
+    ["V", "Seleção: alternar construções ↔ vértices"],
+    ["Shift (redimensionar)", "Seleção: redimensiona rígido; ao girar, trava em 15°"],
     ["F", "Enquadrar seleção (ou o mapa todo)"],
     ["Setas", "Mover a câmera (Shift = mais rápido)"],
     ["+ / −", "Zoom"],
@@ -2483,10 +2562,10 @@ function canSwitchSync() {
 }
 
 function showShortcuts() {
-    const rows = SHORTCUTS.map(([k, d]) => `<tr><td><kbd>${k}</kbd></td><td>${d}</td></tr>`).join("");
+    const rows = SHORTCUTS.map(([k, d]) => `<tr><td><kbd class='modal-ticket'>${k}</kbd></td><td>${d}</td></tr>`).join("");
     Modals.modal.open({
         title: "Atalhos do editor",
-        size: "sm",
+        size: "lg",
         html: `<table class="shortcut-table">${rows}</table>`,
     });
 }
@@ -2513,6 +2592,8 @@ class Keys {
     static pendingRestore = null; // modo a restaurar quando o ponteiro for solto
 
     static shiftDown = false;
+
+    static vertexSelect = false;
 
     // ---------- entrada ----------
 
@@ -2600,6 +2681,7 @@ class Keys {
             case "q": if (first) this.rotateCamera(-1); return true;
             case "e": if (first) this.rotateCamera(1); return true;
             case "0": if (first) Graficos.smoothRotation(0); return true;
+            case "v": if (first) this.toggleVertexSelect(); return true;
             case "?": case "h": if (first) showShortcuts(); return true;
         }
 
@@ -2611,6 +2693,21 @@ class Keys {
     }
 
     // ---------- modos (toque alterna, segurar é temporário) ----------
+
+    static toggleVertexSelect() {
+        this.vertexSelect = !this.vertexSelect;
+        syncHandles();
+
+        const S = Editor.SelectRegion;
+        if (S.startCoord && S.currCoord) {          // no meio de um arrasto: reaplica
+            S.updateSelection(this.vertexSelect);
+            S.updateGraphics();
+        }
+        Toasts.toaster.show({
+            text: this.vertexSelect ? "Seleção: vértices" : "Seleção: construções",
+            category: "success",
+        });
+    }
 
     static pressMode(id, mode, { momentary = false } = {}) {
         if (!canSwitchSync()) {
@@ -2698,7 +2795,12 @@ class Keys {
         if (this.cancelGesture()) return;
         if (bannerHeld()) { Actions.requestCloseBanner(); return; }
         if (Task.task) { Actions.switchMode(EditorModes.FREE); return; }   // confirma se houver pontos
-        if (Editor.SelectRegion.box) { Editor.SelectRegion.refresh(); return; }
+        if (Editor.SelectRegion.box) {
+            const before = Editor.SelectRegion.snapshot();
+            Editor.SelectRegion.refresh();
+            Actions.recordSelection(before);
+            return;
+        }
         if (editorMode !== EditorModes.FREE) Actions.switchMode(EditorModes.FREE);
     }
 
@@ -2721,15 +2823,8 @@ class Keys {
 
     static onShift(e) {
         this.shiftDown = e.shiftKey;
-        syncHandles();
-
         const S = Editor.SelectRegion;
-        if (S.resizing) {
-            S.reapplyResize(e.shiftKey);                 // alterna estica ↔ rígido sem mexer o mouse
-        } else if (S.startCoord && S.currCoord) {
-            S.updateSelection(e.shiftKey);
-            S.updateGraphics();
-        }
+        if (S.resizing) S.reapplyResize(e.shiftKey);   // alterna estica ↔ rígido sem mexer o mouse
     }
 
     static toggleTouch() {
@@ -2743,11 +2838,14 @@ class Keys {
 
     static selectAll() {
         if (gestureActive() || Task.task) return;
+        const S = Editor.SelectRegion;
+        const before = S.snapshot();
         if (editorMode !== EditorModes.SELECTION) {
             if (!canSwitchSync()) return;
             Actions.applyMode(EditorModes.SELECTION);
         }
-        Editor.SelectRegion.selectAll();
+        S.selectAll();
+        Actions.recordSelection(before);
     }
 
     // ---------- câmera ----------
@@ -3529,6 +3627,11 @@ export async function addListeners(map) {
 
         mapObj.dataset.mode = editorMode;
         addShortcutHints();
+        Editor.SelectRegion.onRestoreMode = (vm) => {
+            if (Keys.vertexSelect === vm) return;
+            Keys.vertexSelect = vm;
+            syncHandles();
+        };
 
         document.getElementById("banner-close").addEventListener("click", () => Actions.requestCloseBanner());
         for (const field of [bannerTitle, bannerDescription]) {

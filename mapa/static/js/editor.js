@@ -592,6 +592,7 @@ export class SelectRegion {
 
     static vertexMode = false;     // modo da seleção atual (shift = vértices, senão construções)
     static _shift = false;
+    static base = null;
 
     static touch = true;
     static _rect = { minX: NaN, minY: NaN, maxX: NaN, maxY: NaN };
@@ -626,23 +627,37 @@ export class SelectRegion {
 
     // ---- ciclo do arrasto ----
 
-    static start(coordinate) {
+    static start(coordinate, { keep = false } = {}) {
         this.startCoord = coordinate;
         this.startCoord.convertTo("normal");
         this.currCoord = null;
-        this.clearSelection();
+
+        if (keep) {
+            // guarda o grupo atual: o arrasto soma a ele em vez de substituí-lo
+            const s = this.selected;
+            this.base = {
+                references: [...s.references],
+                build: [...s.build],
+                buildVertices: s.buildVertices.map(v => ({ building: v.building, index: v.index })),
+            };
+            this._rect.minX = NaN;      // força recalcular o retângulo
+        } else {
+            this.base = null;
+            this.clearSelection();
+        }
+    }
+
+    static release() {
+        this.startCoord = null;
+        this.currCoord = null;
+        this.base = null;
+        this.updateGraphics();
     }
 
     static move(coordinate, shift) {
         this.currCoord = coordinate;
         this.currCoord.convertTo("normal");
         this.updateSelection(shift);
-        this.updateGraphics();
-    }
-
-    static release() {
-        this.startCoord = null;
-        this.currCoord = null;
         this.updateGraphics();
     }
 
@@ -792,30 +807,51 @@ export class SelectRegion {
         return box.minX === Infinity ? null : box;
     }
 
-    static updateSelection(shift) {
+    static updateSelection(vm) {
         if (!this.startCoord || !this.currCoord) return;
         this.syncFrame();
         const c = this._cos, s = this._sin;
 
         const a = this.startCoord.pos, b = this.currCoord.pos;
-        const ax = c * a.x - s * a.y, ay = s * a.x + c * a.y;      // arrasto no frame da tela
+        const ax = c * a.x - s * a.y, ay = s * a.x + c * a.y;
         const bx = c * b.x - s * b.y, by = s * b.x + c * b.y;
         const minX = Math.min(ax, bx), maxX = Math.max(ax, bx);
         const minY = Math.min(ay, by), maxY = Math.max(ay, by);
 
-        const r = this._rect, zoom = Graficos.zoom, sh = !!shift;
+        const r = this._rect, zoom = Graficos.zoom, mode = !!vm;
         if (r.minX === minX && r.minY === minY && r.maxX === maxX && r.maxY === maxY &&
-            this._zoom === zoom && this._shift === sh) return;
+            this._zoom === zoom && this._shift === mode) return;
         r.minX = minX; r.minY = minY; r.maxX = maxX; r.maxY = maxY;
         this._zoom = zoom;
-        this._shift = sh;
+        this._shift = mode;
 
         const t = this.touch;
         Referencer.getReferencesInRect(minX, minY, maxX, maxY, this.selected.references, t, c, s);
         Buildings.getVerticesInRect(minX, minY, maxX, maxY, this.selected.buildVertices, t, c, s);
         Buildings.getPolygonsInRect(minX, minY, maxX, maxY, this.selected.build, t, c, s);
 
-        this.refreshBox(sh);
+        if (this.base) this.mergeBase(mode);
+        this.refreshBox(mode);
+    }
+
+    /** Soma o grupo anterior ao resultado da região (sem duplicar). */
+    static mergeBase(vm) {
+        const base = this.base, sel = this.selected;
+
+        for (const r of base.references) {
+            if (!sel.references.includes(r)) sel.references.push(r);
+        }
+        if (vm) {
+            for (const v of base.buildVertices) {
+                if (!sel.buildVertices.some(x => x.building === v.building && x.index === v.index)) {
+                    sel.buildVertices.push(v);
+                }
+            }
+        } else {
+            for (const b of base.build) {
+                if (!sel.build.includes(b)) sel.build.push(b);
+            }
+        }
     }
 
     /** A câmera girou (chamado por Graficos.Rotation). */
@@ -1275,6 +1311,97 @@ export class SelectRegion {
         this.applyLayout(R.before);
         this.refreshBox();
     }
+
+    static pickAt(coord, vertices = false) {
+        if (vertices) {
+            const v = Buildings.getOverlappingVertex(coord);
+            if (v) return { kind: "vertex", building: v.building, index: v.index };
+        }
+        const ref = Referencer.getOverlappingDots(coord, false);
+        if (ref) return { kind: "reference", ref };
+        if (vertices) return null;   // modo vértice: corpo/pin de construção não é alvo
+
+        const b = Buildings.getOverlappingPins(coord) || Buildings.getOverlappingBuildings(coord, false);
+        if (b && b.closed && b.enabled) return { kind: "building", building: b };
+        return null;
+    }
+
+    static isSelected(item) {
+        const sel = this.selected;
+        switch (item.kind) {
+            case "reference": return sel.references.includes(item.ref);
+            case "building":  return sel.build.includes(item.building);
+            case "vertex":    return sel.buildVertices.some(v => v.building === item.building && v.index === item.index);
+        }
+        return false;
+    }
+
+    /** Seleciona `item`. additive = soma ao grupo atual; senão substitui. */
+    static pick(item, additive = false) {
+        if (!item) return;
+        this.release();
+
+        const sel = this.selected;
+        if (!additive) this.clearSelection();
+
+        // construções inteiras e vértices não convivem; referências convivem com os dois
+        const mode = item.kind === "vertex" ? true
+                : item.kind === "building" ? false
+                : this.vertexMode;
+        if (mode !== this.vertexMode) {
+            sel.build.length = 0;
+            sel.buildVertices.length = 0;
+        }
+
+        if (!this.isSelected(item)) {
+            if (item.kind === "reference") sel.references.push(item.ref);
+            else if (item.kind === "building") sel.build.push(item.building);
+            else sel.buildVertices.push({ building: item.building, index: item.index });
+        }
+
+        this._rect.minX = NaN;        // o próximo arrasto de região recalcula do zero
+        this.refreshBox(mode);
+    }
+
+    static snapshot() {
+        const s = this.selected, vm = this.vertexMode;
+        return {
+            vertexMode: vm,
+            references: [...s.references],
+            build: vm ? [] : [...s.build],
+            buildVertices: vm ? s.buildVertices.map(v => ({ building: v.building, index: v.index })) : [],
+        };
+    }
+
+    static sameSelection(a, b) {
+        const sameList = (x, y) => x.length === y.length && x.every(i => y.includes(i));
+        return sameList(a.references, b.references) &&
+            sameList(a.build, b.build) &&
+            a.buildVertices.length === b.buildVertices.length &&
+            a.buildVertices.every(v => b.buildVertices.some(w => w.building === v.building && w.index === v.index));
+    }
+
+    static restoreSelection(snap) {
+        this.release();
+        const sel = this.selected;
+
+        sel.references.length = 0;
+        sel.build.length = 0;
+        sel.buildVertices.length = 0;
+
+        // ignora o que foi desabilitado (apagado) entretanto
+        for (const r of snap.references) if (r.enabled) sel.references.push(r);
+        for (const b of snap.build) if (b.enabled) sel.build.push(b);
+        for (const v of snap.buildVertices) {
+            if (v.building.enabled && v.building.vertices[v.index]) {
+                sel.buildVertices.push({ building: v.building, index: v.index });
+            }
+        }
+
+        this._rect.minX = NaN;
+        this.onRestoreMode?.(snap.vertexMode);
+        this.refreshBox(snap.vertexMode);
+    }
 }
 
 export class Coordinate {
@@ -1308,7 +1435,6 @@ export class Coordinate {
         return pos;
     }
 
-    // posição em "normal" sem alocar quando já está nesse espaço. SOMENTE LEITURA.
     peekNormal() {
         return this.space === "normal" ? this.pos : this.getIn("normal");
     }
@@ -2712,7 +2838,7 @@ export class Building {
         this.colorIn = Palette.building.in;
         this.colorInBase = Palette.building.in;
         this.borderSize = 8;
-        this.radius = 5;
+        this.radius = 0;
         this.tint = 0x000000;
 
         this.polygonGraphics = Graficos.createPoly();

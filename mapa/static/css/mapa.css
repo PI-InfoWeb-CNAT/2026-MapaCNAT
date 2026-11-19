@@ -1475,7 +1475,7 @@ header {
 #map[data-mode="CONNECTION"] { cursor: crosshair; }
 
 .shortcut-table { width: 100%; border-collapse: collapse; }
-.shortcut-table td { padding: 4px 8px; vertical-align: top; }
+.shortcut-table td { padding: 10px 10px; vertical-align: top; }
 .shortcut-table kbd {
     padding: 1px 6px; border: 1px solid #aaa; border-radius: 4px;
     background: #f3f3f3; font: 12px monospace; white-space: nowrap;
