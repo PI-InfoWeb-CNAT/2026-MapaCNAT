@@ -25,6 +25,9 @@ const MIME_MAP = {
 };
 
 export const SNAP_RADIUS_PX = 40;
+export const MERGE_RADIUS_PX = 15;
+export const SPLIT_RADIUS_PX = 15;
+const MID_GRAB_PX = 8;
 
 function closestPointOnSegment(px, py, x1, y1, x2, y2) {
     const cx = x2 - x1, cy = y2 - y1;
@@ -1754,11 +1757,37 @@ export class PhantomConnection {
     }
 
     updateGraphics() {
+        if (!this.end) return;
         Graficos.renderConnection(this.graphics, this.buildData());
     }
 
     destroy() {
         Graficos.destroyConnection(this.graphics);
+    }
+}
+
+export class PhantomSplit {
+    constructor() { this.point = null; this.a = null; this.b = null; }
+
+    show(connection, x, y) {
+        const pos = newCoord(x, y, "normal");
+        if (!this.point) {
+            this.point = new PhantomReference(pos);
+            this.a = new PhantomConnection(connection.start);
+            this.b = new PhantomConnection(this.point.coordinate);
+        } else {
+            this.point.setPosition(pos);          // troca o objeto de coordenada
+        }
+        this.a.start = connection.start;
+        this.a.setEndPoint(this.point.coordinate);
+        this.b.start = this.point.coordinate;
+        this.b.setEndPoint(connection.end);
+    }
+
+    hide() {
+        if (!this.point) return;
+        this.point.destroy(); this.a.destroy(); this.b.destroy();
+        this.point = this.a = this.b = null;
     }
 }
 
@@ -2162,6 +2191,32 @@ export class Connections {
         return best ? newCoord(best.x, best.y, "normal") : coordinate;
     }
 
+    static findSplitAt(pos, { ref = null, exclude = null, excludeConnection = null, avoidWalls = false, radiusPx = SPLIT_RADIUS_PX } = {}) {
+        const R = radiusPx / Graficos.zoom;
+        if (avoidWalls && Buildings.nearestWall(pos.x, pos.y, WALL_SNAP_PX / Graficos.zoom)) return null;
+
+        const cand = this.hash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _lineBuf);
+        let best = null, bestD = R * R;
+        for (let i = 0; i < cand.length; i++) {
+            const c = cand[i];
+            if (c === excludeConnection) continue;                       // NEW
+            if (!c.enabled || !c.start.enabled || !c.end.enabled) continue;
+            if (c.start === ref || c.end === ref) continue;
+            if (exclude && (c.start === exclude || c.end === exclude)) continue;
+            if (ref && (this.hasPair(ref, c.start) || this.hasPair(ref, c.end))) continue;
+
+            const a = c.start.coordinate.pos, b = c.end.coordinate.pos;
+            const p = closestPointOnSegment(pos.x, pos.y, a.x, a.y, b.x, b.y);
+            if (p.d <= bestD) { best = { connection: c, x: p.x, y: p.y }; bestD = p.d; }
+        }
+        return best;
+    }
+
+    static findSplitTarget(ref, radiusPx = SPLIT_RADIUS_PX) {
+        if (!ref || ref.building) return null;
+        return this.findSplitAt(ref.coordinate.pos, { ref, radiusPx });
+    }
+
     static getOverlappingLines(coordinate, all) {
         const pos = coordinate.peekNormal();
         const zoom = Graficos.zoom;
@@ -2265,6 +2320,20 @@ export class Referencer {
 
     // ---- consultas ----
 
+    static findMergeTarget(ref, radiusPx = MERGE_RADIUS_PX) {
+        const p = ref.coordinate.pos;
+        const R = radiusPx / Graficos.zoom;
+        const cand = this.dotHash.queryRect(p.x - R, p.y - R, p.x + R, p.y + R, []);
+
+        let best = null, bestD = R * R;
+        for (const o of cand) {
+            if (o === ref || !o.enabled) continue;
+            const d = (o.coordinate.pos.x - p.x) ** 2 + (o.coordinate.pos.y - p.y) ** 2;
+            if (d <= bestD) { best = o; bestD = d; }
+        }
+        return best;
+    }
+
     static getOverlappingDotPins(coordinate, all) {
         const pos = coordinate.peekNormal();
         const R = (this.maxPinReach * PIN_REACH_MARGIN) / Graficos.zoom;
@@ -2335,6 +2404,50 @@ export class Buildings {
     static editing = false;   // mostra as alças (modo Seleção)
     static hovered = null;    // { building, index }
 
+    static midHandles = false;
+    static hoveredMid = null;    // { building, index }  (aresta index: vértice index → index+1)
+
+    static setEditing(on, mids = false) {
+        mids = on && mids;
+        if (this.editing === on && this.midHandles === mids) return;
+        this.editing = on;
+        this.midHandles = mids;
+        if (!on) this.hovered = null;
+        if (!mids) this.hoveredMid = null;
+        for (const b of Object.values(this.buildings)) b.updateGraphics();
+    }
+
+    static setHoverMid(hit) {
+        const prev = this.hoveredMid;
+        if (prev?.building === hit?.building && prev?.index === hit?.index) return;
+        this.hoveredMid = hit ? { building: hit.building, index: hit.index } : null;
+        prev?.building.updateGraphics();
+        hit?.building.updateGraphics();
+    }
+
+    static getOverlappingMid(coordinate) {
+        const pos = coordinate.peekNormal();
+        const R = MID_GRAB_PX / Graficos.zoom;
+        const cand = this.polyHash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _polyBuf);
+
+        let best = null, bestD = R * R;
+        for (let i = 0; i < cand.length; i++) {
+            const b = cand[i];
+            if (!b.closed) continue;
+            const v = b.vertices, n = v.length;
+            for (let k = 0; k < n; k++) {
+                const p = v[k].pos, q = v[(k + 1) % n].pos;
+                const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+                if (Math.hypot(p.x - q.x, p.y - q.y) < 200 / Graficos.zoom) {
+                    continue;
+                }
+                const d = (mx - pos.x) ** 2 + (my - pos.y) ** 2;
+                if (d <= bestD) { best = { building: b, index: k, pos: { x: mx, y: my } }; bestD = d; }
+            }
+        }
+        return best;
+    }
+
     static getVerticesInRect(minX, minY, maxX, maxY, out = [], touch = true, cos = 1, sin = 0) {
         const R = touch ? VERTEX_GRAB_PX / Graficos.zoom : 0;
         const a = frameRectToLocalAABB(cos, sin, minX, minY, maxX, maxY, R);
@@ -2376,19 +2489,28 @@ export class Buildings {
         return out;
     }
 
-    static setEditing(on) {
-        if (this.editing === on) return;
-        this.editing = on;
-        if (!on) this.hovered = null;
-        for (const b of Object.values(this.buildings)) b.updateGraphics();
-    }
-
     static setHoverVertex(hit) {
         const prev = this.hovered;
         if (prev?.building === hit?.building && prev?.index === hit?.index) return;
         this.hovered = hit ? { building: hit.building, index: hit.index } : null;
         prev?.building.updateGraphics();
         hit?.building.updateGraphics();
+    }
+
+    static nearestVertex(pos, R, skipBuilding = null, skipIndex = -1) {
+        const cand = this.polyHash.queryRect(pos.x - R, pos.y - R, pos.x + R, pos.y + R, _polyBuf);
+
+        let best = null, bestD = R * R;
+        for (let i = 0; i < cand.length; i++) {
+            const b = cand[i];
+            for (let k = 0; k < b.vertices.length; k++) {
+                if (b === skipBuilding && k === skipIndex) continue;
+                const v = b.vertices[k].pos;
+                const d = (v.x - pos.x) ** 2 + (v.y - pos.y) ** 2;
+                if (d <= bestD) { best = { building: b, index: k, pos: { x: v.x, y: v.y } }; bestD = d; }
+            }
+        }
+        return best;
     }
 
     static getOverlappingVertex(coordinate) {
@@ -2819,6 +2941,7 @@ export class Building {
         this.pinSize = 1;
         this._helperCreate = null;
         this.name = name;
+        this.midGraphics = [];
 
         this.id = -1;
         this.vertices = [];      // Coordinates sempre em "normal"
@@ -2883,6 +3006,42 @@ export class Building {
         return polygonArea(this.vertices.map(v => v.pos));
     }
 
+    insertVertex(index, coord) {
+        coord.convertTo("normal");
+        this.vertices.splice(index, 0, newCoord(coord.pos.x, coord.pos.y, "normal"));
+        if (this.closed) Buildings.indexPolygon(this);
+        this.updateGraphics();
+    }
+
+    // handles pequenos no meio de cada aresta (só construção fechada, modo Construção)
+    syncMidHandles() {
+        const show = page === "editor" && this.enabled && this.closed && Buildings.midHandles;
+        const n = show ? this.vertices.length : 0;
+        
+        while (this.midGraphics.length < n) this.midGraphics.push(Graficos.createReference());
+        
+        for (let i = 0; i < this.midGraphics.length; i++) {
+            const g = this.midGraphics[i];
+            if (i >= n) { Graficos.clearReference(g); continue; }
+
+            const a = this.vertices[i].pos, b = this.vertices[(i + 1) % n].pos;
+            const hot = Buildings.hoveredMid?.building === this && Buildings.hoveredMid.index === i;
+            if (Math.hypot(a.x - b.x, a.y - b.y) < 200 / Graficos.zoom) {
+                Graficos.clearReference(g);
+                continue;
+            };
+            Graficos.renderReference(g, {
+                coordinate: newCoord((a.x + b.x) / 2, (a.y + b.y) / 2, "normal"),
+                colorOut: Palette.building.out,
+                colorIn: hot ? Palette.building.hoverFill : 0xffffff,
+                size: hot ? 7 : 5,
+                alpha: 1,
+                isEntrance: false,
+                color: 0xffffff,
+            });
+        }
+    }
+
     addVertex(coord) {
         coord.convertTo("normal");
         this.vertices.push(coord);
@@ -2940,8 +3099,9 @@ export class Building {
     }
 
     updateGraphics() {
+        this.syncMidHandles();
         this.closeHandle?.updateGraphics();
-
+        
         if (!this.enabled) {
             Graficos.clearPin(this.graphics);
             Graficos.clearPoly(this.polygonGraphics);
@@ -3000,6 +3160,8 @@ export class Building {
         Graficos.destroyPin(this.graphics);
         Graficos.destroyPoly(this.polygonGraphics);
         Buildings.untrack(this);
+        for (const g of this.midGraphics) Graficos.destroyReference(g);
+        this.midGraphics.length = 0;
     }
 }
 
@@ -3010,5 +3172,6 @@ export class Banner {
         this.titleAlias = [];
         this.description = "";
         this.image = false;
+        this.tabs = {};          // data of the non-main tabs, by id
     }
 }

@@ -1480,3 +1480,108 @@ header {
     padding: 1px 6px; border: 1px solid #aaa; border-radius: 4px;
     background: #f3f3f3; font: 12px monospace; white-space: nowrap;
 }
+
+
+/* ---------- banner category tabs ---------- */
+
+.banner-tabs {
+    position: relative;
+    z-index: 3;                       /* tooltips sit above the header below */
+    display: flex;
+    flex-shrink: 0;
+    gap: 4px;
+    padding: 8px 12px 0;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.banner-tab {
+    --tab-color: var(--gray-500);
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: 1 1 0;
+    max-width: 64px;
+    height: 42px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: transparent;
+    color: var(--tab-color);
+    font-size: 1.05rem;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity var(--duration-fast), background-color var(--duration-fast);
+}
+
+.banner-tab:hover,
+.banner-tab:focus-visible {
+    opacity: 1;
+    background: color-mix(in srgb, var(--tab-color) 10%, transparent);
+}
+
+.banner-tab:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: -3px;
+}
+
+.banner-tab.active {
+    opacity: 1;
+    background: color-mix(in srgb, var(--tab-color) 16%, transparent);
+}
+
+.banner-tab.active::before {          /* colored underline */
+    content: "";
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 0;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--tab-color);
+}
+
+.banner-tab.has-content::after {      /* "has content" dot (tooltip uses ::after, so the dot is a shadow) */
+    content: "";
+}
+
+.banner-tab.has-content i {
+    position: relative;
+}
+
+.banner-tab.has-content i::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    right: -6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--tab-color);
+    box-shadow: 0 0 0 2px var(--white);
+}
+
+/* tooltip: below the tab, because the top of the panel is clipped */
+.banner-tab[data-tip]:hover::after,
+.banner-tab[data-tip]:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--gray-900);
+    color: var(--white);
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* keep the tooltips of the edge tabs inside the panel */
+.banner-tab:first-child[data-tip]:hover::after,
+.banner-tab:first-child[data-tip]:focus-visible::after { left: 0; transform: none; }
+
+.banner-tab:last-child[data-tip]:hover::after,
+.banner-tab:last-child[data-tip]:focus-visible::after { left: auto; right: 0; transform: none; }
