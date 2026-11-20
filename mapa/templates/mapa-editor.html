@@ -119,25 +119,31 @@
                 </div>
 
                 <form class="banner-form" id="bannerForm">
+                    <div class="banner-alias-heading" data-state="imagem">
+                        <label class="banner-section-title" for="banner-image-input">Imagem</label>
+                        <span class="banner-optional">Opcional</span>
+                    </div>
                     <label for="banner-image-input" class="image-upload-wrapper" id="image-upload-wrapper">
                         <span class="image-upload-label" id="image-upload-label">adicionar imagem +</span>
                         <input type="file" id="banner-image-input" accept="image/*">
                     </label>
 
                     <div class="banner-content">
+                        <div class="banner-alias-heading" data-state="título">
+                            <label class="banner-section-title" for="place-name">Nome</label>
+                            <span class="banner-optional">Opcional</span>
+                        </div>
                         <input type="text" class="editable-title" id="place-name" placeholder="Nome da construção">
                         <hr class="banner-divider">
-                        <div class="banner-alias-field">
-                            <div class="banner-alias-heading">
-                                <label class="banner-section-title" for="banner-alias-input">
-                                    Palavras-chave
-                                </label>
-                                <span class="banner-alias-optional">Opcional</span>
+                        <div class="banner-alias-field" id="banner-alias-field">
+                            <div class="banner-alias-heading" data-state="palavras-chave">
+                                <label class="banner-section-title" for="banner-alias-input">Palavras-chave</label>
+                                <span class="banner-optional">Opcional</span>
                             </div>
 
                             <div class="banner-alias-editor" id="banner-alias-editor">
                                 <div class="banner-alias-list" id="banner-alias-list"></div>
-
+                                
                                 <input
                                     type="text"
                                     id="banner-alias-input"
@@ -155,6 +161,10 @@
                             </p>
                         </div>
                         <hr class="banner-divider">
+                        <div class="banner-alias-heading" data-state="descrição">
+                            <label class="banner-section-title" for="place-description">Descrição</label>
+                            <span class="banner-optional">Opcional</span>
+                        </div>
                         <textarea class="editable-description" id="place-description" placeholder="Escreva uma descrição..."></textarea>
                     </div>
                 </form>

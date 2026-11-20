@@ -77,6 +77,7 @@ def apply_map_data(mapa, data, get_image):
             title = banner_info.get("title", "")
             description = banner_info.get("description", "")
             name_alias = banner_info.get("alias", [])
+            mode = banner_info.get("mode", "")
             image = get_image(banner_id, banner_info)
 
             if image is None and not title and not description:
@@ -107,6 +108,7 @@ def apply_map_data(mapa, data, get_image):
                 titulo=title,
                 descricao=description,
                 name_alias=name_alias,
+                mode=mode,
                 imagem_blob=image_bytes,
                 imagem_mime_type=mime_type,
                 imagem_sha256=sha,
@@ -272,6 +274,7 @@ def export_db_to_json(mapa, request=None, image_url=None):
             "title": banner.titulo or "",
             "description": banner.descricao or "",
             "alias": banner.name_alias or [],
+            "mode": banner.mode or "",
         }
 
         if banner.construcao_id is not None:

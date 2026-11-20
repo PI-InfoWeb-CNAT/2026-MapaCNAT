@@ -233,6 +233,7 @@ function updateBarText() {
     const v = items.find((item) => item.numero === state.viewing);
     const when = v ? ` · ${absoluteTime(new Date(v.criado_em))}` : "";
     els.barText.textContent = `Visualizando a versão ${state.viewing}${when} (somente leitura)`;
+    document.getElementById("history-btn").classList.add("hidden");
 }
 
 function enterViewingUI() {

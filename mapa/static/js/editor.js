@@ -131,6 +131,7 @@ export function buildPayload() {
             title: banner.title,
             description: banner.description,
             alias: banner.titleAlias,
+            mode: banner.mode
         };
         if (hasFile) files[id] = banner.image;
 
@@ -290,6 +291,9 @@ export async function load() {
                     if (banner.alias) {
                         building.banner.titleAlias = banner.alias;
                     }
+                    if (banner.mode) {
+                        building.banner.mode = banner.mode;
+                    }
                     if (banner.image) {
                         const imageFile = banner.image 
                         ? await urlToFile(banner.image) 
@@ -329,6 +333,9 @@ export async function load() {
                 }
                 if (banner.alias) {
                     refObject.banner.titleAlias = banner.alias;
+                }
+                if (banner.mode) {
+                    refObject.banner.mode = banner.mode;
                 }
                 if (banner.image) {
                     const imageFile = banner.image 
@@ -1822,13 +1829,13 @@ export class TouchPin {
         return false;
     }
     
-    hoverAdd() {
+    static hoverAdd() {
         const cap = this.hoverTime * 30;
         if (this.hover >= cap) return;
         this.hover += 1;
         this.hoverUpdate();
     }
-    hoverDec() {
+    static hoverDec() {
         if (this.hover <= 0) return;
         this.hover -= 1;
         this.hoverUpdate();
@@ -2058,13 +2065,13 @@ export class Self {
         return false;
     }
     
-    hoverAdd() {
+    static hoverAdd() {
         const cap = this.hoverTime * 30;
         if (this.hover >= cap) return;
         this.hover += 1;
         this.hoverUpdate();
     }
-    hoverDec() {
+    static hoverDec() {
         if (this.hover <= 0) return;
         this.hover -= 1;
         this.hoverUpdate();
@@ -3120,6 +3127,6 @@ export class Banner {
         this.titleAlias = [];
         this.description = "";
         this.image = false;
-        this.tabs = {};          // data of the non-main tabs, by id
+        this.mode = "";          // data of the non-main tabs, by id
     }
 }

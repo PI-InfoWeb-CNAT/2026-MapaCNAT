@@ -415,6 +415,10 @@ header {
     padding: 12px 12px 6px;
 }
 
+.banner-alias-heading[data-state="imagem"] {
+    margin: 8px 16px !important;
+}
+
 .sidebar-links a {
     display: flex;
     align-items: center;
@@ -1207,7 +1211,7 @@ header {
     margin: 0;
 }
 
-.banner-alias-optional {
+.banner-optional {
     padding: 2px 8px;
     border-radius: var(--radius-pill);
     background: var(--gray-100);

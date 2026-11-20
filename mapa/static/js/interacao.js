@@ -36,12 +36,13 @@ let panStarted = false;
 let dragStarted = false;
 
 const BANNER_TABS = [
-    { id: "construcao",     label: "Construção",     icon: "building",       color: "#e8730c" },
-    { id: "titulo",         label: "Título",         icon: "heading",        color: "#3d6fe0" },
-    { id: "banheiro",       label: "Banheiro",       icon: "restroom",       color: "#e0489a" },
-    { id: "laboratorio",    label: "Laboratório",    icon: "flask",          color: "#7c4ddb" },
-    { id: "estacionamento", label: "Estacionamento", icon: "square-parking", color: "#0e8fa3" },
-    { id: "refeitorio",     label: "Refeitório",     icon: "utensils",       color: "#1a9a3a" },
+    { id: "referencia",     label: "Referência",     placeholder: "Nome do ponto de referência", icon: "map-pin",        color: "#7ddd3d", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
+    { id: "construcao",     label: "Construção",     placeholder: "Nome da construção",          icon: "building",       color: "#e8730c", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
+    { id: "titulo",         label: "Título",         placeholder: "Nome",                        icon: "heading",        color: "#3d6fe0", uses: ["título", "palavras-chave"],                         requires: ["título"] },
+    { id: "banheiro",       label: "Banheiro",       placeholder: "Nome de busca",               icon: "restroom",       color: "#e0489a", uses: ["título"],                                  requires: ["título"] },
+    { id: "laboratorio",    label: "Laboratório",    placeholder: "Nome do laboratório",         icon: "flask",          color: "#7c4ddb", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
+    { id: "estacionamento", label: "Estacionamento", placeholder: "Nome",                        icon: "square-parking", color: "#0e8fa3", uses: ["título", "descrição"],                   requires: ["título", "descrição"] },
+    { id: "refeitorio",     label: "Refeitório",     placeholder: "Nome do refeitório",          icon: "utensils",       color: "#1a9a3a", uses: ["título", "palavras-chave", "descrição"],          requires: ["título", "descrição"] },
 ];
 const BANNER_MAIN_TAB = BANNER_TABS[0].id;
 let bannerTabId = BANNER_MAIN_TAB;
@@ -93,6 +94,7 @@ let bannerDescription;
 let bannerAliasInput;
 let bannerAliasList;
 let bannerAliases = [];
+let bannerAliasField;
 let pinMap;
 let constructionMap;
 let previousTitle;
@@ -210,16 +212,8 @@ function updatePhantomVertex(coordinate, e) {
         Editor.SnapGuides.update(snap.guides);
     }
 
-    if (
-        Holdable.type !== "phantomVertex" ||
-        Holdable.object !== building
-    ) {
-        Holdable.set(
-            building,
-            "phantomVertex",
-            false,
-            new Editor.PhantomVertex(building, finalCoord)
-        );
+    if (Holdable.type !== "phantomVertex" || Holdable.object !== building) {
+        Holdable.set(building, "phantomVertex", false, new Editor.PhantomVertex(building, finalCoord));
     } else {
         Holdable.phantomObject.setEndPoint(finalCoord);
     }
@@ -509,14 +503,6 @@ class Task {
     }
 }
 
-const emptySlot = () => ({ detailed: false, title: "", description: "", titleAlias: [], image: false });
-
-// where the data of a tab lives (the main tab IS the banner itself)
-function bannerSlot(banner, tabId) {
-    if (tabId === BANNER_MAIN_TAB) return banner;
-    return (banner.tabs[tabId] ??= emptySlot());
-}
-
 function renderBannerTabs() {
     bannerTabsEl = document.getElementById("banner-tabs");
     if (!bannerTabsEl) return;
@@ -541,47 +527,76 @@ function renderBannerTabs() {
 function syncBannerTabs() {
     if (!bannerTabsEl) return;
     const obj = bannerHeld() ? Holdable.object : null;
+    let objType = obj instanceof Editor.Building ? "building" : "reference";
 
     for (const btn of bannerTabsEl.children) {
         const id = btn.dataset.bannerTab;
         const active = id === bannerTabId;
+        const BuildingExclusion = id != "construcao";
+        const ReferenceExclusion = ["referencia", "titulo", "banheiro", "laboratorio", "estacionamento", "refeitorio"].indexOf(id) == -1;
+        let allowedTab;
+        if (objType == "building") {
+            allowedTab = BuildingExclusion;
+        } else {
+            allowedTab = ReferenceExclusion;
+        }
+
+        btn.classList.toggle("hidden", allowedTab);
+        let bannerTabIdx = BANNER_TABS.map((element) => element.id).indexOf(bannerTabId);
+        imageWrapper.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("imagem") === -1);
+        bannerTitle.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("título") === -1);
+        bannerAliasField.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("palavras-chave") === -1);
+        bannerAliasField.nextElementSibling.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("palavras-chave") === -1);
+        bannerDescription.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("descrição") === -1);
+        bannerTitle.placeholder = BANNER_TABS[bannerTabIdx].placeholder;
+
+        const headings = document.querySelectorAll('.banner-alias-heading');
+        headings.forEach((el) => {
+            const state = el.dataset.state;
+            el.classList.toggle("hidden", (BANNER_TABS[bannerTabIdx].uses.indexOf(state) === -1));
+            el.children[1].classList.toggle("hidden", (BANNER_TABS[bannerTabIdx].uses.indexOf(state) === -1 || BANNER_TABS[bannerTabIdx].requires.indexOf(state) !== -1));
+        });
+        
         btn.classList.toggle("active", active);
         btn.setAttribute("aria-selected", String(active));
 
-        // dot = this tab has content
-        const slot = obj ? (id === BANNER_MAIN_TAB ? obj.banner : obj.banner.tabs[id]) : null;
-        const filled = active ? bannerState().state !== "empty" : !!slot?.detailed;
-        btn.classList.toggle("has-content", filled);
+        btn.classList.toggle("has-content", false);
     }
 }
 
 async function switchBannerTab(id) {
     if (id === bannerTabId || !bannerHeld()) return;
-    if (!(await Actions.ensureBannerValid())) return;   // incomplete tab: ask first
 
     Actions.saveBanner();                               // writes the UI into the current tab
     bannerTabId = id;
 
-    const obj = Holdable.object;
-    resetDisplayImage();
-    Holdable.initialPos.img = bannerSlot(obj.banner, id).image || false;
-    Actions.restoreBanner(obj);
     syncBannerStatus();
 }
 
 function bannerState() {
-    if (page != "editor" || !bannerHeld()) return { state: "empty", missing: [] };
+    if (page !== "editor" || !bannerHeld()) return { state: "empty", missing: [] };
+
+    const currentTab = BANNER_TABS.find((element) => element.id === bannerTabId);
+    if (!currentTab) return { state: "empty", missing: [] };
 
     const filled = {
         "imagem": !!Holdable.initialPos?.img,
         "título": !!bannerTitle.value.trim(),
         "descrição": !!bannerDescription.value.trim(),
     };
-    const missing = Object.keys(filled).filter((k) => !filled[k]);
-    const state = missing.length === 3 ? "empty" : missing.length === 0 ? "complete" : "partial";
+
+    const required = currentTab.requires || [];
+    const missing = required.filter((field) => !filled[field]);
+
+    let state = "partial";
+    if (missing.length === 0) {
+        state = "complete";
+    } else if (missing.length === required.length) {
+        state = "empty";
+    }
+
     return { state, missing };
 }
-
 function syncDescriptionLabel() {
     const label = bannerTab.querySelector(".banner-section-title");
     if (!label) return;
@@ -595,6 +610,7 @@ function syncBannerStatus() {
     syncBannerTabs();
     if (!bannerStatus) return;
     const { state, missing } = bannerState();
+
     bannerStatus.dataset.state = state;
     bannerStatus.textContent =
         state === "partial" ? `Falta: ${missing.join(", ")}` :
@@ -710,9 +726,9 @@ function clearBannerFields() {
 async function switchTab(name) {
     if (name === activeTab) return;
     if (!(await Actions.ensureBannerValid())) return;
-
+    
     await Actions.switchMode(EditorModes.FREE);
-    if (editorMode !== EditorModes.FREE) return;   // user kept an unfinished construction
+    if (editorMode !== EditorModes.FREE) return;
 
     activeTab = name;
     for (const tab of document.querySelectorAll("[data-tab]")) {
@@ -964,8 +980,6 @@ class Pointer {
     static down(e) {
         if (!e.isPrimary || pinching) return;
 
-        Versions.close();
-
         if(Graficos.smoothTransform) {
             return;
         }
@@ -1002,6 +1016,7 @@ class Pointer {
             }
             return;
         } else if (page == "editor") {
+            Versions.close();
             if (e.button !== 0) return;
             if (Keys.quickPan) { panGesture = true; setCursor("grabbing"); return; }
             if (editorMode == EditorModes.SELECTION) {
@@ -2569,7 +2584,8 @@ class Actions {
 
         this.bannerToken++;
 
-        bannerTabId = BANNER_MAIN_TAB;
+        let bannerIdx = BANNER_TABS.indexOf(obj?.banner?.mode) !== -1 ? BANNER_TABS.indexOf(obj.banner.mode) : (obj instanceof Editor.Reference ? 0 : 1);
+        bannerTabId = obj?.banner?.mode ? obj?.banner?.mode : BANNER_TABS[bannerIdx].id;
         this.saveBanner();
         resetDisplayImage();
         Holdable.set(obj, "banner", { img: obj.banner.image || false });
@@ -2597,22 +2613,22 @@ class Actions {
 
         const banner = Holdable.object.banner;
         if (!banner) return;
-        const slot = bannerSlot(banner, bannerTabId);
 
         const image = Holdable.initialPos?.img || false;
         const title = bannerTitle.value.trim();
         const description = bannerDescription.value.trim();
         const titleAlias = [...bannerAliases];
 
-        slot.detailed = !!(image || title || description);
-        slot.image = image;
-        slot.title = title;
-        slot.description = description;
-        slot.titleAlias = titleAlias;
+        banner.detailed = !!(image || title || description);
+        banner.image = image;
+        banner.title = title;
+        banner.description = description;
+        banner.titleAlias = titleAlias;
+        banner.mode = bannerTabId;
     }
 
     static restoreBanner(obj) {
-        const b = bannerSlot(obj.banner, bannerTabId);
+        const b = obj.banner;
 
         if (b.image) {
             setDisplayImage(b.image);
@@ -4119,6 +4135,7 @@ export async function addListeners(map) {
         bannerTitle = document.getElementById("place-name");
         bannerDescription = document.getElementById("place-description");
         bannerAliasInput = document.getElementById("banner-alias-input");
+        bannerAliasField = document.getElementById("banner-alias-field");
         bannerAliasList = document.getElementById("banner-alias-list");
 
         selectionBtn = document.getElementById("selection");
