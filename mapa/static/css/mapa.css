@@ -1593,3 +1593,207 @@ header {
 
 .banner-tab:last-child[data-tip]:hover::after,
 .banner-tab:last-child[data-tip]:focus-visible::after { left: auto; right: 0; transform: none; }
+
+/* ---------- version history: drawer + read-only bar ---------- */
+
+.topbar-save {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+#save-status {
+    margin-right: 8px;
+}
+
+#save {
+    border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+}
+
+#history-btn {
+    vertical-align: middle;
+    border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+    border-left: 1px solid white;
+}
+
+#editor-app #history {
+    position: fixed;
+    top: var(--topbar-h);
+    right: 0;
+    bottom: 0;
+    z-index: 7;                       /* above the banner panel (4) and the rail (5) */
+    display: flex;
+    flex-direction: column;
+    width: min(380px, 100vw);
+    background: var(--white);
+    border-left: 1px solid var(--gray-100);
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.15);
+    transform: translateX(0);
+    visibility: visible;
+    transition:
+        transform var(--duration-base) ease,
+        visibility var(--duration-base),
+        box-shadow var(--duration-base);
+}
+
+#editor-app #history.hidden {
+    display: flex !important;         /* keep the slide animation */
+    transform: translateX(100%);
+    visibility: hidden;
+    box-shadow: none;
+    pointer-events: none;
+}
+
+.history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.history-header h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--gray-900);
+}
+
+.history-hint {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 10px 16px;
+    background: var(--gray-50);
+    color: var(--gray-500);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.history-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+}
+
+.history-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-md);
+    background: var(--white);
+}
+
+.history-item.is-current {
+    background: var(--green-tint);
+    border-color: transparent;
+}
+
+.history-item.is-viewing {
+    border-color: var(--dark-green-main);
+    box-shadow: 0 0 0 1px var(--dark-green-main);
+}
+
+.history-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--gray-900);
+}
+
+.history-badge {
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-700);
+    font-size: 0.7rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.history-badge[data-motivo="shrink"] { background: #fff3cd; color: #7a5600; }
+.history-badge[data-motivo="manual"] { background: var(--green-tint); color: var(--dark-green-main); }
+
+.history-when,
+.history-counts {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--gray-500);
+}
+
+.history-counts { color: var(--gray-700); }
+
+.history-action {
+    align-self: flex-start;
+    margin-top: 6px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+}
+
+.history-action:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.history-empty {
+    padding: 16px 4px;
+    color: var(--gray-500);
+    font-size: 0.88rem;
+    text-align: center;
+}
+
+#history-more {
+    flex-shrink: 0;
+    margin: 0 12px 12px;
+}
+
+/* read-only bar, right under the top bar */
+#version-bar {
+    position: fixed;
+    top: var(--topbar-h);
+    left: var(--rail-w);
+    right: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: #fff3cd;
+    border-bottom: 1px solid #ecd58a;
+    color: #7a5600;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+#version-bar-text { margin-right: auto; }
+
+#version-bar .alt-botao {
+    padding: 5px 12px;
+    font-size: 0.82rem;
+}
+
+/* read-only: tools off, no save button */
+.viewing-version #editor-modes > :not(a) {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.viewing-version #save { display: none; }
+
+
+
+#save-status[data-state="readonly"] { color: #7a5600; }
+
+@media (max-width: 700px) {
+    #version-bar { left: 0; }
+}

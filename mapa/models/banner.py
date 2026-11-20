@@ -6,6 +6,8 @@ class Banner(models.Model):
     descricao = models.TextField(blank=True, default="")
     name_alias = models.JSONField(default=list, blank=True)
 
+    imagem_sha256 = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    
     imagem_blob = models.BinaryField(null=True, blank=True)
     imagem_mime_type = models.CharField(max_length=50, blank=True, null=True)
     

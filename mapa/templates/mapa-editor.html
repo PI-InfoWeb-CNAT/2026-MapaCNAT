@@ -44,12 +44,43 @@
 
 
         <div class="topbar-save">
-            <span id="save-status" data-state="saved" aria-live="polite">Salvo</span>
+            
+            <span id="save-status" data-state="saved">Salvo</span>
+            
             <button type="button" id="save" class="alt-botao">
                 <i class="fa-solid fa-floppy-disk"></i> Salvar
             </button>
+            <button type="button" id="history-btn" class="alt-botao"
+                    aria-label="Histórico" title="Histórico"
+                    aria-controls="history" aria-expanded="false">
+                <div style="height: 18px;">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+            </button>
         </div>
     </nav>
+
+    <div id="version-bar" class="hidden" role="status">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        <span id="version-bar-text"></span>
+        <button type="button" id="version-restore" class="alt-botao">Restaurar esta versão</button>
+        <button type="button" id="version-exit" class="alt-botao">Voltar ao mapa atual</button>
+    </div>
+
+    <aside id="history" class="hidden" aria-label="Histórico de versões">
+        <div class="history-header">
+            <h2>Histórico</h2>
+            <button type="button" class="icon-btn" id="history-close" aria-label="Fechar histórico">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <p class="history-hint">
+            Cada versão guarda o mapa como ele estava <strong>antes</strong> de um salvamento.
+            O que você vê em "Mapa atual" é sempre o mais recente.
+        </p>
+        <ol id="history-list" class="history-list"></ol>
+        <button type="button" id="history-more" class="alt-botao hidden">Carregar mais</button>
+    </aside>
 
     <main>
         <section class="editor-view" id="view-map" data-view="map" role="tabpanel" aria-labelledby="tab-map">
@@ -139,6 +170,11 @@
 
         <script src="{% static 'js/coordinate-estimation.js' %}"></script>
         <script>
+            const viewingVersion = (new URLSearchParams(location.search).get("versao") || "").match(/^\d+$/)?.[0] || null;
+            const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}" + (viewingVersion ? "?versao=" + viewingVersion : "");
+            const URLVersions = "{% url 'mapa_versoes' mapa.pk %}";
+            const URLRestoreVersion = "{% url 'mapa_restaurar_versao' mapa.pk 0 %}";
+
             const mapaCoordinates = JSON.parse(
                 document.getElementById('coordinates-data').textContent
             );
@@ -150,7 +186,7 @@
             const entranceImage = "{% static 'img/entrance.png' %}";
             const defaultUserImage = "{% static 'img/default-user.png' %}";
             const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' mapa.pk %}";
-            const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
+            // const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
             let sharePlaceLat = false;
             let sharePlaceLong = false;
             const bannerURL = "{% url 'banner_image' 0 %}";

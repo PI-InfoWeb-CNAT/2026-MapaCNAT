@@ -4,6 +4,7 @@ import * as Editor from "./editor.js";
 import * as Toasts from './toasts.js';
 import * as Modals from './modals.js';
 import * as Localizacao from './localizacao.js';
+import * as Versions from './versions.js';
 
 let mapObj;
 let buildBtn;
@@ -962,6 +963,8 @@ class Pointer {
 
     static down(e) {
         if (!e.isPrimary || pinching) return;
+
+        Versions.close();
 
         if(Graficos.smoothTransform) {
             return;
@@ -2983,6 +2986,9 @@ class Keys {
 
         const key = e.key.toLowerCase();
 
+        if (Versions.state.viewing !== null &&
+            (key in MODE_KEYS || key === "delete" || key === "backspace")) return;
+
         if (e.ctrlKey || e.metaKey) { this.combo(e, key); return; }
         if (e.altKey) return;
         if (key === "shift") { this.onShift(e); return; }
@@ -3016,6 +3022,8 @@ class Keys {
     }
 
     static combo(e, key) {
+        if (Versions.state.viewing !== null && key !== "s") return;
+
         if (key === "s") {
             e.preventDefault();
             if (!e.repeat && !gestureActive()) save();
@@ -3172,6 +3180,8 @@ class Keys {
     }
 
     static escape() {
+        if (Versions.isOpen()) { Versions.close(); return; }
+
         if (this.cancelGesture()) return;
         if (bannerHeld()) { Actions.requestCloseBanner(); return; }
         if (Task.task) { Actions.switchMode(EditorModes.FREE); return; }   // confirma se houver pontos
@@ -3413,6 +3423,7 @@ const Autosave = {
     },
 
     markDirty() {
+        if (page !== "editor" || Versions.state.viewing !== null) return;
         if (page !== "editor") return;
         this.version++;
         if (!this.firstDirtyAt) this.firstDirtyAt = performance.now();
@@ -3504,7 +3515,12 @@ const Autosave = {
 };
 
 export async function save() {
+    if (Versions.state.viewing !== null) {
+        Toasts.toaster.show({ text: "Você está vendo uma versão antiga. Restaure-a ou volte ao mapa atual.", category: "warn" });
+        return;
+    }
     if (isSaving) return;
+    
     isSaving = true;
     const version = Autosave.version;     // what this save covers
 
@@ -4189,6 +4205,32 @@ export async function addListeners(map) {
         });
 
         Autosave.init();
+
+        Versions.init({
+            // before leaving the live map: flush pending changes, or ask to discard them
+            beforeLeave: async () => {
+                if (!Autosave.dirty) return true;
+
+                await Autosave.run();
+                if (!Autosave.dirty) return true;
+
+                const discard = await Modals.modal.confirm({
+                    title: "Alterações não salvas",
+                    message: "Algumas alterações ainda não foram salvas e serão perdidas se você continuar.",
+                    cancelText: "Ficar",
+                    confirmText: "Continuar mesmo assim",
+                });
+                if (discard) {
+                    Autosave.halted = true;        // stops the pagehide / visibilitychange saves too
+                    clearTimeout(Autosave.timer);
+                }
+                return discard;
+            },
+        });
+
+        window.addEventListener("beforeunload", (e) => {
+            if (Autosave.dirty && !Versions.state.leaving) { e.preventDefault(); e.returnValue = ""; }
+        });
 
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === "hidden" && Autosave.dirty) Autosave.run();
