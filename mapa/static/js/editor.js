@@ -3,6 +3,16 @@ import * as Geometria from "./geometria.js";
 import { SpatialHash } from "./spatial-hash.js";
 import { getShortestPath } from "./rota.js";
 
+export const BANNER_TABS = [
+    { id: "referencia",     label: "Referência",     placeholder: "Nome do ponto de referência", icon: "map-pin",        color: "#7ddd3d", compColor: "#9ef763", pinColor: "#4edd3b", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
+    { id: "construcao",     label: "Construção",     placeholder: "Nome da construção",          icon: "building",       color: "#e8730c", compColor: "#f7a259", pinColor: "#ffa33b", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
+    { id: "titulo",         label: "Título",         placeholder: "Nome",                        icon: "heading",        color: "#3d6fe0", compColor: "#84a8fd", pinColor: "#4677e0", uses: ["imagem", "título", "palavras-chave"],              requires: ["imagem", "título"] },
+    { id: "banheiro",       label: "Banheiro",       placeholder: "Nome de busca",               icon: "restroom",       color: "#e0489a", compColor: "#f588c2", pinColor: "#c757c1", uses: ["imagem", "título"],                                requires: ["imagem", "título"] },
+    { id: "laboratorio",    label: "Laboratório",    placeholder: "Nome do laboratório",         icon: "flask",          color: "#7c4ddb", compColor: "#b394f3", pinColor: "#cb58ee", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
+    { id: "estacionamento", label: "Estacionamento", placeholder: "Nome",                        icon: "square-parking", color: "#0e8fa3", compColor: "#5cbdcc", pinColor: "#755be9", uses: ["imagem", "título", "descrição"],                   requires: ["imagem", "título", "descrição"] },
+    { id: "refeitorio",     label: "Refeitório",     placeholder: "Nome do refeitório",          icon: "utensils",       color: "#c0da2d", compColor: "#def369", pinColor: "#e6d862", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
+];
+
 export const Palette = Object.freeze({
     reference:  { out: 0x1a7f37, in: 0x4cc36a, hover: 0x00aaff },   // referências
     connection: { out: 0x1a7f37, in: 0x4cc36a },                    // conexões (a rede de rotas)
@@ -344,6 +354,7 @@ export async function load() {
                     refObject.banner.image = imageFile;
                     refObject.banner.detailed = true;
                 }
+                refObject.updateGraphics();
             }
         }
         if (data.connections) {
@@ -353,6 +364,9 @@ export async function load() {
                 let refEnd = refMap[connection.b];
                 new Connection(refStart, refEnd);
             }
+        }
+        for(let ref of Object.values(refMap)) {
+            ref.updateGraphics();
         }
 
     } catch (error) {
@@ -2267,9 +2281,11 @@ export class Referencer {
         if (!reference.positionTracked) return;
         const p = reference.coordinate.pos;
         this.dotHash.set(reference, p.x, p.y);
-        if (reference.name) this.pinHash.set(reference, p.x, p.y);
+        if (reference.hasPin) this.pinHash.set(reference, p.x, p.y);
         else this.pinHash.delete(reference);
     }
+
+    
 
     /** Traz para o topo da ordem de picking (equivale ao bringToFront gráfico). */
     static raise(reference) {
@@ -2278,7 +2294,7 @@ export class Referencer {
 
     /** Chamado quando a referência ganha pin (setName). */
     static notePin(reference) {
-        this.maxPinReach = Math.max(this.maxPinReach, Graficos.pinReach(reference.graphics));
+        this.maxPinReach = Math.max(this.maxPinReach, Graficos.pinReach(reference.pinGfx));
         this.syncPosition(reference);
     }
 
@@ -2327,13 +2343,22 @@ export class Referencer {
             const dx = ref.coordinate.pos.x - pos.x;
             const dy = ref.coordinate.pos.y - pos.y;
             const r = ref.size / zoom;
-            if (dx * dx + dy * dy >= r * r) continue;      // distância ao quadrado: sem sqrt/pow
+            if (dx * dx + dy * dy >= r * r) continue;
             if (all) (hits ??= []).push(ref);
             else if (!best || ref.z > best.z) best = ref;
         }
 
-        if (all) return hits ? hits.sort(byZDesc) : false;
-        return best || false;
+        // editor: the pin on top is part of the reference
+        const pins = page === "editor" && this.maxPinReach > 0
+            ? this.getOverlappingDotPins(coordinate, all)
+            : false;
+
+        if (all) {
+            const out = hits ? hits.sort(byZDesc) : [];
+            if (pins) for (const r of pins) if (!out.includes(r)) out.push(r);
+            return out.length ? out : false;
+        }
+        return best || pins || false;
     }
     
     static getReferencesInRect(minX, minY, maxX, maxY, out = [], touch = true, cos = 1, sin = 0) {
@@ -2638,6 +2663,10 @@ export class Reference {
         this.isEntrance = false;
         this.building = false;
         this.selected = false;
+        this.colorPin = "#ff1a1a";
+
+        this.hasPin = false;
+        this.pinGraphics = null;
 
         this.id = -1;
         this.uid = Referencer.uidTracker++;
@@ -2660,6 +2689,8 @@ export class Reference {
 
         this.banner = new Banner();
 
+        this.bannerMode = "";
+
         this.updateGraphics();
     }
 
@@ -2672,9 +2703,45 @@ export class Reference {
         if (page == "main") {
             this.size = 1;
             this.name = name;
-            this.graphics = Graficos.createPin(name);
-            Referencer.notePin(this);          // entra no pinHash e atualiza o alcance máximo
+            this.hasPin = true;
+            this.graphics = Graficos.createMapPin(name);
+            Referencer.notePin(this);
             this.updateGraphics();
+        }
+    }
+
+    get pinGfx() {
+        return page === "main" ? this.graphics : this.pinGraphics;
+    }
+
+    editorPinData() {
+        const tab = BANNER_TABS.find(t => t.id === this.banner.mode);
+        return {
+            coordinate: this.coordinate,
+            size: 1 + ((this.size - 10) / 5) * 0.2,   // follows the dot's hover growth (10 → 15)
+            color: this.tint,
+            colorPin: tab?.pinColor ?? "#ff1a1a",
+            bannerMode: tab?.icon ?? null,
+            iconBgColor: 0xffffff,
+            iconColor: tab?.pinColor,
+            text: "",                                  // no label in the editor
+        };
+    }
+
+    syncPin() {
+        if (page !== "editor") return;
+        const want = this.enabled && !!this.banner?.detailed;
+
+        if (want) {
+            this.pinGraphics ??= Graficos.createMapPin("");
+            Graficos.renderMapPin(this.pinGraphics, this.editorPinData());
+        } else if (this.pinGraphics) {
+            Graficos.clearPin(this.pinGraphics);
+        }
+
+        if (this.hasPin !== want) {
+            this.hasPin = want;
+            Referencer.notePin(this);   // updates the pin hash and the max reach
         }
     }
 
@@ -2699,6 +2766,32 @@ export class Reference {
     }
 
     buildData() {
+        let idx = BANNER_TABS.map(el => el.id).indexOf(this.banner.mode);
+        let text = "";
+        let textOnly = false;
+        if (idx !== -1) {
+            let drawMode = BANNER_TABS[idx].icon;
+            let drawColor = BANNER_TABS[idx].color;
+            let drawColorPin = BANNER_TABS[idx].pinColor;
+            let drawCompColor = BANNER_TABS[idx].compColor;
+
+            if (page == "main") {
+                this.colorIn = drawCompColor;
+                this.colorOut = drawColor;
+                this.bannerMode = drawMode;
+                this.colorPin = drawColorPin;
+                text = this.banner.title;
+                if (drawMode == "heading") {
+                    textOnly = true;
+                } 
+            }
+        } else {
+            this.colorOut = Palette.reference.out;
+            this.colorIn = Palette.reference.in;
+            this.bannerMode = "";
+            this.colorPin = "";
+        }
+
         return {
             coordinate: this.coordinate,
             colorOut: this.colorOut,
@@ -2706,15 +2799,21 @@ export class Reference {
             size: this.size,
             alpha: this.alpha,
             isEntrance: this.isEntrance,
-            color: this.tint
+            color: this.tint,
+            colorPin: this.colorPin,
+            bannerMode: this.bannerMode ?? null,
+            iconBgColor: 0xffffff,
+            iconColor: this.colorPin,
+            text: text,
+            textOnly: textOnly
         }
     }
 
     updateGraphics() {
         if (this.enabled) {
             if (page == "main") {
-                if(this.name) {
-                    Graficos.renderPin(this.graphics, this.buildData());
+                if (this.name) {
+                    Graficos.renderMapPin(this.graphics, this.buildData());
                 }
                 return;
             }
@@ -2722,6 +2821,7 @@ export class Reference {
         } else {
             Graficos.clearReference(this.graphics);
         }
+        this.syncPin();
     }
 
     bringToFront() {
@@ -2801,6 +2901,10 @@ export class Reference {
         Referencer.removePositionTrack(this);
 
         Graficos.destroyReference(this.graphics);
+        if (this.pinGraphics) {
+            Graficos.destroyMapPin(this.pinGraphics);
+            this.pinGraphics = null;
+        }
     }
 }
 
@@ -2941,7 +3045,7 @@ export class Building {
         const ms = this.hoverTime * 1000;
         const t = ease(this.hover * (1000 / 30) / ms);
         this.pinSize = 1 + t * .2;
-        this.tint = interpCol(0x000000, Palette.building.hover, t);
+        this.tint = interpCol(0x000000, Palette.reference.hover, t);
         this.colorIn = interpCol(this.colorInBase, Palette.building.hoverFill, t);
         this.updateGraphics();
     }
@@ -3045,7 +3149,7 @@ export class Building {
     // ---- gráficos ----
 
     buildData() {
-        return { size: this.pinSize, coordinate: this.coordinate, color: this.tint };
+        return { size: this.pinSize, coordinate: this.coordinate, color: this.tint, colorPin: BANNER_TABS[1].pinColor };
     }
 
     setColor(color) {

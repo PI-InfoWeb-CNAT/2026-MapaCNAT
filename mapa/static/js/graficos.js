@@ -360,6 +360,7 @@ function applyDot(h) {
     if (!d) return;
     h.point.scale.set(d.size / d.r / zoom);
     if (d.entrance) h.door.scale.set((d.size * 2) / h.initialSize / zoom);
+    if (d.hasIcon) h.icon.scale.set((d.size * 2 * 0.85) / ICON_PX / zoom);
 }
 
 function rescaleDots() {
@@ -368,6 +369,108 @@ function rescaleDots() {
     }
 }
 
+const ICON_PX = 64;
+const MAP_PIN_ICON_PX = 14;
+const MAP_PIN_BG_RADIUS = 10;
+const mapPins = new Set();
+const iconTextures = new Map();   // nome -> PIXI.Texture
+const iconLoading = new Map();    // nome -> Promise (carregando)
+const iconFailed = new Set();     // nomes inválidos: não tenta de novo
+
+let mapPinBgContext = null;       // white circle, shared by every pin (tinted per pin)
+function getMapPinBgContext() {
+    return (mapPinBgContext ??= new PIXI.GraphicsContext()
+        .circle(0, 0, MAP_PIN_BG_RADIUS)
+        .fill(0xffffff));
+}
+
+function readGlyph(name) {
+    const probe = document.createElement("i");
+    probe.className = `fa-solid fa-${name}`;
+    probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none";
+    document.body.appendChild(probe);
+
+    const cs = getComputedStyle(probe);
+    const family = cs.fontFamily;
+    const weight = cs.fontWeight;
+
+    const raw = getComputedStyle(probe, "::before").content;
+    probe.remove();
+
+    if (!raw || raw === "none" || raw === "normal") return null;
+
+    const m = raw.match(/^(["'])((?:\\.|(?!\1).)*)\1/);
+    if (!m) return null;
+
+    const glyph = m[2].replace(/\\([0-9a-f]{1,6})\s?/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
+    return glyph ? { glyph, family, weight } : null;
+}
+
+async function buildIconTexture(name) {
+    const g = readGlyph(name);
+    if (!g) throw new Error(`Ícone desconhecido: ${name}`);
+
+    await document.fonts.load(`${g.weight} ${ICON_PX}px ${g.family}`, g.glyph);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = ICON_PX;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+
+    // mede e ajusta para o glifo preencher a caixa, centralizado
+    let px = ICON_PX * 0.8;
+    ctx.font = `${g.weight} ${px}px ${g.family}`;
+    let m = ctx.measureText(g.glyph);
+    let w = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+    let h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    px *= (ICON_PX * 0.9) / Math.max(w, h, 1);
+
+    ctx.font = `${g.weight} ${px}px ${g.family}`;
+    m = ctx.measureText(g.glyph);
+    w = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+    h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    ctx.fillText(
+        g.glyph,
+        (ICON_PX - w) / 2 + m.actualBoundingBoxLeft,
+        (ICON_PX - h) / 2 + m.actualBoundingBoxAscent,
+    );
+
+    return PIXI.Texture.from(canvas);
+}
+
+function iconTexture(name) {
+    const hit = iconTextures.get(name);
+    if (hit) return hit;
+    if (iconFailed.has(name) || iconLoading.has(name)) return null;
+
+    const job = buildIconTexture(name)
+        .then((tex) => {
+            iconTextures.set(name, tex);
+            for (const h of dots) {
+                if (h._d?.iconName === name && h._last) renderReference(h, h._last);
+            }
+            for (const p of mapPins) {
+                if (p._iconName === name && p._last) renderMapPin(p, p._last);
+            }
+            requestRender();
+        })
+        .catch((err) => {
+            console.warn("Ícone não carregou:", name, err);
+            iconFailed.add(name);
+        })
+        .finally(() => iconLoading.delete(name));
+
+    iconLoading.set(name, job);
+    return null;
+}
+
+export function preloadIcons(names) {
+    return Promise.all(names.map((n) => iconTexture(n) ?? iconLoading.get(n)));
+}
+
+
 export function createReference() {
     const point = new PIXI.Graphics(dotContext(10, 0xffffff, 0x000000, 1));
     point.visible = false;
@@ -375,22 +478,23 @@ export function createReference() {
     referenceContainer.addChild(point);
 
     const referenceImg = PIXI.Sprite.from(entranceTexture);
-    referenceImg.anchor.set(0.5, 0.5);
     const initialSize = referenceImg.width;
-    referenceImg.scale.set(15 / initialSize / zoom);
-    referenceImg.visible = false;
-    referenceImg.cullable = CULLING;
-    referenceContainer.addChild(referenceImg);
+    const icon = new PIXI.Sprite(PIXI.Texture.EMPTY);
+    icon.anchor.set(0.5, 0.5);
+    icon.visible = false;
+    icon.cullable = CULLING;
+    referenceContainer.addChild(icon);
 
-    const handle = { point, door: referenceImg, initialSize, _d: null };
+    const handle = { point, door: referenceImg, icon, initialSize, _d: null };
     dots.add(handle);
     return handle;
 }
 
 export function renderReference(graphics, data) {
+    graphics._last = data;   // lets the icon loader re-render once the texture is ready
     const pos = posOf(data.coordinate);
     const size = data.size;
-    const r = Math.max(1, Math.round(size));       // quantiza: poucos contextos distintos
+    const r = Math.max(1, Math.round(size));
 
     const ctx = dotContext(r, data.colorIn, data.colorOut, data.alpha);
     const p = graphics.point;
@@ -398,10 +502,27 @@ export function renderReference(graphics, data) {
     p.visible = true;
     p.position.set(pos.x, pos.y);
 
-    const d = graphics._d ??= { size: 0, r: 10, entrance: false };
+    const d = graphics._d ??= { size: 0, r: 10, entrance: false, hasIcon: false, iconName: null };
     d.size = size;
     d.r = r;
-    d.entrance = !!data.isEntrance;
+
+    // ícone: muda dinamicamente (nome novo, ou null para remover)
+    const iconName = data.bannerMode || null;
+    const iconTex = iconName ? iconTexture(iconName) : null;   // null = ainda carregando / inválido
+    d.iconName = iconName;
+    d.hasIcon = !!iconTex;
+    d.entrance = !!data.isEntrance && !d.hasIcon;               // ícone esconde a entrada
+
+    const icon = graphics.icon;
+    if (d.hasIcon) {
+        if (icon.texture !== iconTex) icon.texture = iconTex;
+        icon.visible = true;
+        icon.tint = data.colorOut;
+        icon.position.set(pos.x, pos.y);
+        icon.rotation = -mapContainer.rotation;
+    } else {
+        icon.visible = false;
+    }
 
     if (d.entrance) {
         const door = graphics.door;
@@ -420,15 +541,17 @@ export function renderReference(graphics, data) {
 export function BringToFrontReference(graphics) {
     if (!graphics || graphics.parent !== referenceContainer) return;
     const ch = referenceContainer.children, n = ch.length;
-    if (n >= 2 && ch[n - 2] === graphics.point && ch[n - 1] === graphics.door) return;   // já está no topo
+    if (n >= 3 && ch[n - 3] === graphics.point && ch[n - 2] === graphics.door && ch[n - 1] === graphics.icon) return;
     referenceContainer.addChild(graphics.point);
     referenceContainer.addChild(graphics.door);
+    referenceContainer.addChild(graphics.icon);
     requestRender();
 }
 
 export function clearReference(graphics) {
     graphics.point.visible = false;
     graphics.door.visible = false;
+    graphics.icon.visible = false;
     requestRender();
 }
 
@@ -436,9 +559,11 @@ export function destroyReference(graphics) {
     dots.delete(graphics);
     referenceContainer.removeChild(graphics.point);
     referenceContainer.removeChild(graphics.door);
+    referenceContainer.removeChild(graphics.icon);
 
-    graphics.point.destroy();   // o contexto é compartilhado: não é destruído junto
+    graphics.point.destroy();
     graphics.door.destroy();
+    graphics.icon.destroy();   // a textura é compartilhada: não é destruída junto
     requestRender();
 }
 
@@ -712,7 +837,7 @@ export function createPin(name) {
     const buildPino = PIXI.Sprite.from(pinImagePath);
     buildPino.anchor.set(0.5, 1);
     buildPino.scale.set(1 / 7.5);
-    buildPino.tint = 0xff0000;
+    buildPino.tint = 0x000000;
 
     const nodeLabel = new PIXI.Text({
         text: name,
@@ -748,6 +873,7 @@ export function setPinText(gfx, text) {
 export function renderPin(graphics, data) {
     const pos = posOf(data.coordinate);
     const size = data.size;
+    const colorPin = data.colorPin;
 
     // Mexer no style marca o Text como sujo (re-rasteriza): só quando a cor muda de fato.
     const label = graphics.children[0];
@@ -758,6 +884,9 @@ export function renderPin(graphics, data) {
 
     graphics.visible = true;
     graphics._size = size;
+    if (colorPin) {
+        graphics.children[1].tint = colorPin;
+    }
     graphics.position.set(pos.x, pos.y);
     graphics.scale.set(size / zoom);
     const rot = -mapContainer.rotation;
@@ -1063,6 +1192,141 @@ export function destroySelfPin(graphics) {
     requestRender();
 }
 
+/////////////// mappin
+
+const MAP_PIN_TEXT_ONLY_BOOST = 1.25;
+
+export function createMapPin(text = "") {
+    const label = new PIXI.Text({
+        text,
+        style: {
+            fontFamily: "Arial",
+            fontSize: 28,
+            fill: textColor,
+            align: "center",
+            stroke: { color: "white", width: 3 },
+        },
+    });
+    label.anchor.set(0, 1);
+    label.scale.set(1 / 2);
+    label.visible = !!text;
+
+    const pin = PIXI.Sprite.from(pinImagePath);
+    pin.anchor.set(0.5, 1);
+    pin.scale.set(1 / 7.5);
+    pin.tint = 0xff0000;
+
+    const icon = new PIXI.Sprite(PIXI.Texture.EMPTY);
+    icon.anchor.set(0.5);
+    icon.position.set(0, -23);    // same spot the avatar had
+    icon.visible = false;
+
+    const pinGfx = new PIXI.Container();
+    pinGfx._size = 1;
+    pinGfx._iconName = null;
+    pinGfx._textOnly = false;
+    pinGfx._last = null;
+
+    const bg = new PIXI.Graphics(getMapPinBgContext());
+    bg.position.set(0, -23);      // same center as the icon
+    bg.visible = false;
+
+    pinGfx.addChild(label);       // children[0]
+    pinGfx.addChild(pin);         // children[1]
+    pinGfx.addChild(bg);          // children[2]
+    pinGfx.addChild(icon);      // children[2]
+
+    pinContainer.addChild(pinGfx);
+    mapPins.add(pinGfx);
+    return pinGfx;
+}
+
+export function renderMapPin(graphics, data) {
+    graphics._last = data;   // lets the icon loader re-render once the texture is ready
+
+    const pos = posOf(data.coordinate);
+    const size = data.size ?? 1;
+    const [label, pin, bg, icon] = graphics.children;
+    const textOnly = !!data.textOnly;
+    const text = data.text ?? "";
+
+    graphics.visible = data.visible ?? true;
+    graphics._size = size;
+
+    // ---- text ----
+    if (label.text !== text) {
+        label.text = text;
+        graphics[HIT] = null;
+    }
+    // changing the style re-rasterizes the Text: only when the color really changes
+    const textFill = data.color ?? textColor;
+    if (label._fill !== textFill) {
+        label.style.fill = textFill;
+        label._fill = textFill;
+    }
+    label.visible = !!text;
+
+    // ---- layout: pin mode vs text-only mode ----
+    if (graphics._textOnly !== textOnly) {
+        graphics._textOnly = textOnly;
+        graphics[HIT] = null;
+    }
+
+    if (textOnly) {
+        label.anchor.set(0.5, 0.5);
+        label.position.set(0, 0);
+        label.scale.set(MAP_PIN_TEXT_ONLY_BOOST / 2);
+        pin.visible = false;
+        bg.visible = false;
+        icon.visible = false;
+        graphics._iconName = null;
+    } else {
+        label.anchor.set(0, 1);
+        label.position.set(pin.width / 2, 0);
+        label.scale.set(1 / 2);
+        pin.visible = true;
+        if (data.colorPin) pin.tint = data.colorPin;
+
+        // icon: changes dynamically (new name, or null to remove)
+        const name = data.bannerMode || null;
+        const tex = name ? iconTexture(name) : null;   // null = still loading / invalid
+        graphics._iconName = name;
+
+        if (tex) {
+            if (icon.texture !== tex) icon.texture = tex;
+            icon.scale.set(MAP_PIN_ICON_PX / ICON_PX);
+
+            // circle: white by default; icon takes the pin color so it stays readable
+            bg.tint = data.iconBgColor ?? 0xffffff;
+            bg.visible = true;
+
+            icon.tint = data.iconColor ?? pin.tint;
+            icon.visible = true;
+        } else {
+            bg.visible = false;
+            icon.visible = false;
+        }
+    }
+
+    graphics.position.set(pos.x, pos.y);
+    graphics.scale.set(size / zoom);
+    const rot = -mapContainer.rotation;
+    if (graphics.rotation !== rot) graphics.rotation = rot;
+    requestRender();
+}
+
+export function destroyMapPin(graphics) {
+    mapPins.delete(graphics);
+    pinContainer.removeChild(graphics);
+
+    for (const child of graphics.children) {
+        child.destroy();   // the icon texture is shared: not destroyed with the sprite
+    }
+
+    graphics.destroy({ children: true });
+    requestRender();
+}
+
 /* ============================================================================
  *  Touch pin
  * ========================================================================== */
@@ -1275,7 +1539,7 @@ function getHit(gfx) {
     let ready = true;
 
     for (const c of gfx.children) {
-        if (!c.anchor) continue;                              // máscara (Graphics) não é alvo
+        if (!c.anchor || !c.visible) continue;
         const w = c.width, h = c.height;
         if (!(w > 0 && h > 0)) { ready = false; continue; }   // textura ainda não carregou
         const x0 = c.x - c.anchor.x * w;
@@ -1437,6 +1701,7 @@ function Rotation(r) {
     }
     for (const h of dots) {
         if (h._d?.entrance) h.door.rotation = -r;
+        if (h._d?.hasIcon) h.icon.rotation = -r;
     }
     if (compassButton) {
         compassButton.children[0].style.transform = `rotate(${r}rad)`;

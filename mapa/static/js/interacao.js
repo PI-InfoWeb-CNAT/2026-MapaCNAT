@@ -35,16 +35,7 @@ const ROTATION_SNAP = Math.PI / 8;
 let panStarted = false;
 let dragStarted = false;
 
-const BANNER_TABS = [
-    { id: "referencia",     label: "Referência",     placeholder: "Nome do ponto de referência", icon: "map-pin",        color: "#7ddd3d", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
-    { id: "construcao",     label: "Construção",     placeholder: "Nome da construção",          icon: "building",       color: "#e8730c", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
-    { id: "titulo",         label: "Título",         placeholder: "Nome",                        icon: "heading",        color: "#3d6fe0", uses: ["título", "palavras-chave"],                         requires: ["título"] },
-    { id: "banheiro",       label: "Banheiro",       placeholder: "Nome de busca",               icon: "restroom",       color: "#e0489a", uses: ["título"],                                  requires: ["título"] },
-    { id: "laboratorio",    label: "Laboratório",    placeholder: "Nome do laboratório",         icon: "flask",          color: "#7c4ddb", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
-    { id: "estacionamento", label: "Estacionamento", placeholder: "Nome",                        icon: "square-parking", color: "#0e8fa3", uses: ["título", "descrição"],                   requires: ["título", "descrição"] },
-    { id: "refeitorio",     label: "Refeitório",     placeholder: "Nome do refeitório",          icon: "utensils",       color: "#1a9a3a", uses: ["título", "palavras-chave", "descrição"],          requires: ["título", "descrição"] },
-];
-const BANNER_MAIN_TAB = BANNER_TABS[0].id;
+const BANNER_MAIN_TAB = Editor.BANNER_TABS[0].id;
 let bannerTabId = BANNER_MAIN_TAB;
 let bannerTabsEl;
 
@@ -508,7 +499,7 @@ function renderBannerTabs() {
     if (!bannerTabsEl) return;
     bannerTabsEl.replaceChildren();
 
-    for (const t of BANNER_TABS) {
+    for (const t of Editor.BANNER_TABS) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "banner-tab";
@@ -540,21 +531,20 @@ function syncBannerTabs() {
         } else {
             allowedTab = ReferenceExclusion;
         }
-
         btn.classList.toggle("hidden", allowedTab);
-        let bannerTabIdx = BANNER_TABS.map((element) => element.id).indexOf(bannerTabId);
-        imageWrapper.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("imagem") === -1);
-        bannerTitle.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("título") === -1);
-        bannerAliasField.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("palavras-chave") === -1);
-        bannerAliasField.nextElementSibling.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("palavras-chave") === -1);
-        bannerDescription.classList.toggle("hidden", BANNER_TABS[bannerTabIdx].uses.indexOf("descrição") === -1);
-        bannerTitle.placeholder = BANNER_TABS[bannerTabIdx].placeholder;
+        let bannerTabIdx = Editor.BANNER_TABS.map((element) => element.id).indexOf(bannerTabId);
+        imageWrapper.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("imagem") === -1);
+        bannerTitle.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("título") === -1);
+        bannerAliasField.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("palavras-chave") === -1);
+        bannerAliasField.nextElementSibling.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("palavras-chave") === -1);
+        bannerDescription.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("descrição") === -1);
+        bannerTitle.placeholder = Editor.BANNER_TABS[bannerTabIdx].placeholder;
 
         const headings = document.querySelectorAll('.banner-alias-heading');
         headings.forEach((el) => {
             const state = el.dataset.state;
-            el.classList.toggle("hidden", (BANNER_TABS[bannerTabIdx].uses.indexOf(state) === -1));
-            el.children[1].classList.toggle("hidden", (BANNER_TABS[bannerTabIdx].uses.indexOf(state) === -1 || BANNER_TABS[bannerTabIdx].requires.indexOf(state) !== -1));
+            el.classList.toggle("hidden", (Editor.BANNER_TABS[bannerTabIdx].uses.indexOf(state) === -1));
+            el.children[1].classList.toggle("hidden", (Editor.BANNER_TABS[bannerTabIdx].uses.indexOf(state) === -1 || Editor.BANNER_TABS[bannerTabIdx].requires.indexOf(state) !== -1));
         });
         
         btn.classList.toggle("active", active);
@@ -576,7 +566,7 @@ async function switchBannerTab(id) {
 function bannerState() {
     if (page !== "editor" || !bannerHeld()) return { state: "empty", missing: [] };
 
-    const currentTab = BANNER_TABS.find((element) => element.id === bannerTabId);
+    const currentTab = Editor.BANNER_TABS.find((element) => element.id === bannerTabId);
     if (!currentTab) return { state: "empty", missing: [] };
 
     const filled = {
@@ -1037,14 +1027,14 @@ class Pointer {
                 else S.start(here, { keep: additive });
             } else if (editorMode == EditorModes.REFERENCE) {
                 let coord = Editor.newCoord(clickX, clickY, "screen");
-                let overlap = Editor.Referencer.getOverlappingDots(
-                    coord,
-                    false,
-                );
+                let overlap = Editor.Referencer.getOverlappingDots(coord, false);
                 Holdable.set(false);
                 if (overlap) {
+                    const n = normalCoordAt(clickX, clickY).pos;
+                    const p = overlap.coordinate.pos;
                     Holdable.set(overlap, "reference", {
-                        ...overlap.coordinate.pos,
+                        ...p,
+                        off: { x: n.x - p.x, y: n.y - p.y },
                     });
                 } else {
                     Actions.newReference(clickX, clickY);
@@ -1207,8 +1197,9 @@ class Pointer {
 
                     const target = Editor.Referencer.findMergeTarget(obj);
                     if (target) {
-                        const t = target.coordinate.pos;
-                        obj.move(Editor.newCoord(t.x, t.y, "normal"));   // merge: teleporta
+                        const off = Holdable.initialPos.off ?? { x: 0, y: 0 };
+                        const n = normalCoordAt(e.clientX, e.clientY).pos;
+                        obj.move(Editor.newCoord(n.x - off.x, n.y - off.y, "normal"), false, true);   // merge: teleporta
                         hoverTargetSet.add(target);
                         clearSplitPreview();
                     } else {
@@ -2584,13 +2575,19 @@ class Actions {
 
         this.bannerToken++;
 
-        let bannerIdx = BANNER_TABS.indexOf(obj?.banner?.mode) !== -1 ? BANNER_TABS.indexOf(obj.banner.mode) : (obj instanceof Editor.Reference ? 0 : 1);
-        bannerTabId = obj?.banner?.mode ? obj?.banner?.mode : BANNER_TABS[bannerIdx].id;
+        let bannerIdx = Editor.BANNER_TABS.indexOf(obj?.banner?.mode) !== -1 ? Editor.BANNER_TABS.indexOf(obj.banner.mode) : (obj instanceof Editor.Reference ? 0 : 1);
+        bannerTabId = obj?.banner?.mode ? obj?.banner?.mode : Editor.BANNER_TABS[bannerIdx].id;
         this.saveBanner();
         resetDisplayImage();
         Holdable.set(obj, "banner", { img: obj.banner.image || false });
         this.restoreBanner(obj);
         syncBannerStatus();
+        
+        let bannerTabIdx = Editor.BANNER_TABS.map((element) => element.id).indexOf(bannerTabId);
+        imageWrapper.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("imagem") === -1);
+        bannerTitle.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("título") === -1);
+        bannerDescription.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("descrição") === -1);
+        document.querySelector('.banner-section-title').classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("descrição") === -1);
         bannerTab.classList.remove("hidden");
     }
 
@@ -2625,6 +2622,7 @@ class Actions {
         banner.description = description;
         banner.titleAlias = titleAlias;
         banner.mode = bannerTabId;
+        Holdable.object.updateGraphics?.();
     }
 
     static restoreBanner(obj) {
@@ -4192,8 +4190,6 @@ export async function addListeners(map) {
                 return;
             }
 
-            // Backspace remove a última etiqueta quando o campo está vazio.
-            // event.repeat permite remover várias ao manter a tecla pressionada.
             if (
                 e.key === "Backspace" &&
                 !bannerAliasInput.value &&
@@ -4207,7 +4203,6 @@ export async function addListeners(map) {
             }
         });
 
-        // Colar "biblioteca bloco A entrada" cria quatro etiquetas.
         bannerAliasInput.addEventListener("paste", (e) => {
             e.preventDefault();
 
@@ -4216,7 +4211,6 @@ export async function addListeners(map) {
             addBannerAliases(pasted);
         });
 
-        // Não deixa conteúdo parcialmente digitado para trás.
         bannerAliasInput.addEventListener("blur", () => {
             commitBannerAliasInput();
         });
@@ -4224,7 +4218,6 @@ export async function addListeners(map) {
         Autosave.init();
 
         Versions.init({
-            // before leaving the live map: flush pending changes, or ask to discard them
             beforeLeave: async () => {
                 if (!Autosave.dirty) return true;
 
@@ -4238,7 +4231,7 @@ export async function addListeners(map) {
                     confirmText: "Continuar mesmo assim",
                 });
                 if (discard) {
-                    Autosave.halted = true;        // stops the pagehide / visibilitychange saves too
+                    Autosave.halted = true;
                     clearTimeout(Autosave.timer);
                 }
                 return discard;
