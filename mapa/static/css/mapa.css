@@ -909,6 +909,14 @@ header {
     font-weight: 700;
 }
 
+.topbar-save #save-status {
+    padding: 12px 18px;
+    border-radius: var(--radius-pill);
+    vertical-align: middle;
+    color: var(--gray-500);
+    font-weight: 700;
+}
+
 .topbar-save {
     margin-left: auto;
     padding: 8px 18px;

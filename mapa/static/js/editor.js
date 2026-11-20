@@ -483,7 +483,7 @@ export class SnapGuides {
             const graphics = this.graphics[axis];
 
             if (graphics) {
-                Graficos.destroyConnection(graphics);
+                Graficos.destroyGuide(graphics);
                 this.graphics[axis] = null;
             }
 
@@ -701,40 +701,6 @@ export class SelectRegion {
             buildings: !this.vertexMode,
         });
         this.updateBoxGraphics();
-    }
-
-    static itemBoxes(zoom) {
-        const sel = this.selected;
-        const vm = this.vertexMode;
-        const refs = sel.references;
-        const second = vm ? sel.buildVertices : sel.build;
-
-        const n = refs.length + second.length;
-        if (n === 0 || n > this.maxItemBoxes) return null;
-
-        const out = [];
-        const gap = this.itemPadPx / zoom;
-
-        for (let i = 0; i < refs.length; i++) {
-            const ref = refs[i];
-            const p = ref.coordinate.pos;
-            const r = ref.size / zoom + gap;               // mesmo raio do teste de colisão
-            out.push([p.x - r, p.y - r, p.x + r, p.y + r]);
-        }
-
-        if (vm) {
-            const r = this.vertexBoxPx / zoom;
-            for (let i = 0; i < second.length; i++) {
-                const p = second[i].building.vertices[second[i].index].pos;
-                out.push([p.x - r, p.y - r, p.x + r, p.y + r]);
-            }
-        } else {
-            for (let i = 0; i < second.length; i++) {
-                const b = Buildings.polyHash.box(second[i]) ?? second[i].bounds();
-                out.push([b.minX - gap, b.minY - gap, b.maxX + gap, b.maxY + gap]);
-            }
-        }
-        return out;
     }
 
     // ---- gráficos ----
@@ -1634,11 +1600,14 @@ class CloseHandle {
     }
 
     hoverAdd() {
-        this.hover = Math.min(this.hover + 1, this.hoverTime * 30);
+        const cap = this.hoverTime * 30;
+        if (this.hover >= cap) return;
+        this.hover += 1;
         this.hoverUpdate();
     }
     hoverDec() {
-        this.hover = Math.max(this.hover - 1, 0);
+        if (this.hover <= 0) return;
+        this.hover -= 1;
         this.hoverUpdate();
     }
     hoverUpdate() {
@@ -1853,21 +1822,15 @@ export class TouchPin {
         return false;
     }
     
-    static hoverAdd() {
+    hoverAdd() {
+        const cap = this.hoverTime * 30;
+        if (this.hover >= cap) return;
         this.hover += 1;
-        let cap = this.hoverTime * 30;
-
-        if (this.hover >= cap) {
-            this.hover = cap;
-        }
         this.hoverUpdate();
     }
-    static hoverDec() {
+    hoverDec() {
+        if (this.hover <= 0) return;
         this.hover -= 1;
-        if (this.hover <= 0) {
-            this.hover = 0;
-        }
-
         this.hoverUpdate();
     }
     static hoverUpdate() {
@@ -2095,21 +2058,15 @@ export class Self {
         return false;
     }
     
-    static hoverAdd() {
+    hoverAdd() {
+        const cap = this.hoverTime * 30;
+        if (this.hover >= cap) return;
         this.hover += 1;
-        let cap = this.hoverTime * 30;
-
-        if (this.hover >= cap) {
-            this.hover = cap;
-        }
         this.hoverUpdate();
     }
-    static hoverDec() {
+    hoverDec() {
+        if (this.hover <= 0) return;
         this.hover -= 1;
-        if (this.hover <= 0) {
-            this.hover = 0;
-        }
-
         this.hoverUpdate();
     }
     static hoverUpdate() {
@@ -2715,20 +2672,14 @@ export class Reference {
     }
 
     hoverAdd() {
+        const cap = this.hoverTime * 30;
+        if (this.hover >= cap) return;
         this.hover += 1;
-        let cap = this.hoverTime * 30;
-
-        if (this.hover >= cap) {
-            this.hover = cap;
-        }
         this.hoverUpdate();
     }
     hoverDec() {
+        if (this.hover <= 0) return;
         this.hover -= 1;
-        if (this.hover <= 0) {
-            this.hover = 0;
-        }
-
         this.hoverUpdate();
     }
     hoverUpdate() {
@@ -2761,10 +2712,6 @@ export class Reference {
                 return;
             }
             Graficos.renderReference(this.graphics, this.buildData());
-
-            for(const connection of this.connections) {
-                connection.updateGraphics();
-            }
         } else {
             Graficos.clearReference(this.graphics);
         }
@@ -2807,7 +2754,10 @@ export class Reference {
 
         if (create) return report;
 
-        for (const connection of this.connections) Connections.reindex(connection);
+        for (const connection of this.connections) {
+            Connections.reindex(connection);
+            connection.updateGraphics();     // cheap: the sprite layer skips unchanged calls
+        }
         this.updateGraphics();
         this.bringToFront();
 
@@ -2820,6 +2770,8 @@ export class Reference {
         
         Referencer.track(this);
         Referencer.addPositionTrack(this);
+
+        for (const c of this.connections) c.updateGraphics();
     }
     disable() {
         this.enabled = false;
@@ -2827,6 +2779,8 @@ export class Reference {
         
         Referencer.untrack(this);
         Referencer.removePositionTrack(this);
+
+        for (const c of this.connections) c.updateGraphics();
         
     }
     
@@ -2870,20 +2824,14 @@ export class Connection {
     }
 
     hoverAdd() {
+        const cap = this.hoverTime * 30;
+        if (this.hover >= cap) return;
         this.hover += 1;
-        let cap = this.hoverTime * 30;
-
-        if (this.hover >= cap) {
-            this.hover = cap;
-        }
         this.hoverUpdate();
     }
     hoverDec() {
+        if (this.hover <= 0) return;
         this.hover -= 1;
-        if (this.hover <= 0) {
-            this.hover = 0;
-        }
-
         this.hoverUpdate();
     }
     hoverUpdate() {
@@ -2972,14 +2920,14 @@ export class Building {
     }
 
     hoverAdd() {
-        this.hover += 1;
         const cap = this.hoverTime * 30;
-        if (this.hover >= cap) this.hover = cap;
+        if (this.hover >= cap) return;
+        this.hover += 1;
         this.hoverUpdate();
     }
     hoverDec() {
+        if (this.hover <= 0) return;
         this.hover -= 1;
-        if (this.hover <= 0) this.hover = 0;
         this.hoverUpdate();
     }
     hoverUpdate() {

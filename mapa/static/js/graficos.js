@@ -2,6 +2,17 @@ import * as Transformacao from "./transformacao.js";
 import * as Editor from "./editor.js";
 import { SvgTileEngine } from "./map-tiling.js";
 
+/* ============================================================================
+ *  Tunables
+ * ========================================================================== */
+const RENDER_ON_DEMAND = true;   // true: só renderiza quando algo mudou (0% CPU parado)
+const SETTLE_FRAMES = 20;        // frames extras renderizados depois do último pedido (cobre texturas assíncronas)
+const CULLING = true;            // pula objetos fora da tela (setar false se algo "sumir")
+const MAX_RESOLUTION = 2;        // limita devicePixelRatio (antialias em 3x/4x é caro)
+const ZOOM_TOLERANCE = 0.15;     // polígonos só são re-traçados se o zoom mudou mais que isso...
+const ZOOM_SETTLE_MS = 120;      // ...ou quando o zoom parar por este tempo
+const DOT_STROKE = 4;            // espessura (px de tela) da borda dos pontos
+
 let tiles;
 
 export let map;
@@ -40,7 +51,7 @@ export let minZoom, maxZoom;
 let zoomStep;
 
 export let smoothTransform = false;
-let transformFrame = 0;
+let animTask = null;
 
 export let zoom = 1;
 export let scaleFactor = 1;
@@ -62,6 +73,115 @@ function syncOrigin() {
     origin.y = r.top;
 }
 
+/* ============================================================================
+ *  Scheduler: tarefas por frame + fila de "sujos" + render sob demanda
+ *
+ *  - render*()  guarda os dados mais recentes no objeto e o marca como sujo
+ *  - no próximo frame: tarefas (animações) -> desenha os sujos (1x cada) -> render
+ *  - o loop morre sozinho quando nada mudou (RENDER_ON_DEMAND)
+ * ========================================================================== */
+const dirty = new Set();          // Graphics com redesenho pendente
+const zoomGfx = new Set();        // Graphics cuja geometria depende do zoom (polígonos, rota)
+const tasks = new Set();          // fn(now) executadas no início de cada frame
+let frameQueued = false;
+let framesLeft = 0;
+let zoomPass = false;             // true enquanto Zoom() roda
+let settleTimer = 0;
+
+function schedule() {
+    if (frameQueued) return;
+    frameQueued = true;
+    requestAnimationFrame(frame);
+}
+
+/** Pede um render. Barato de chamar várias vezes por frame. */
+export function requestRender() {
+    framesLeft = SETTLE_FRAMES;
+    schedule();
+}
+
+function frame(now) {
+    frameQueued = false;
+    for (const t of tasks) t(now);
+    renderNow();
+    if (tasks.size || !RENDER_ON_DEMAND || --framesLeft > 0) schedule();
+}
+
+function flushDirty() {
+    if (!dirty.size) return;
+    for (const g of dirty) {
+        if (g.destroyed) continue;
+        const fn = g._draw, d = g._data;
+        if (fn && d) {
+            fn(g, d);
+            g._drawZoom = zoom;
+        }
+    }
+    dirty.clear();
+}
+
+/** Desenha agora (usado no resize, para não piscar). */
+export function renderNow() {
+    if (!app?.renderer) return;
+    flushDirty();
+    if (CULLING && PIXI.Culler?.shared) PIXI.Culler.shared.cull(app.stage, app.screen, false);
+    app.render();
+}
+
+function defer(g, data, fn, zoomDep = false) {
+    g._data = data;
+    g._draw = fn;
+    if (zoomDep) zoomGfx.add(g);
+    dirty.add(g);
+    requestRender();
+}
+
+function undefer(g) {
+    g._data = null;
+    dirty.delete(g);
+}
+
+function forget(g) {
+    dirty.delete(g);
+    zoomGfx.delete(g);
+}
+
+/** Polígonos: ignora o pedido de redesenho vindo do Zoom() se o zoom quase não mudou. */
+function zoomTolerated(g) {
+    return zoomPass && g._data && g._drawZoom &&
+        Math.abs(zoom / g._drawZoom - 1) < ZOOM_TOLERANCE;
+}
+
+function scheduleSettle() {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+        for (const g of zoomGfx) {
+            if (g._data && g._drawZoom !== zoom) dirty.add(g);
+        }
+        requestRender();
+    }, ZOOM_SETTLE_MS);
+}
+
+/** Zoom mudou o bastante para algum traço ficar visivelmente errado? */
+function refreshZoomGfx() {
+    for (const g of zoomGfx) {
+        if (g._data && (!g._drawZoom || Math.abs(zoom / g._drawZoom - 1) > ZOOM_TOLERANCE)) {
+            dirty.add(g);
+        }
+    }
+}
+
+const posOf = (p) => {
+    if (!p) return { x: 0, y: 0 };
+    if (typeof p.peekNormal === "function") return p.peekNormal();   // sem alocar quando já é "normal"
+    if (typeof p.getIn === "function") return p.getIn("normal");
+    if (Array.isArray(p)) return { x: p[0], y: p[1] };
+    return p;
+};
+
+/* ============================================================================
+ *  Viewport (área livre da tela, descontando a UI)
+ * ========================================================================== */
 const RECENTER_ON_INSET = true;   // true: o conteúdo acompanha o centro da área livre; false: fica parado na tela
 const MIN_VISIBLE = 120;          // a área livre nunca fica menor que isso (px)
 
@@ -134,7 +254,7 @@ export function updateViewport() {
         Position(mapContainer.x + dx, mapContainer.y + dy);
     } else {
         clampPos();
-        tiles?.requestUpdate();
+        tilesUpdate();
     }
     return true;
 }
@@ -211,161 +331,297 @@ export function getVisibleMapBounds() {
     ].map((p) => mapContainer.toLocal(new PIXI.Point(p.x, p.y)));
 }
 
-/////////////////// Reference
+/* ============================================================================
+ *  Reference (ponto)
+ *
+ *  A geometria NÃO depende mais do zoom: o círculo é desenhado uma vez num
+ *  GraphicsContext compartilhado (raio e borda em pixels de tela) e cada ponto
+ *  só ganha posição + escala 1/zoom. Zoom e hover viram atribuição de número.
+ * ========================================================================== */
+const dotContexts = new Map();
+const dots = new Set();     // handles ativos (para reescalar no zoom sem passar pelo editor)
+
+function dotContext(r, colorIn, colorOut, alpha) {
+    const key = `${r}|${colorIn}|${colorOut}|${alpha}`;
+    let ctx = dotContexts.get(key);
+    if (!ctx) {
+        if (dotContexts.size >= 400) dotContexts.clear();   // cores interpoladas: não deixa crescer sem limite
+        ctx = new PIXI.GraphicsContext()
+            .circle(0, 0, r)
+            .fill({ color: colorIn, alpha })
+            .stroke({ width: DOT_STROKE, color: colorOut });
+        dotContexts.set(key, ctx);
+    }
+    return ctx;
+}
+
+function applyDot(h) {
+    const d = h._d;
+    if (!d) return;
+    h.point.scale.set(d.size / d.r / zoom);
+    if (d.entrance) h.door.scale.set((d.size * 2) / h.initialSize / zoom);
+}
+
+function rescaleDots() {
+    for (const h of dots) {
+        if (h.point.visible) applyDot(h);
+    }
+}
 
 export function createReference() {
-    let point = new PIXI.Graphics();
-
-    point.position.set(0, 0);
+    const point = new PIXI.Graphics(dotContext(10, 0xffffff, 0x000000, 1));
+    point.visible = false;
+    point.cullable = CULLING;
     referenceContainer.addChild(point);
 
-    let referenceImg = PIXI.Sprite.from(entranceTexture);
+    const referenceImg = PIXI.Sprite.from(entranceTexture);
     referenceImg.anchor.set(0.5, 0.5);
-    let initialSize = referenceImg.width;
+    const initialSize = referenceImg.width;
     referenceImg.scale.set(15 / initialSize / zoom);
+    referenceImg.visible = false;
+    referenceImg.cullable = CULLING;
     referenceContainer.addChild(referenceImg);
 
-    return { point: point, door: referenceImg, initialSize: initialSize };
+    const handle = { point, door: referenceImg, initialSize, _d: null };
+    dots.add(handle);
+    return handle;
 }
 
 export function renderReference(graphics, data) {
-    let alpha = data.alpha;
-    let colorOut = data.colorOut;
-    let colorIn = data.colorIn;
-    let size = data.size;
-    let pos = data.coordinate.getIn("normal");
+    const pos = posOf(data.coordinate);
+    const size = data.size;
+    const r = Math.max(1, Math.round(size));       // quantiza: poucos contextos distintos
 
-    graphics.point
-        .clear()
-        .circle(pos.x, pos.y, size / zoom)
-        .fill({ color: colorIn, alpha: alpha })
-        .stroke({ width: 4 / zoom, color: colorOut });
+    const ctx = dotContext(r, data.colorIn, data.colorOut, data.alpha);
+    const p = graphics.point;
+    if (p.context !== ctx) p.context = ctx;
+    p.visible = true;
+    p.position.set(pos.x, pos.y);
 
-    if (data.isEntrance) {
-        graphics.door.visible = true;
-        graphics.door.scale.set((size * 2) / graphics.initialSize / zoom);
-        graphics.door.tint = colorOut;
-        graphics.door.x = pos.x;
-        graphics.door.y = pos.y;
-        graphics.door.rotation = -mapContainer.rotation;
+    const d = graphics._d ??= { size: 0, r: 10, entrance: false };
+    d.size = size;
+    d.r = r;
+    d.entrance = !!data.isEntrance;
+
+    if (d.entrance) {
+        const door = graphics.door;
+        door.visible = true;
+        door.tint = data.colorOut;
+        door.position.set(pos.x, pos.y);
+        door.rotation = -mapContainer.rotation;
     } else {
         graphics.door.visible = false;
     }
+
+    applyDot(graphics);
+    requestRender();
 }
 
 export function BringToFrontReference(graphics) {
-    if (graphics && graphics.parent === referenceContainer) {
-        referenceContainer.addChild(graphics.point);
-        referenceContainer.addChild(graphics.door);
-    }
+    if (!graphics || graphics.parent !== referenceContainer) return;
+    const ch = referenceContainer.children, n = ch.length;
+    if (n >= 2 && ch[n - 2] === graphics.point && ch[n - 1] === graphics.door) return;   // já está no topo
+    referenceContainer.addChild(graphics.point);
+    referenceContainer.addChild(graphics.door);
+    requestRender();
 }
 
 export function clearReference(graphics) {
-    graphics.point.clear();
+    graphics.point.visible = false;
     graphics.door.visible = false;
+    requestRender();
 }
 
 export function destroyReference(graphics) {
+    dots.delete(graphics);
     referenceContainer.removeChild(graphics.point);
     referenceContainer.removeChild(graphics.door);
 
-    graphics.point.destroy();
+    graphics.point.destroy();   // o contexto é compartilhado: não é destruído junto
     graphics.door.destroy();
+    requestRender();
 }
 
-/////////////////// Connection
+/* ============================================================================
+ *  Connection
+ *
+ *  Segmento de 2 pontos = 2 sprites (contorno + miolo): sem tesselação, 1 batch,
+ *  zoom só muda a altura. Polilinha (rota calculada) continua sendo Graphics.
+ * ========================================================================== */
+const conns = new Set();
+
+function layoutConn(c) {
+    const s = c._st;
+    const dx = s.bx - s.ax, dy = s.by - s.ay;
+    const len = Math.hypot(dx, dy), rot = Math.atan2(dy, dx);
+    for (const sp of [c._outline, c._inner]) {
+        sp.position.set(s.ax, s.ay);
+        sp.rotation = rot;
+        sp.width = len;
+    }
+    c._outline.height = (s.size + 6) / zoom;
+    c._inner.height = s.size / zoom;
+    s.zoom = zoom;
+}
+
+function rescaleConns() {
+    for (const c of conns) {
+        if (c._mode === "seg" && c.visible) {
+            c._outline.height = (c._st.size + 6) / zoom;
+            c._inner.height = c._st.size / zoom;
+            c._st.zoom = zoom;
+        }
+    }
+}
 
 export function createConnection() {
-    let connection = new PIXI.Graphics();
+    const c = new PIXI.Container();
+    c._isConn = true;
+    c._mode = "seg";
+    c._st = { ax: NaN, ay: NaN, bx: NaN, by: NaN, size: NaN, alpha: NaN, colorIn: -1, colorOut: -1, zoom: NaN };
 
-    connection.position.set(0, 0);
-    connectionContainer.addChild(connection);
+    c._outline = new PIXI.Sprite(PIXI.Texture.WHITE);
+    c._inner = new PIXI.Sprite(PIXI.Texture.WHITE);
+    for (const sp of [c._outline, c._inner]) {
+        sp.anchor.set(0, 0.5);
+        sp.cullable = CULLING;
+        c.addChild(sp);
+    }
+    c._poly = null;
+    c.visible = false;
 
-    return connection;
+    connectionContainer.addChild(c);
+    conns.add(c);
+    return c;
 }
 
+function drawPolyline(g, data) {
+    const points = data.points;
+    const radius = data.radius ? data.radius : 15;
+    g.clear();
+    if (points.length < 2) return;
 
-export function renderConnection(graphics, data) {
-    let alpha = data.alpha;
-    let colorOut = data.colorOut;
-    let colorIn = data.colorIn;
-    let size = data.size;
-
-    let points = data.points;
-    let radius = data.radius ? data.radius : 15;
-
-    if (points.length < 2) {
-        return;
-    }
-
-    const buildPath = (g) => {
-        let p0 = points[0].getIn("normal");
+    const buildPath = () => {
+        const p0 = posOf(points[0]);
         g.moveTo(p0.x, p0.y);
 
         for (let i = 1; i < points.length - 1; i++) {
-            const p1 = points[i].getIn("normal");
-            const p2 = points[i + 1].getIn("normal");
-
+            const p1 = posOf(points[i]);
+            const p2 = posOf(points[i + 1]);
             g.arcTo(p1.x, p1.y, p2.x, p2.y, radius);
         }
 
-        const last = points[points.length - 1].getIn("normal");
+        const last = posOf(points[points.length - 1]);
         g.lineTo(last.x, last.y);
     };
 
-    graphics.clear();
-
-    buildPath(graphics);
-    graphics.stroke({
-        width: (size + 6) / zoom,
-        color: colorOut,
-        alpha: alpha,
+    buildPath();
+    g.stroke({
+        width: (data.size + 6) / zoom,
+        color: data.colorOut,
+        alpha: data.alpha,
         cap: "round",
         join: "round",
     });
 
-    buildPath(graphics);
-    graphics.stroke({
-        width: size / zoom,
-        color: colorIn,
-        alpha: alpha,
+    buildPath();
+    g.stroke({
+        width: data.size / zoom,
+        color: data.colorIn,
+        alpha: data.alpha,
         cap: "round",
         join: "round",
     });
 }
-export function clearConnection(graphics) {
-    graphics.clear();
+
+export function renderConnection(c, data) {
+    const pts = data.points;
+    if (!pts || pts.length < 2) return;
+
+    // ---- polilinha (rota): Graphics, desenhado 1x por frame ----
+    if (pts.length > 2) {
+        c._mode = "poly";
+        c._outline.visible = c._inner.visible = false;
+        if (!c._poly) {
+            c._poly = new PIXI.Graphics();
+            c._poly.cullable = CULLING;
+            c.addChild(c._poly);
+        }
+        c._poly.visible = true;
+        c.visible = true;
+        if (!zoomTolerated(c._poly)) defer(c._poly, data, drawPolyline, true);
+        return;
+    }
+
+    // ---- segmento: sprites ----
+    c._mode = "seg";
+    if (c._poly) c._poly.visible = false;
+
+    const a = posOf(pts[0]), b = posOf(pts[1]);
+    const s = c._st;
+
+    const geom = s.ax !== a.x || s.ay !== a.y || s.bx !== b.x || s.by !== b.y;
+    const look = s.size !== data.size || s.alpha !== data.alpha ||
+        s.colorIn !== data.colorIn || s.colorOut !== data.colorOut;
+
+    if (!geom && !look && s.zoom === zoom && c.visible) return;   // chamadas repetidas saem aqui
+
+    if (look) {
+        s.size = data.size;
+        s.alpha = data.alpha;
+        s.colorIn = data.colorIn;
+        s.colorOut = data.colorOut;
+        c._outline.tint = data.colorOut;
+        c._inner.tint = data.colorIn;
+        c._outline.alpha = c._inner.alpha = data.alpha;
+    }
+    if (geom) { s.ax = a.x; s.ay = a.y; s.bx = b.x; s.by = b.y; }
+
+    c._outline.visible = c._inner.visible = true;
+    c.visible = true;
+    layoutConn(c);
+    requestRender();
 }
 
-export function destroyConnection(graphics) {
-    connectionContainer.removeChild(graphics);
-
-    graphics.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true,
-    });
+export function clearConnection(c) {
+    if (c._isConn) {
+        c.visible = false;
+        c._st.ax = NaN;                       // força relayout quando voltar
+        if (c._poly) {
+            undefer(c._poly);
+            c._poly.clear();
+        }
+    } else {
+        undefer(c);
+        c.clear();                            // chamado com um Graphics qualquer
+    }
+    requestRender();
 }
 
+export function destroyConnection(c) {
+    if (!c || c.destroyed) return;
+    forget(c);
+    if (c._isConn) {
+        conns.delete(c);
+        if (c._poly) forget(c._poly);
+    }
+    c.parent?.removeChild(c);
+    c.destroy({ children: true });            // não destrói Texture.WHITE
+    requestRender();
+}
+
+/* ============================================================================
+ *  Guide / seleção (Graphics, redesenhados no máx. 1x por frame)
+ * ========================================================================== */
 export function createGuide() {
     const guide = new PIXI.Graphics();
-
     guide.position.set(0, 0);
     snapGuideContainer.addChild(guide);
-
     return guide;
 }
 
-const getPos = (p) => {
-    if (!p) return { x: 0, y: 0 };
-    if (typeof p.getIn === "function") return p.getIn("normal");
-    if (Array.isArray(p)) return { x: p[0], y: p[1] };
-    return p;
-};
-
-export function renderSelect(graphics, data) {
+function drawSelect(graphics, data) {
     graphics.clear();
-    graphics.rotation = -(data.frameRotation ?? 0);   // pontos estão no frame da tela
     if (!data.points?.length) return;
 
     const { alpha, colorOut, colorIn, borderSize, radius = 12 } = data;
@@ -406,49 +662,58 @@ export function renderSelect(graphics, data) {
     }
 }
 
+export function renderSelect(graphics, data) {
+    graphics.rotation = -(data.frameRotation ?? 0);   // pontos estão no frame da tela
+    if (!data.points?.length) {
+        undefer(graphics);
+        graphics.clear();
+        requestRender();
+        return;
+    }
+    defer(graphics, data, drawSelect);
+}
+
+function drawGuide(g, d) {
+    g.clear();
+    g.moveTo(d.x0, d.y0);
+    g.lineTo(d.x1, d.y1);
+    g.stroke({ width: d.size / zoom, color: d.colorOut, alpha: d.alpha, cap: "round" });
+}
+
 export function renderGuide(graphics, data) {
     const { alpha, colorOut, size, points } = data;
     if (points.length !== 2) return;
 
-    const p0 = points[0].getIn("normal");
-    const p1 = points[1].getIn("normal");
-
-    graphics.clear();
-    graphics.moveTo(p0.x, p0.y);
-    graphics.lineTo(p1.x, p1.y);
-    graphics.stroke({
-        width: size / zoom,
-        color: colorOut,
-        alpha,
-        cap: "round",
-    });
+    // converte já: os pontos podem estar em "screen" e dependem da câmera deste instante
+    const p0 = posOf(points[0]);
+    const p1 = posOf(points[1]);
+    defer(graphics, { x0: p0.x, y0: p0.y, x1: p1.x, y1: p1.y, alpha, colorOut, size }, drawGuide);
 }
 
 export function clearGuide(graphics) {
+    undefer(graphics);
     graphics.clear();
+    requestRender();
 }
 
 export function destroyGuide(graphics) {
     if (!graphics) return;
-
-    snapGuideContainer.removeChild(graphics);
-
-    graphics.destroy({
-        children: true,
-        texture: true,
-        textureSource: true,
-    });
+    forget(graphics);
+    graphics.parent?.removeChild(graphics);
+    graphics.destroy({ children: true, texture: true, textureSource: true });
+    requestRender();
 }
 
-
-/////////////////// Pin
-
+/* ============================================================================
+ *  Pin
+ *  (transform imediato: collisionTest lê x/y/escala/rotação logo depois)
+ * ========================================================================== */
 export function createPin(name) {
-    let buildPino = PIXI.Sprite.from(pinImagePath);
+    const buildPino = PIXI.Sprite.from(pinImagePath);
     buildPino.anchor.set(0.5, 1);
     buildPino.scale.set(1 / 7.5);
     buildPino.tint = 0xff0000;
-    
+
     const nodeLabel = new PIXI.Text({
         text: name,
         style: {
@@ -463,7 +728,8 @@ export function createPin(name) {
     nodeLabel.scale.set(1 / 2);
     nodeLabel.x = buildPino.width / 2;
 
-    let pinGfx = new PIXI.Container();
+    const pinGfx = new PIXI.Container();
+    pinGfx._size = 1;
 
     pinGfx.addChild(nodeLabel);
     pinGfx.addChild(buildPino);
@@ -476,20 +742,32 @@ export function createPin(name) {
 export function setPinText(gfx, text) {
     gfx.children[0].text = text;   // children[0] é o label (ver createPin)
     gfx[HIT] = null;
+    requestRender();
 }
 
 export function renderPin(graphics, data) {
-    let pos = data.coordinate.getIn("normal");
-    let size = data.size;
-    graphics.children[0].style.fill = data.color;
+    const pos = posOf(data.coordinate);
+    const size = data.size;
+
+    // Mexer no style marca o Text como sujo (re-rasteriza): só quando a cor muda de fato.
+    const label = graphics.children[0];
+    if (label._fill !== data.color) {
+        label.style.fill = data.color;
+        label._fill = data.color;
+    }
+
     graphics.visible = true;
-    graphics.x = pos.x;
-    graphics.y = pos.y;
+    graphics._size = size;
+    graphics.position.set(pos.x, pos.y);
     graphics.scale.set(size / zoom);
-    graphics.rotation = -mapContainer.rotation;
+    const rot = -mapContainer.rotation;
+    if (graphics.rotation !== rot) graphics.rotation = rot;
+    requestRender();
 }
+
 export function clearPin(graphics) {
     graphics.visible = false;
+    requestRender();
 }
 
 export function destroyPin(graphics) {
@@ -500,10 +778,12 @@ export function destroyPin(graphics) {
     }
 
     graphics.destroy({ children: true });
+    requestRender();
 }
 
-/////////////////// Areas
-
+/* ============================================================================
+ *  Areas
+ * ========================================================================== */
 function normalizeBox(x1, y1, x2, y2) {
     return {
         x: Math.min(x1, x2),
@@ -518,22 +798,23 @@ function normalizeBox(x1, y1, x2, y2) {
 }
 
 export function createArea() {
-    let area = new PIXI.Graphics();
+    const area = new PIXI.Graphics();
     area.position.set(0, 0);
+    area.cullable = CULLING;
     areasContainer.addChild(area);
     return area;
 }
 
-export function renderArea(graphics, data) {
-    let alpha = data.alpha;
-    let colorOut = data.colorOut;
-    let colorIn = data.colorIn;
-    let size = data.borderSize / zoom;
-    let radius = data.radius !== undefined ? data.radius : 12;
+function drawArea(graphics, data) {
+    const alpha = data.alpha;
+    const colorOut = data.colorOut;
+    const colorIn = data.colorIn;
+    const size = data.borderSize / zoom;
+    const radius = data.radius !== undefined ? data.radius : 12;
 
-    let start = data.start.getIn("normal");
-    let end = data.end.getIn("normal");
-    let box = normalizeBox(start.x, start.y, end.x, end.y);
+    const start = posOf(data.start);
+    const end = posOf(data.end);
+    const box = normalizeBox(start.x, start.y, end.x, end.y);
 
     graphics.clear();
 
@@ -548,19 +829,9 @@ export function renderArea(graphics, data) {
     const borderColors =
         typeof colorOut === "object" && colorOut !== null
             ? colorOut
-            : {
-                  top: colorOut,
-                  right: colorOut,
-                  bottom: colorOut,
-                  left: colorOut,
-              };
+            : { top: colorOut, right: colorOut, bottom: colorOut, left: colorOut };
 
-    const getStroke = (color) => ({
-        width: size,
-        color: color,
-        alpha: alpha,
-        alignment: 0.5,
-    });
+    const getStroke = (c) => ({ width: size, color: c, alpha: alpha, alignment: 0.5 });
 
     if (r > 0) {
         graphics.beginPath();
@@ -587,102 +858,83 @@ export function renderArea(graphics, data) {
         graphics.arc(x + r, y + r, r, Math.PI, Math.PI * 1.25);
         graphics.stroke(getStroke(borderColors.left));
     } else {
-        graphics
-            .beginPath()
-            .moveTo(x, y)
-            .lineTo(x + w, y)
-            .stroke(getStroke(borderColors.top));
-        graphics
-            .beginPath()
-            .moveTo(x + w, y)
-            .lineTo(x + w, y + h)
-            .stroke(getStroke(borderColors.right));
-        graphics
-            .beginPath()
-            .moveTo(x + w, y + h)
-            .lineTo(x, y + h)
-            .stroke(getStroke(borderColors.bottom));
-        graphics
-            .beginPath()
-            .moveTo(x, y + h)
-            .lineTo(x, y)
-            .stroke(getStroke(borderColors.left));
+        graphics.beginPath().moveTo(x, y).lineTo(x + w, y).stroke(getStroke(borderColors.top));
+        graphics.beginPath().moveTo(x + w, y).lineTo(x + w, y + h).stroke(getStroke(borderColors.right));
+        graphics.beginPath().moveTo(x + w, y + h).lineTo(x, y + h).stroke(getStroke(borderColors.bottom));
+        graphics.beginPath().moveTo(x, y + h).lineTo(x, y).stroke(getStroke(borderColors.left));
     }
 }
 
+export function renderArea(graphics, data) {
+    defer(graphics, data, drawArea, true);
+}
+
 export function clearArea(graphics) {
+    undefer(graphics);
     graphics.clear();
+    requestRender();
 }
 
 export function destroyArea(graphics) {
     if (!graphics) return;
-    areasContainer.removeChild(graphics);
-
-    graphics.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true,
-    });
+    forget(graphics);
+    graphics.parent?.removeChild(graphics);
+    graphics.destroy({ children: true, texture: true, baseTexture: true });
+    requestRender();
 }
 
+/* ============================================================================
+ *  Poly (construções) e Draft (rascunho)
+ *  Re-traçados só quando os dados mudam, ou o zoom mudou > ZOOM_TOLERANCE,
+ *  ou o zoom parou.
+ * ========================================================================== */
 export function createPoly() {
-    let area = new PIXI.Graphics();
+    const area = new PIXI.Graphics();
     area.position.set(0, 0);
+    area.cullable = CULLING;
     areasContainer.addChild(area);
     return area;
 }
 
-export function renderPoly(graphics, data) {
+function drawPoly(graphics, data) {
     graphics.clear();
 
-    let rawPoints = [...data.points, data.points[0]];
-    if (!rawPoints || rawPoints.length === 0) return;
+    const rawPoints = [...data.points, data.points[0]];
+    if (rawPoints.length === 0) return;
 
     const isSinglePolygon =
         rawPoints[0] &&
         (typeof rawPoints[0].getIn === "function" ||
             typeof rawPoints[0].x === "number" ||
-            (Array.isArray(rawPoints[0]) &&
-                typeof rawPoints[0][0] === "number"));
+            (Array.isArray(rawPoints[0]) && typeof rawPoints[0][0] === "number"));
 
-    let polygons = isSinglePolygon ? [rawPoints] : rawPoints;
+    const polygons = isSinglePolygon ? [rawPoints] : rawPoints;
 
-    let alpha = data.alpha;
-    let colorOut = data.colorOut;
-    let colorIn = data.colorIn;
-    let size = data.borderSize / zoom;
-    let radius = data.radius !== undefined ? data.radius : 12;
-
-    const getPos = (p) => {
-        if (!p) return { x: 0, y: 0 };
-        if (typeof p.getIn === "function") return p.getIn("normal");
-        if (Array.isArray(p)) return { x: p[0], y: p[1] };
-        return p;
-    };
+    const alpha = data.alpha;
+    const colorOut = data.colorOut;
+    const colorIn = data.colorIn;
+    const size = data.borderSize / zoom;
+    const radius = data.radius !== undefined ? data.radius : 12;
 
     const buildPolygonPath = (g, points) => {
         if (!points || points.length < 3) return;
 
-        let p0 = getPos(points[0]);
+        const p0 = posOf(points[0]);
         g.moveTo(p0.x, p0.y);
 
         for (let i = 0; i < points.length; i++) {
-            let p1 = getPos(points[i]);
-            let p2 = getPos(points[(i + 1) % points.length]);
-            let midX = (p1.x + p2.x) / 2;
-            let midY = (p1.y + p2.y) / 2;
+            const p1 = posOf(points[i]);
+            const p2 = posOf(points[(i + 1) % points.length]);
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
             g.arcTo(p1.x, p1.y, midX, midY, Math.min(radius, 20));
         }
     };
 
-    for (const poly of polygons) {
-        buildPolygonPath(graphics, poly);
-    }
+    for (const poly of polygons) buildPolygonPath(graphics, poly);
     graphics.fill({ color: colorIn, alpha: alpha * 0.45 });
 
-    for (const poly of polygons) {
-        buildPolygonPath(graphics, poly);
-    }
+    for (const poly of polygons) buildPolygonPath(graphics, poly);
     graphics.stroke({
         width: size + 1,
         color: colorOut,
@@ -692,7 +944,7 @@ export function renderPoly(graphics, data) {
     });
 
     if (data.handles) {
-        const pts = data.points.map(getPos);
+        const pts = data.points.map(posOf);
         pts.forEach((p, i) => {
             const active = i === data.handleActive;
             graphics
@@ -703,24 +955,28 @@ export function renderPoly(graphics, data) {
     }
 }
 
+export function renderPoly(graphics, data) {
+    if (zoomTolerated(graphics)) return;   // só o zoom pediu, e quase não mudou
+    defer(graphics, data, drawPoly, true);
+}
+
 export function clearPoly(graphics) {
+    undefer(graphics);
     graphics.clear();
+    requestRender();
 }
 
 export function destroyPoly(graphics) {
     if (!graphics) return;
-    areasContainer.removeChild(graphics);
-
-    graphics.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true,
-    });
+    forget(graphics);
+    graphics.parent?.removeChild(graphics);
+    graphics.destroy({ children: true, texture: true, baseTexture: true });
+    requestRender();
 }
 
-export function renderDraft(graphics, data) {
+function drawDraft(graphics, data) {
     graphics.clear();
-    const pts = data.points.map((p) => p.getIn("normal"));
+    const pts = data.points.map(posOf);
     if (!pts.length) return;
 
     if (pts.length >= 2) {
@@ -744,28 +1000,32 @@ export function renderDraft(graphics, data) {
     });
 }
 
-/////////////////// User pin
+export function renderDraft(graphics, data) {
+    if (zoomTolerated(graphics)) return;
+    defer(graphics, data, drawDraft, true);
+}
 
+/* ============================================================================
+ *  User pin
+ * ========================================================================== */
 export function createSelfPin() {
-    let userPin = PIXI.Sprite.from(pinImagePath);
+    const userPin = PIXI.Sprite.from(pinImagePath);
     userPin.anchor.set(0.5, 1);
     userPin.scale.set(1 / 7.5);
     userPin.tint = 0x0033ee;
 
-    let pinGfx = new PIXI.Container();
+    const pinGfx = new PIXI.Container();
+    pinGfx._size = 1;
     pinGfx.addChild(userPin);
 
-    let userAvatar = PIXI.Sprite.from(userImagePath);
+    const userAvatar = PIXI.Sprite.from(userImagePath);
     userAvatar.anchor.set(0.5);
-    
+
     userAvatar.width = avatarSize;
     userAvatar.height = avatarSize;
 
     const radius = avatarSize / 2;
-    let avatarMask = new PIXI.Graphics();
-    avatarMask.beginFill(0xffffff);
-    avatarMask.drawCircle(0, 0, radius);
-    avatarMask.endFill();
+    const avatarMask = new PIXI.Graphics().circle(0, 0, radius).fill(0xffffff);
 
     userAvatar.position.set(0, -23);
     avatarMask.position.set(0, -23);
@@ -780,47 +1040,41 @@ export function createSelfPin() {
 }
 
 export function renderSelfPin(graphics, data) {
-    let visibility = data.visible;
-    let online = data.online;
-    let size = data.size;
-    let pos = data.coordinate.getIn("normal");
+    const pos = posOf(data.coordinate);
+    const size = data.size;
 
-    graphics.visible = visibility;
-    
-    let color;
-    if (online) {
-        color = 0x0033ee;
-    } else {
-        color = 0x454545;
-    }
-    graphics.children[0].tint = color;
+    graphics.visible = data.visible;
+    graphics._size = size;
+    graphics.children[0].tint = data.online ? 0x0033ee : 0x454545;
 
-    graphics.x = pos.x;
-    graphics.y = pos.y;
-
+    graphics.position.set(pos.x, pos.y);
     graphics.scale.set(size / zoom);
+    requestRender();
 }
 
 export function destroySelfPin(graphics) {
     pinContainer.removeChild(graphics);
-    
+
     for (const child of graphics.children) {
         child.destroy();
     }
 
     graphics.destroy({ children: true });
+    requestRender();
 }
 
-/////////////////// touch pin
-
+/* ============================================================================
+ *  Touch pin
+ * ========================================================================== */
 export function createTouchPin() {
-    let buildPino = PIXI.Sprite.from(pinImagePath);
+    const buildPino = PIXI.Sprite.from(pinImagePath);
     buildPino.anchor.set(0.5, 1);
     buildPino.scale.set(1 / 7.5);
     buildPino.tint = 0xff0000;
-    
-    let pinGfx = new PIXI.Container();
-    
+
+    const pinGfx = new PIXI.Container();
+    pinGfx._size = 1;
+
     pinGfx.addChild(buildPino);
 
     pinContainer.addChild(pinGfx);
@@ -829,27 +1083,30 @@ export function createTouchPin() {
 }
 
 export function renderTouchPin(graphics, data) {
-    let pos = data.coordinate.getIn("normal");
-    let size = data.size;
+    const pos = posOf(data.coordinate);
+    const size = data.size;
     graphics.children[0].tint = data.color;
     graphics.visible = true;
-    graphics.x = pos.x;
-    graphics.y = pos.y;
+    graphics._size = size;
+    graphics.position.set(pos.x, pos.y);
     graphics.scale.set(size / zoom);
+    requestRender();
 }
 
 export function destroyTouchPin(graphics) {
     pinContainer.removeChild(graphics);
-    
+
     for (const child of graphics.children) {
         child.destroy();
     }
 
     graphics.destroy({ children: true });
+    requestRender();
 }
 
-/////////////////// Context
-
+/* ============================================================================
+ *  Context / init
+ * ========================================================================== */
 export function setContext(context) {
     page = context.page;
     if (page == "main") {
@@ -893,6 +1150,12 @@ function applyZoomLimits() {
     if (clamped !== zoom) Zoom(clamped);
 }
 
+/** Atualiza o mapa base e garante um render. */
+function tilesUpdate() {
+    tiles?.requestUpdate();
+    requestRender();
+}
+
 export async function main() {
     app = new PIXI.Application();
     const mapEl = document.getElementById("map");
@@ -900,14 +1163,17 @@ export async function main() {
         resizeTo: mapEl,
         antialias: true,
         backgroundColor: color,
-        resolution: window.devicePixelRatio || 1,
+        resolution: Math.min(window.devicePixelRatio || 1, MAX_RESOLUTION),
+        autoDensity: true,
+        autoStart: false,            // o render é nosso (scheduler acima)
     });
+    app.ticker.stop();
 
     gl = app.renderer.gl;
     map = document.getElementById("map");
     map.appendChild(app.canvas);
     buildOccluders();
-    updateViewport();   
+    updateViewport();
     syncOrigin();
     window.addEventListener("resize", syncOrigin);
 
@@ -921,6 +1187,7 @@ export async function main() {
         getScreenSize: () => ({ width: app.screen.width, height: app.screen.height }),
         getZoomRange: () => ({ min: minZoom, max: maxZoom }),
         maxTextureSize: gl?.getParameter(gl.MAX_TEXTURE_SIZE) ?? 4096,
+        onUpdate: requestRender,     // o engine deve chamar isto quando uma tile/textura ficar pronta
     });
 
     imageSize = await tiles.load(); // { width, height } vindos do SVG
@@ -929,8 +1196,6 @@ export async function main() {
 
     await tiles.start();
 
-    mapContainer.x = app.screen.width / 2;
-    mapContainer.y = app.screen.height / 2;
     mapContainer.x = viewport.cx;
     mapContainer.y = viewport.cy;
 
@@ -939,12 +1204,12 @@ export async function main() {
         if (width && height &&
             (Math.abs(width - app.screen.width) >= 1 || Math.abs(height - app.screen.height) >= 1)) {
             app.renderer.resize(width, height);
-            app.render();          // pinta no mesmo frame: sem tela preta
+            renderNow();           // pinta no mesmo frame: sem tela preta
         }
         updateViewport();          // sempre: o Pixi (resizeTo) pode ter redimensionado antes
-        tiles?.requestUpdate();
+        tilesUpdate();
     }).observe(mapEl);
-    
+
     const pinoTexture = await PIXI.Assets.load(pinImagePath);
     pinoSprite = PIXI.Sprite.from(pinoTexture);
     pinoSprite.anchor.set(0.5, 1);
@@ -953,10 +1218,10 @@ export async function main() {
     pinoSprite.y = 0;
     pinoSprite.scale.set(1 / zoom / 7.5);
     mapContainer.addChild(pinoSprite);
-    
+
     entranceTexture = await PIXI.Assets.load(entranceImagePath);
     userTexture = await PIXI.Assets.load(userImagePath);
-    
+
     textContainer = new PIXI.Container();
     mapContainer.addChild(textContainer);
 
@@ -968,10 +1233,10 @@ export async function main() {
 
     referenceContainer = new PIXI.Container();
     mapContainer.addChild(referenceContainer);
-    
+
     pinContainer = new PIXI.Container();
     mapContainer.addChild(pinContainer);
-    
+
     snapGuideContainer = new PIXI.Container();
     mapContainer.addChild(snapGuideContainer);
 
@@ -988,9 +1253,12 @@ export async function main() {
     Zoom(minZoom);
     viewportReady = true;
     watchViewport();
+    requestRender();
 }
 
-/////////////////// Collision (pins)
+/* ============================================================================
+ *  Collision (pins)
+ * ========================================================================== */
 
 // O pin é um container com position, rotation e escala uniforme; os filhos (sprite/texto)
 // são estáticos. Então os retângulos deles são calculados uma vez, em espaço local do pin,
@@ -1080,14 +1348,18 @@ export function nodeText(text, configuration) {
     nodeLabel.y = configuration.y;
     nodeLabel.scale.set(1 / zoom / 2);
     textContainer.addChild(nodeLabel);
+    requestRender();
 }
 
 export async function loadMapScales() {}
 
 export function updateMap() {
-    tiles?.requestUpdate();
+    tilesUpdate();
 }
 
+/* ============================================================================
+ *  Câmera: posição / zoom / rotação
+ * ========================================================================== */
 const PAN_SLACK = 0.25;      // fração do viewport que deve continuar coberta ao arrastar
 const SLACK_RAMP = 0.5;      // a folga volta por completo em minZoom * (1 + SLACK_RAMP)
 
@@ -1113,7 +1385,7 @@ function Position(x, y) {
     mapContainer.x = x;
     mapContainer.y = y;
     clampPos();
-    tiles?.requestUpdate();
+    tilesUpdate();
 }
 
 export function setPosition(x, y) {
@@ -1125,29 +1397,31 @@ export function setPosition(x, y) {
 function Zoom(z) {
     zoom = z;
     mapContainer.scale.set(zoom);
+
+    // tudo abaixo é só atribuição de número: nada de tesselação
     for (const child of pinContainer.children) {
-        child.scale.set(1 / zoom);
+        child.scale.set((child._size ?? 1) / zoom);
     }
     for (const child of textContainer.children) {
         child.scale.set(1 / zoom / 2);
     }
+    rescaleDots();
+    rescaleConns();
+    refreshZoomGfx();       // polígonos/rota: só os que ficaram visivelmente errados
+    scheduleSettle();       // e todos, quando o zoom parar
 
-    let references = Editor.Referencer.references;
-    for (const ref of Object.values(references)) {
-        ref.updateGraphics();
+    zoomPass = true;
+    // alças do meio das arestas dependem do zoom (somem em arestas curtas)
+    if (Editor.Buildings.midHandles) {
+        const buildings = Editor.Buildings.buildings;
+        for (const id in buildings) buildings[id].updateGraphics();
     }
-
-    let buildings = Editor.Buildings.buildings;
-    for (const building of Object.values(buildings)) {
-        building.updateGraphics();
-    }
-
     Editor.SnapGuides.render();
-
     Editor.SelectRegion.updateBoxGraphics();
+    zoomPass = false;
 
     clampPos();
-    tiles?.requestUpdate();
+    tilesUpdate();
 }
 
 export function setZoom(z) {
@@ -1161,14 +1435,14 @@ function Rotation(r) {
     for (const child of pinContainer.children) {
         child.rotation = -r;
     }
-    let references = Editor.Referencer.references;
-    for (const ref of Object.values(references).filter((e) => {return e.isEntrance})) {
-        ref.updateGraphics();
+    for (const h of dots) {
+        if (h._d?.entrance) h.door.rotation = -r;
     }
-    if(compassButton) {
+    if (compassButton) {
         compassButton.children[0].style.transform = `rotate(${r}rad)`;
     }
     Editor.SelectRegion.onCameraRotate();
+    requestRender();
 }
 
 export function setRotation(r) {
@@ -1179,6 +1453,7 @@ export function setRotation(r) {
 
 export function editorFocus(value) {
     tiles?.setDimmed(value); // antes: mapSprite.alpha = value ? 0.5 : 1
+    requestRender();
 }
 
 export function highlightObjects(objects, dimAlpha = DIM_ALPHA) {
@@ -1189,6 +1464,7 @@ export function highlightObjects(objects, dimAlpha = DIM_ALPHA) {
             c.alpha = 1;
             for (const child of c.children) child.alpha = 1;
         }
+        requestRender();
         return;
     }
 
@@ -1210,6 +1486,7 @@ export function highlightObjects(objects, dimAlpha = DIM_ALPHA) {
             child.alpha = keep.has(child) ? 1 : dimAlpha;
         }
     }
+    requestRender();
 }
 
 export function highlight(activeGroups) {
@@ -1247,8 +1524,8 @@ export function getContainerPosForPoint(
 
 /** Stops a running animation, leaving the map where it is. Call it when the user takes over. */
 export function cancelTransform() {
-    if (transformFrame) cancelAnimationFrame(transformFrame);
-    transformFrame = 0;
+    if (animTask) tasks.delete(animTask);
+    animTask = null;
     smoothTransform = false;
 }
 
@@ -1269,6 +1546,7 @@ export function animateTransform({ point, screen, zoom: targetZoom, rotation: ta
 
     const startTime = performance.now();
 
+    // roda como tarefa do scheduler: anima e renderiza no MESMO frame (sem 1 frame de atraso)
     const step = (now) => {
         const raw = duration <= 0 ? 1 : (now - startTime) / duration;
         const t = Math.min(Math.max(raw, 0), 1);
@@ -1288,18 +1566,18 @@ export function animateTransform({ point, screen, zoom: targetZoom, rotation: ta
         const pos = getContainerPosForPoint(anchor, at, z, rot);
         Position(pos.x, pos.y);             // clamped to the map bounds
 
-        if (t < 1) {
-            transformFrame = requestAnimationFrame(step);
-            return;
-        }
+        if (t < 1) return;
 
-        transformFrame = 0;
+        tasks.delete(step);
+        animTask = null;
         smoothTransform = false;
         Rotation(normalizeAngle(mapContainer.rotation));
         if (endZoom !== startZoom) updateMap();
     };
 
-    transformFrame = requestAnimationFrame(step);
+    animTask = step;
+    tasks.add(step);
+    requestRender();
 }
 
 export function smoothRotation(r) {

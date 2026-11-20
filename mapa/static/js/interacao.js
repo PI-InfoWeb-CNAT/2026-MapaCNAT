@@ -682,6 +682,7 @@ function addBannerAliases(value) {
     }
 
     renderBannerAliases();
+    Autosave.markDirty();
 }
 
 function commitBannerAliasInput() {
@@ -702,6 +703,7 @@ function clearBannerFields() {
     if (bannerHeld()) Holdable.initialPos.img = false;
 
     syncBannerStatus();
+    Autosave.markDirty();
 }
 
 async function switchTab(name) {
@@ -752,7 +754,7 @@ function pickMainTarget(coord) {
 
 // At most one map update per frame, no matter how often pointermove fires
 function scheduleMainMove(e) {
-    pendingMainMove = { clientX: e.clientX, clientY: e.clientY };
+    pendingMainMove = { clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey};
     if (mainMoveRaf) return;
     mainMoveRaf = requestAnimationFrame(() => {
         mainMoveRaf = 0;
@@ -776,11 +778,7 @@ function flushMainMove() {
 
 function applyMainMove(m) {
     if (rightClicking) {
-        const delta = (m.clientX - clickX) / 300;
-        const o = Graficos.canvasOrigin();
-        Graficos.setPosition(clickX - o.x + p.x, clickY - o.y + p.y);
-        const p = Transformacao.rotatePoint(rotateOffsetX, rotateOffsetY, delta);
-        Graficos.setPosition(clickX + p.x, clickY + p.y);
+        Pointer.rotateMove(m);
     } else if (leftClicking) {
         Pointer.defaultMove(m);
     } else {
@@ -854,7 +852,7 @@ class Touch {
     }
 
     static step(e) {
-        if (!touching || e.touches.length != 2) return;
+        // if (!touching || e.touches.length != 2) return;
 
         if(Graficos.smoothTransform) {
             return;
@@ -932,7 +930,9 @@ function startCarry(e) {
     carryView(e);
         carrying = setInterval(() => {
         carryView(e);
-        Editor.SelectRegion.move(Editor.newCoord(e.clientX, e.clientY, "screen"), Keys.vertexSelect);
+        let here = Editor.newCoord(e.clientX, e.clientY, "screen");
+        Editor.SelectRegion.updateResize(here, e.shiftKey);
+        Editor.SelectRegion.move(here, Keys.vertexSelect);
     }, 1000 / 60);
 }
 
@@ -1059,7 +1059,6 @@ class Pointer {
                 } else {
                     const hit = Editor.Connections.findSplitAt(coord.peekNormal(), { avoidWalls: true });
                     if (hit) {
-                        // the start is just a coordinate: no real Reference is created until release
                         const phantom = new Editor.PhantomConnection(Editor.newCoord(hit.x, hit.y, "normal"));
                         phantom.startSplitHit = hit;
                         Holdable.set(hit.connection, "connectionSplitReference", false, phantom);
@@ -1072,7 +1071,7 @@ class Pointer {
                         Actions.openModal("buildName");
                     }
                 } else {
-                    grabBuildingTarget(clickX, clickY);   // no task: editing closed buildings
+                    grabBuildingTarget(clickX, clickY);
                 }
             } else if (editorMode == EditorModes.BANNER) {
                 let coord = Editor.newCoord(e.clientX, e.clientY, "screen");
@@ -1510,11 +1509,7 @@ class Pointer {
 
         zoom = nextZoom;
         Graficos.setZoom(zoom);
-        if (Holdable.phantomObject) {
-            Holdable.phantomObject.updateGraphics();
-        }
-        Editor.Route.redraw();
-        Editor.SelectRegion.updateBoxGraphics();
+        
         Graficos.updateMap();
     }
 }
@@ -1649,6 +1644,7 @@ class Actions {
         clearAllSplitPreviews();
 
         this.actionStackTraversal++;
+        Autosave.markDirty();
     }
 
     static redo() {
@@ -1658,13 +1654,13 @@ class Actions {
 
         this.actionStackTraversal--;
 
-        const targetIndex =
-            this.actionStack.length - 1 - this.actionStackTraversal;
+        const targetIndex = this.actionStack.length - 1 - this.actionStackTraversal;
         const action = this.actionStack[targetIndex];
 
         if (action && typeof action.forward === "function") {
             action.forward();
         }
+        Autosave.markDirty();
 
         if(Holdable.phantomObject && Holdable.type == "phantomVertex" && Holdable.phantomObject.reference?.coordinate) {
             Holdable.phantomObject.setEndPoint(Holdable.phantomObject.reference.coordinate);
@@ -1673,8 +1669,6 @@ class Actions {
     }
 
     static newAction(forward, backward, prune = () => {}, overflow = () => {}, sel = null) {
-        // sel = { before, after } (snapshots de SelectRegion): restaurados depois de cada replay,
-        // porque forceMode → applyMode zera a seleção
         if (sel) {
             const S = Editor.SelectRegion;
             const f = forward, b = backward;
@@ -1704,6 +1698,7 @@ class Actions {
                 droppedAction.overflow();
             }
         }
+        Autosave.markDirty();
     }
 
     static findActionIndex(target, compareBySource = false) {
@@ -3312,26 +3307,35 @@ async function saveMapState(formData) {
     const token = sessionStorage.getItem("authToken");
 
     try {
-        const req = {
+        const response = await fetch(url, {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${token}`,
                 "X-CSRFToken": getCookie("csrftoken"),
             },
             body: formData,
-        };
+        });
 
-        const response = await fetch(url, req);
-
-        if (response.status === 401) {
-            console.error("Usuário não autorizado.");
-            return;
-        }
-
+        if (response.status === 401) console.error("Usuário não autorizado.");
         return response;
     } catch (error) {
         console.error("Erro de rede:", error);
+        return null;
     }
+}
+
+async function persistMap() {
+    const { payload, files } = Editor.buildPayload();
+
+    const formData = new FormData();
+    formData.append("data", JSON.stringify(payload));
+
+    if (files && typeof files === "object") {
+        for (const [bannerId, file] of Object.entries(files)) {
+            if (file instanceof File) formData.append(`file_${bannerId}`, file, file.name);
+        }
+    }
+    return saveMapState(formData);   // Response | null
 }
 
 let isSaving = false;
@@ -3389,9 +3393,120 @@ function confirmBannerless(bannerless) {
     });
 }
 
+const AUTOSAVE_DEBOUNCE_MS = 1500;
+const AUTOSAVE_MAX_WAIT_MS = 10000;
+const AUTOSAVE_RETRY_MS = [2000, 5000, 15000, 30000];
+
+const Autosave = {
+    version: 0,          // increments on every change
+    savedVersion: 0,     // version that the server already has
+    timer: 0,
+    firstDirtyAt: 0,
+    failures: 0,
+    halted: false,       // 401: stop retrying
+    statusEl: null,
+
+    get dirty() { return this.version !== this.savedVersion; },
+
+    init() {
+        this.statusEl = document.getElementById("save-status");
+    },
+
+    markDirty() {
+        if (page !== "editor") return;
+        this.version++;
+        if (!this.firstDirtyAt) this.firstDirtyAt = performance.now();
+        this.setStatus("pending");
+        this.schedule(AUTOSAVE_DEBOUNCE_MS);
+    },
+
+    schedule(delay) {
+        if (this.halted) return;
+        clearTimeout(this.timer);
+        const waited = performance.now() - this.firstDirtyAt;
+        const wait = Math.min(delay, Math.max(0, AUTOSAVE_MAX_WAIT_MS - waited));
+        this.timer = setTimeout(() => this.run(), wait);
+    },
+
+    // can we save right now without interrupting the user?
+    safeNow() {
+        if (isSaving || Actions.confirmingBanner || Actions.switching) return false;
+        if (Modals.modal.dialog.open) return false;
+        if (gestureActive()) return false;
+
+        const draft = Task.task === "build" && Task.taskStep === 1 ? Task.data["buildObject"] : null;
+        if (draft && !draft.closed) return false;   // unfinished building
+        return true;
+    },
+
+    async run() {
+        clearTimeout(this.timer);
+        if (!this.dirty || this.halted) return;
+        if (!this.safeNow()) { this.schedule(1000); return; }
+
+        isSaving = true;
+        const target = this.version;
+        this.setStatus("saving");
+
+        let ok = false;
+        try {
+            // write the open banner's fields to the object, unless it's half-filled
+            // (partial banners are skipped silently; no modal in autosave)
+            if (bannerState().state !== "partial") Actions.saveBanner();
+
+            const response = await persistMap();
+            if (response?.status === 401) {
+                this.halted = true;
+                this.setStatus("error");
+                Toasts.toaster.show({ text: "Sessão expirada. Faça login de novo para continuar salvando.", category: "error" });
+                return;
+            }
+            ok = !!response?.ok;
+        } catch (err) {
+            console.error("Autosave falhou:", err);
+        } finally {
+            isSaving = false;
+        }
+
+        if (ok) {
+            this.savedVersion = target;   // changes made during the request stay dirty
+            this.failures = 0;
+            if (this.dirty) {
+                this.setStatus("pending");
+                this.schedule(AUTOSAVE_DEBOUNCE_MS);
+            } else {
+                this.firstDirtyAt = 0;
+                this.setStatus("saved");
+            }
+        } else {
+            const delay = AUTOSAVE_RETRY_MS[Math.min(this.failures++, AUTOSAVE_RETRY_MS.length - 1)];
+            this.setStatus("error");
+            this.schedule(delay);
+        }
+    },
+
+    // called by the manual save when it succeeds
+    markSaved(version) {
+        this.savedVersion = Math.max(this.savedVersion, version);
+        if (!this.dirty) { this.firstDirtyAt = 0; clearTimeout(this.timer); this.setStatus("saved"); }
+    },
+
+    setStatus(state) {
+        if (!this.statusEl) return;
+        this.statusEl.dataset.state = state;
+        this.statusEl.textContent = {
+            pending: "Alterações não salvas",
+            saving:  "Salvando…",
+            saved:   "Salvo",
+            error:   "Erro ao salvar. Tentando de novo…",
+        }[state] ?? "";
+    },
+};
+
 export async function save() {
     if (isSaving) return;
     isSaving = true;
+    const version = Autosave.version;     // what this save covers
 
     try {
         if (!(await Actions.ensureBannerValid())) return;
@@ -3425,24 +3540,14 @@ export async function save() {
 
         try {
             progress.completeTask("savedBanner");
-
-            const { payload, files } = Editor.buildPayload();
-            progress.completeTask("createdPayload");
-
-            const formData = new FormData();
-            formData.append("data", JSON.stringify(payload));
-
-            if (files && typeof files === "object") {
-                for (const [bannerId, file] of Object.entries(files)) {
-                    if (file instanceof File) {
-                        formData.append(`file_${bannerId}`, file, file.name);
-                    }
-                }
-            }
+            progress.completeTask("createdPayload");   // buildPayload now happens inside persistMap
             progress.completeTask("preparedFiles");
 
-            await saveMapState(formData);
+            const response = await persistMap();
+            if (!response?.ok) throw new Error(`HTTP ${response?.status ?? "rede"}`);
+
             progress.completeTask("uploaded");
+            Autosave.markSaved(version);
         } catch (error) {
             console.error("Erro ao salvar:", error);
             progress.fail("Não foi possível salvar o mapa.");
@@ -3497,6 +3602,7 @@ function updateImageDisplay(e) {
     const file = e.target.files[0];
     if (!file || !bannerHeld()) return;
     setDisplayImage(file);
+    Autosave.markDirty();
 }
 
 function createSearch(searchFn, onResults, delay = 300) {
@@ -4024,7 +4130,7 @@ export async function addListeners(map) {
 
         document.getElementById("banner-close").addEventListener("click", () => Actions.requestCloseBanner());
         for (const field of [bannerTitle, bannerDescription]) {
-            field.addEventListener("input", syncBannerStatus);
+            field.addEventListener("input", () => { syncBannerStatus(); Autosave.markDirty(); });
         }
         for (const tab of document.querySelectorAll("[data-tab]")) {
             tab.addEventListener("click", () => switchTab(tab.dataset.tab));
@@ -4063,6 +4169,7 @@ export async function addListeners(map) {
                 e.preventDefault();
 
                 bannerAliases.pop();
+                Autosave.markDirty();
                 renderBannerAliases();
             }
         });
@@ -4079,7 +4186,17 @@ export async function addListeners(map) {
         // Não deixa conteúdo parcialmente digitado para trás.
         bannerAliasInput.addEventListener("blur", () => {
             commitBannerAliasInput();
-        });     
+        });
+
+        Autosave.init();
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "hidden" && Autosave.dirty) Autosave.run();
+        });
+        window.addEventListener("pagehide", () => { if (Autosave.dirty) Autosave.run(); });
+        window.addEventListener("beforeunload", (e) => {
+            if (Autosave.dirty) { e.preventDefault(); e.returnValue = ""; }
+        });
 
         Editor.load();
     }
