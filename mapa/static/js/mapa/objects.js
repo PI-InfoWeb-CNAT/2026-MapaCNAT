@@ -1,16 +1,16 @@
 import * as Graficos from "./graficos.js";
-import * as Geometria from "./geometria.js";
+import * as Geometria from "./editor/geometria.js";
 import { SpatialHash } from "./spatial-hash.js";
 import { getShortestPath } from "./rota.js";
 
 export const BANNER_TABS = [
-    { id: "referencia",     label: "Referência",     placeholder: "Nome do ponto de referência", icon: "map-pin",        color: "#7ddd3d", compColor: "#9ef763", pinColor: "#4edd3b", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição", "prioridade"] },
-    { id: "construcao",     label: "Construção",     placeholder: "Nome da construção",          icon: "building",       color: "#e8730c", compColor: "#f7a259", pinColor: "#ffa33b", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição", "prioridade"] },
-    { id: "titulo",         label: "Título",         placeholder: "Nome",                        icon: "heading",        color: "#3d6fe0", compColor: "#84a8fd", pinColor: "#4677e0", uses: ["imagem", "título", "palavras-chave", "prioridade"],              requires: ["imagem", "título", "prioridade"] },
-    { id: "banheiro",       label: "Banheiro",       placeholder: "Nome de busca",               icon: "restroom",       color: "#e0489a", compColor: "#f588c2", pinColor: "#c757c1", uses: ["imagem", "título", "prioridade"],                                requires: ["imagem", "título", "prioridade"] },
-    { id: "laboratorio",    label: "Laboratório",    placeholder: "Nome do laboratório",         icon: "flask",          color: "#7c4ddb", compColor: "#b394f3", pinColor: "#cb58ee", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição", "prioridade"] },
-    { id: "estacionamento", label: "Estacionamento", placeholder: "Nome",                        icon: "square-parking", color: "#0e8fa3", compColor: "#5cbdcc", pinColor: "#755be9", uses: ["imagem", "título", "descrição", "prioridade"],                   requires: ["imagem", "título", "descrição", "prioridade"] },
-    { id: "refeitorio",     label: "Refeitório",     placeholder: "Nome do refeitório",          icon: "utensils",       color: "#c0da2d", compColor: "#def369", pinColor: "#e6d862", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição", "prioridade"] },
+    { id: "referencia",     label: "Referência",     placeholder: "Nome do ponto de referência", icon: "map-pin",        color: "#7ddd3d", compColor: "#9ef763", pinColor: "#4edd3b", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição"] },
+    { id: "construcao",     label: "Construção",     placeholder: "Nome da construção",          icon: "building",       color: "#e8730c", compColor: "#f7a259", pinColor: "#ffa33b", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição"] },
+    { id: "titulo",         label: "Título",         placeholder: "Nome",                        icon: "heading",        color: "#3d6fe0", compColor: "#84a8fd", pinColor: "#4677e0", uses: ["imagem", "título", "palavras-chave", "prioridade"],              requires: ["imagem", "título"] },
+    { id: "banheiro",       label: "Banheiro",       placeholder: "Nome de busca",               icon: "restroom",       color: "#e0489a", compColor: "#f588c2", pinColor: "#c757c1", uses: ["imagem", "título", "prioridade"],                                requires: ["imagem", "título"] },
+    { id: "laboratorio",    label: "Laboratório",    placeholder: "Nome do laboratório",         icon: "flask",          color: "#7c4ddb", compColor: "#b394f3", pinColor: "#cb58ee", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição"] },
+    { id: "estacionamento", label: "Estacionamento", placeholder: "Nome",                        icon: "square-parking", color: "#0e8fa3", compColor: "#5cbdcc", pinColor: "#755be9", uses: ["imagem", "título", "descrição", "prioridade"],                   requires: ["imagem", "título", "descrição"] },
+    { id: "refeitorio",     label: "Refeitório",     placeholder: "Nome do refeitório",          icon: "utensils",       color: "#c0da2d", compColor: "#def369", pinColor: "#e6d862", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição"] },
 ];
 
 export const Palette = Object.freeze({
@@ -3125,6 +3125,11 @@ export class Building {
 
     removeLastVertex() {
         this.vertices.pop();
+        this.updateGraphics();
+    }
+
+    removeVertex(index) {
+        this.vertices.splice(index, 1);
         this.updateGraphics();
     }
 

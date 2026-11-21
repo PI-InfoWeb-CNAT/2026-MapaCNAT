@@ -1,10 +1,7 @@
 import * as Transformacao from "./transformacao.js";
-import * as Editor from "./editor.js";
+import * as Editor from "./objects.js";
 import { SvgTileEngine } from "./map-tiling.js";
 
-/* ============================================================================
- *  Tunables
- * ========================================================================== */
 const RENDER_ON_DEMAND = true;
 const SETTLE_FRAMES = 20;
 const CULLING = true;

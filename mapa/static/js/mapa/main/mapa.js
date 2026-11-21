@@ -1,7 +1,7 @@
-import * as Graficos from "./graficos.js";
-import * as Interacao from "./interacao.js";
-import * as Localizacao from "./localizacao.js";
-import * as Editor from "./editor.js";
+import * as Graficos from "../graficos.js";
+import * as Interacao from "../interacao.js";
+import * as Localizacao from "../localizacao.js";
+import * as Editor from "../objects.js";
 
 fetch(config)
 .then(response => response.json())

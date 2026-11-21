@@ -1,5 +1,5 @@
-import * as Toasts from "./toasts.js";
-import * as Modals from "./modals.js";
+import * as Toasts from "../../toasts.js";
+import * as Modals from "../../modals.js";
 
 const PAGE_SIZE = 30;
 

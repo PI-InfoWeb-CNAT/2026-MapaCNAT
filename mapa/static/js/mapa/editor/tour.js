@@ -1,5 +1,5 @@
 import { DEMOS } from "./tour-demos.js";
-import * as Toasts from "./toasts.js";
+import * as Toasts from "../../toasts.js";
 
 const STORAGE_KEY = "mapa-editor-tour";
 const TOUR_VERSION = 1;   // aumente este número para mostrar o tour de novo a todos (ex.: ao lançar uma ferramenta nova)
@@ -116,7 +116,7 @@ const STEPS = [
         key: "Ctrl+S",
         icon: "floppy-disk",
         title: "Salvar agora",
-        text: `<p>Caso queira ter certeza de que salvou, utilize o botão.</p>`,
+        text: `<p>Caso queira ter certeza de que salvou, utilize o botão. Ele informará possíveis problemas como rotas desconectadas, construções sem banners, interiores ausentes, etc.</p>`,
     },
     {
         target: "#history-btn",

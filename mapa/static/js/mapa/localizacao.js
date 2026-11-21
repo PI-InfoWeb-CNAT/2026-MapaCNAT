@@ -1,6 +1,6 @@
 import { MatrixTransform } from "./transformacao.js";
 import * as Graficos from "./graficos.js";
-import * as Editor from "./editor.js";
+import * as Editor from "./objects.js";
 
 const pin = { fromX: 0, fromY: 0, toX: 0, toY: 0, start: 0, duration: 1 };
 let lastFixAt = 0;
@@ -483,8 +483,6 @@ async function onError(err) {
     console.warn(`ERROR(${err.code}): ${err.message}`);
     if (err.code !== err.PERMISSION_DENIED) return;
 
-    // With the Permissions API still saying "granted" this is OS-level or transient:
-    // keep the permission and let the watchdog retry with backoff.
     const state = await refreshPermission();
     if (permissionApiOk && state === "granted") return;
     setPermission("denied");

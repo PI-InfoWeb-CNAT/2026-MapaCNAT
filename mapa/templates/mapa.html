@@ -157,7 +157,7 @@
 
     {{ mapa.coordinates|json_script:"coordinates-data" }}
 
-    <script src="{% static 'js/coordinate-estimation.js' %}"></script>
+    <script src="{% static 'js/mapa/coordinate-estimation.js' %}"></script>
     <script>
 
         const config = "{% static 'json/config.json' %}";
@@ -194,6 +194,6 @@
     </script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
     
-    <script type="module" src="{% static 'js/mapa.js' %}"></script>
+    <script type="module" src="{% static 'js/mapa/main/mapa.js' %}"></script>
 </main>
 {% endblock %}
