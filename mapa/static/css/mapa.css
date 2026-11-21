@@ -2041,3 +2041,457 @@ header {
 .banner-image-upload {
     min-height: 140px;
 }
+
+/* ==========================================================================
+   Tour guiado
+   ========================================================================== */
+
+#help-btn {
+    margin-right: 8px;
+    font-size: 1.25rem;
+}
+
+.tour-root {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;                       /* acima de topbar, histórico e banner */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--duration-base) ease, visibility var(--duration-base);
+}
+
+.tour-root.is-open {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* captura cliques e toques: o editor fica intocável durante o tour */
+.tour-blocker {
+    position: absolute;
+    inset: 0;
+    touch-action: none;
+}
+
+/* "holofote": o box-shadow gigante escurece todo o resto da tela */
+.tour-spot {
+    position: fixed;
+    border-radius: 14px;
+    pointer-events: none;
+    box-shadow: 0 0 0 3px var(--white), 0 0 0 200vmax rgba(8, 16, 10, 0.7);
+    transition:
+        left 0.3s ease, top 0.3s ease,
+        width 0.3s ease, height 0.3s ease,
+        box-shadow 0.3s ease;
+}
+
+.tour-spot.is-empty {
+    box-shadow: 0 0 0 200vmax rgba(8, 16, 10, 0.7);
+}
+
+.tour-spot::after {                       /* anel que pulsa chamando atenção */
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border: 2px solid var(--white);
+    border-radius: inherit;
+    opacity: 0;
+    animation: tour-pulse 1.8s ease-out infinite;
+}
+
+.tour-spot.is-empty::after {
+    display: none;
+}
+
+@keyframes tour-pulse {
+    0%   { opacity: 0.9; transform: scale(1); }
+    100% { opacity: 0;   transform: scale(1.18); }
+}
+
+.tour-root.no-anim .tour-spot,
+.tour-root.no-anim .tour-card {
+    transition: none;
+}
+
+/* ---------- cartão ---------- */
+
+.tour-card {
+    position: fixed;
+    width: min(380px, calc(100vw - 24px));
+    max-height: calc(100vh - 24px);
+    padding: 20px;
+    overflow-y: auto;
+    border-radius: var(--radius-md);
+    background: var(--white);
+    box-shadow: var(--shadow-lg);
+    outline: none;
+    transition: left 0.3s ease, top 0.3s ease;
+}
+
+.tour-card [hidden] {
+    display: none !important;
+}
+
+.tour-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--gray-500);
+    cursor: pointer;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.tour-close:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.tour-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-right: 28px;
+}
+
+.tour-icon-wrap {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-sm);
+    background: var(--green-tint);
+    color: var(--dark-green-main);
+}
+
+.tour-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--gray-900);
+}
+
+.tour-key {
+    margin-top: 10px;
+    color: var(--gray-500);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.tour-text {
+    margin-top: 12px;
+    color: var(--gray-700);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
+.tour-text p {
+    margin: 0 0 10px;
+}
+
+.tour-text p:last-child {
+    margin-bottom: 0;
+}
+
+.tour-text ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.tour-text li + li {
+    margin-top: 6px;
+}
+
+.tour-card kbd {
+    padding: 1px 6px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-50);
+    color: var(--gray-900);
+    font: 600 0.78rem monospace;
+    white-space: nowrap;
+}
+
+.tour-progress {
+    height: 4px;
+    margin-top: 18px;
+    overflow: hidden;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+}
+
+.tour-progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--dark-green-main);
+    transition: width 0.3s ease;
+}
+
+.tour-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.tour-count {
+    color: var(--gray-500);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.tour-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.tour-btn {
+    padding: 8px 14px;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-pill);
+    background: var(--white);
+    color: var(--gray-900);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.tour-btn:hover {
+    background: var(--gray-50);
+}
+
+.tour-btn:focus-visible,
+.tour-close:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+.tour-btn--ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--gray-500);
+}
+
+.tour-btn--primary {
+    border-color: var(--dark-green-main);
+    background: var(--dark-green-main);
+    color: var(--white);
+}
+
+.tour-btn--primary:hover {
+    border-color: var(--dark-green-hover);
+    background: var(--dark-green-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tour-spot,
+    .tour-card,
+    .tour-progress-fill {
+        transition: none;
+    }
+    .tour-spot::after {
+        animation: none;
+    }
+}
+
+/* ==========================================================================
+   Tour: demonstrações animadas
+   ========================================================================== */
+
+.tour-demo {
+    --dur: 8s;
+    margin-top: 14px;
+    overflow: hidden;
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+}
+
+.tour-demo svg { display: block; width: 100%; height: auto; }
+
+.tour-text ol { margin: 0 0 10px; padding-left: 18px; }
+.tour-text ol li + li { margin-top: 6px; }
+
+.td-caps {
+    position: relative;
+    height: 34px;
+    border-top: 1px solid var(--gray-100);
+    background: var(--white);
+}
+
+.td-caps span {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    color: var(--gray-700);
+    font-size: 0.8rem;
+    font-weight: 600;
+    opacity: 0;
+    animation: var(--dur) infinite;
+    animation-name: none;   /* o nome vem inline */
+}
+
+/* ---------- peças ---------- */
+.td-cursor { animation-timing-function: ease-in-out; }
+.td-line   { stroke: #e8730c; stroke-width: 4; stroke-linecap: round; }
+.td-poly   { fill: #fcd5a8; fill-opacity: .7; }
+.td-dot    { fill: #fff; stroke: #e8730c; stroke-width: 3; }
+.td-ring   { fill: none; stroke: #16a34a; stroke-width: 2.5; }
+
+.cn-line { fill: none; stroke: #4cc36a; stroke-width: 5; stroke-dasharray: 1; }
+.cn-dot  { fill: #4cc36a; stroke: #1a7f37; stroke-width: 3; }
+
+.rf-dot   { fill: #4cc36a; stroke: #1a7f37; stroke-width: 3; }
+.rf-label { fill: #c2410c; font: 700 11px sans-serif; }
+
+.bd-ripple { fill: none; stroke: #1a7f37; stroke-width: 2; transform-box: fill-box; transform-origin: center; opacity: 0; }
+.bd-sel    { fill: none; stroke: #7c4ddb; stroke-width: 2; }
+.bd-title, .bd-d1, .bd-d2, .bd-d3 { fill: #374151; transform-box: fill-box; transform-origin: left center; }
+.bd-d1, .bd-d2, .bd-d3 { fill: #9ca3af; }
+
+/* ---------- animações (visíveis por padrão: sem movimento, a cena aparece pronta) ---------- */
+@media (prefers-reduced-motion: no-preference) {
+    .td-cursor, .td-line, .td-poly, .td-dot, .td-ring,
+    .cn-line, .cn-dot, .rf-move, .rf-dot, .rf-label,
+    .bd-ripple, .bd-pin, .bd-panel, .bd-sel, .bd-title, .bd-d1, .bd-d2, .bd-d3 {
+        animation-duration: var(--dur);
+        animation-iteration-count: infinite;
+    }
+    .td-caps span { animation-duration: var(--dur); animation-iteration-count: infinite; }
+
+    .td-k-a { animation-name: td-a; }
+    .td-k-b { animation-name: td-b; }
+    .td-k-c { animation-name: td-c; }
+    .td-k-d { animation-name: td-d; }
+    .td-k-e { animation-name: td-e; }
+    .td-k-ring { animation-name: td-ring; }
+    .td-k-cur { animation-name: td-cur; }
+
+    .cn-l1  { animation-name: cn-l1; }
+    .cn-l2  { animation-name: cn-l2; }
+    .cn-cur { animation-name: cn-cur; }
+
+    .rf-move  { animation-name: rf-move; animation-timing-function: ease-in-out; }
+    .rf-dot   { animation-name: rf-fill; }
+    .rf-label { animation-name: rf-label; }
+
+    .bd-cur    { animation-name: bd-cur; }
+    .bd-ripple { animation-name: bd-ripple; }
+    .bd-panel  { animation-name: bd-panel; }
+    .bd-sel    { animation-name: bd-sel; }
+    .bd-title  { animation-name: bd-title; }
+    .bd-d1     { animation-name: bd-d1; }
+    .bd-d2     { animation-name: bd-d2; }
+    .bd-d3     { animation-name: bd-d3; }
+    .bd-pin    { animation-name: bd-pin; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .td-cursor { display: none; }
+    .bd-ripple, .td-ring { display: none; }
+    .td-caps { height: auto; }
+    .td-caps span { position: static; padding: 6px 12px; opacity: 1; }
+}
+
+/* construção */
+@keyframes td-a { 0%,11%{opacity:0} 13%,92%{opacity:1} 96%,100%{opacity:0} }
+@keyframes td-b { 0%,26%{opacity:0} 28%,92%{opacity:1} 96%,100%{opacity:0} }
+@keyframes td-c { 0%,41%{opacity:0} 43%,92%{opacity:1} 96%,100%{opacity:0} }
+@keyframes td-d { 0%,56%{opacity:0} 58%,92%{opacity:1} 96%,100%{opacity:0} }
+@keyframes td-e { 0%,74%{opacity:0} 76%,92%{opacity:1} 96%,100%{opacity:0} }
+@keyframes td-ring { 0%,58%{opacity:0} 60%,73%{opacity:1} 75%,100%{opacity:0} }
+@keyframes td-cur {
+    0%   { opacity: 0; transform: translate(20px, 145px); }
+    4%   { opacity: 1; }
+    10%  { transform: translate(90px, 115px); }
+    25%  { transform: translate(90px, 50px); }
+    40%  { transform: translate(230px, 50px); }
+    55%  { transform: translate(230px, 115px); }
+    72%  { transform: translate(90px, 115px); }
+    92%  { opacity: 1; transform: translate(90px, 115px); }
+    100% { opacity: 0; transform: translate(20px, 145px); }
+}
+
+/* conexões */
+@keyframes cn-l1 { 0%,12%{stroke-dashoffset:1} 30%,92%{stroke-dashoffset:0} 96%,100%{stroke-dashoffset:1} }
+@keyframes cn-l2 { 0%,30%{stroke-dashoffset:1} 50%,92%{stroke-dashoffset:0} 96%,100%{stroke-dashoffset:1} }
+@keyframes cn-cur {
+    0%   { transform: translate(25px, 145px); }
+    8%   { transform: translate(60px, 110px); }
+    12%  { transform: translate(60px, 110px); }
+    30%  { transform: translate(140px, 50px); }
+    50%  { transform: translate(250px, 100px); }
+    92%  { transform: translate(250px, 100px); }
+    100% { transform: translate(25px, 145px); }
+}
+
+/* referência */
+@keyframes rf-move {
+    0%,10% { transform: translate(50px, 135px); }
+    45%,92% { transform: translate(170px, 100px); }
+    100%   { transform: translate(50px, 135px); }
+}
+@keyframes rf-fill {
+    0%,45%  { fill: #4cc36a; }
+    50%,92% { fill: #e8730c; }
+    96%,100%{ fill: #4cc36a; }
+}
+@keyframes rf-label { 0%,48%{opacity:0} 52%,92%{opacity:1} 96%,100%{opacity:0} }
+
+/* banner */
+@keyframes bd-cur {
+    0%   { transform: translate(30px, 150px); }
+    15%  { transform: translate(80px, 110px); }
+    22%  { transform: translate(80px, 110px); }
+    38%  { transform: translate(266px, 26px); }
+    50%  { transform: translate(266px, 26px); }
+    58%  { transform: translate(200px, 88px); }
+    75%  { transform: translate(200px, 106px); }
+    92%  { transform: translate(200px, 106px); }
+    100% { transform: translate(30px, 150px); }
+}
+@keyframes bd-ripple {
+    0%,16%  { opacity: 0; transform: scale(1); }
+    18%     { opacity: .8; transform: scale(1); }
+    25%,100%{ opacity: 0; transform: scale(2.6); }
+}
+@keyframes bd-panel {
+    0%,24%   { opacity: 0; transform: translateX(24px); }
+    29%,92%  { opacity: 1; transform: none; }
+    96%,100% { opacity: 0; transform: translateX(24px); }
+}
+@keyframes bd-sel { 0%,34%{transform:translateX(194px)} 42%,100%{transform:translateX(266px)} }
+@keyframes bd-title { 0%,51%{transform:scaleX(0)} 62%,92%{transform:scaleX(1)} 96%,100%{transform:scaleX(0)} }
+@keyframes bd-d1 { 0%,58%{transform:scaleX(0)} 66%,92%{transform:scaleX(1)} 96%,100%{transform:scaleX(0)} }
+@keyframes bd-d2 { 0%,63%{transform:scaleX(0)} 71%,92%{transform:scaleX(1)} 96%,100%{transform:scaleX(0)} }
+@keyframes bd-d3 { 0%,68%{transform:scaleX(0)} 76%,92%{transform:scaleX(1)} 96%,100%{transform:scaleX(0)} }
+@keyframes bd-pin {
+    0%,79%   { opacity: 0; transform: translateY(-14px); }
+    83%,92%  { opacity: 1; transform: translateY(0); }
+    96%,100% { opacity: 0; transform: translateY(0); }
+}
+
+/* legendas: janelas do loop */
+@keyframes td-wa { 0%,67%{opacity:1} 68%,100%{opacity:0} }
+@keyframes td-wb { 0%,67%{opacity:0} 68%,100%{opacity:1} }
+@keyframes td-h1 { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+@keyframes td-h2 { 0%,49%{opacity:0} 50%,100%{opacity:1} }
+@keyframes td-q1 { 0%,24%{opacity:1} 25%,100%{opacity:0} }
+@keyframes td-q2 { 0%,24%{opacity:0} 25%,49%{opacity:1} 50%,100%{opacity:0} }
+@keyframes td-q3 { 0%,49%{opacity:0} 50%,74%{opacity:1} 75%,100%{opacity:0} }
+@keyframes td-q4 { 0%,74%{opacity:0} 75%,100%{opacity:1} }

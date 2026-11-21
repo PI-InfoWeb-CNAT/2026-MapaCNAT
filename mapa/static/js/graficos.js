@@ -478,7 +478,13 @@ export function createReference() {
     referenceContainer.addChild(point);
 
     const referenceImg = PIXI.Sprite.from(entranceTexture);
+    referenceImg.anchor.set(0.5, 0.5);
     const initialSize = referenceImg.width;
+    referenceImg.scale.set(15 / initialSize / zoom);
+    referenceImg.visible = false;
+    referenceImg.cullable = CULLING;
+    referenceContainer.addChild(referenceImg);
+
     const icon = new PIXI.Sprite(PIXI.Texture.EMPTY);
     icon.anchor.set(0.5, 0.5);
     icon.visible = false;
@@ -491,7 +497,7 @@ export function createReference() {
 }
 
 export function renderReference(graphics, data) {
-    graphics._last = data;   // lets the icon loader re-render once the texture is ready
+    graphics._last = data;
     const pos = posOf(data.coordinate);
     const size = data.size;
     const r = Math.max(1, Math.round(size));
@@ -506,12 +512,11 @@ export function renderReference(graphics, data) {
     d.size = size;
     d.r = r;
 
-    // ícone: muda dinamicamente (nome novo, ou null para remover)
     const iconName = data.bannerMode || null;
-    const iconTex = iconName ? iconTexture(iconName) : null;   // null = ainda carregando / inválido
+    const iconTex = iconName ? iconTexture(iconName) : null;
     d.iconName = iconName;
     d.hasIcon = !!iconTex;
-    d.entrance = !!data.isEntrance && !d.hasIcon;               // ícone esconde a entrada
+    d.entrance = !!data.isEntrance && !d.hasIcon;
 
     const icon = graphics.icon;
     if (d.hasIcon) {

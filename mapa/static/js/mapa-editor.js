@@ -1,6 +1,7 @@
 import * as Graficos from "./graficos.js";
 import * as Interacao from "./interacao.js";
 import * as Editor from "./editor.js";
+import * as Tour from './tour.js';
 import * as Versions from './versions.js';
 
 fetch(config)

@@ -4,6 +4,7 @@ import * as Editor from "./editor.js";
 import * as Toasts from './toasts.js';
 import * as Modals from './modals.js';
 import * as Localizacao from './localizacao.js';
+import * as Tour from './tour.js';
 import * as Versions from './versions.js';
 
 let mapObj;
@@ -4258,6 +4259,13 @@ export async function addListeners(map) {
         window.addEventListener("pagehide", () => { if (Autosave.dirty) Autosave.run(); });
         window.addEventListener("beforeunload", (e) => {
             if (Autosave.dirty) { e.preventDefault(); e.returnValue = ""; }
+        });
+
+        Tour.init({ autoStart: Versions.state.viewing === null });
+
+        document.getElementById("help-btn").addEventListener("click", () => {
+            Versions.close();   // o painel de histórico não pode cobrir os itens do tour
+            Tour.start();
         });
 
         Editor.load();
