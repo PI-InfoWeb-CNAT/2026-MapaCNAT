@@ -166,6 +166,38 @@
                             <span class="banner-optional">Opcional</span>
                         </div>
                         <textarea class="editable-description" id="place-description" placeholder="Escreva uma descrição..."></textarea>
+                        <hr class="banner-divider">
+                        <div class="priority-section" id="priority-section">
+                            <div class="banner-alias-heading" data-state="prioridade">
+                                <label class="banner-section-title" for="place-priority">
+                                    Prioridade de exibição
+                                </label>
+                                <span class="banner-optional">Opcional</span>
+                            </div>
+                            
+                            <p class="priority-hint">
+                                Define até que distância o marcador continua aparecendo.
+                                Prioridades maiores permanecem visíveis mesmo com o mapa afastado;
+                                prioridades menores aparecem apenas quando você aproxima o zoom.
+                            </p>
+
+                            <div class="priority-control">
+                                <input
+                                    type="range"
+                                    id="place-priority"
+                                    min="1"
+                                    max="5"
+                                    step="1"
+                                    value="3"
+                                    aria-label="Prioridade de exibição"
+                                >
+
+                                <div class="priority-labels">
+                                    <span>Próximo</span>
+                                    <span>Distante</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </aside>

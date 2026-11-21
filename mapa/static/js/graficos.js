@@ -5,13 +5,13 @@ import { SvgTileEngine } from "./map-tiling.js";
 /* ============================================================================
  *  Tunables
  * ========================================================================== */
-const RENDER_ON_DEMAND = true;   // true: só renderiza quando algo mudou (0% CPU parado)
-const SETTLE_FRAMES = 20;        // frames extras renderizados depois do último pedido (cobre texturas assíncronas)
-const CULLING = true;            // pula objetos fora da tela (setar false se algo "sumir")
-const MAX_RESOLUTION = 2;        // limita devicePixelRatio (antialias em 3x/4x é caro)
-const ZOOM_TOLERANCE = 0.15;     // polígonos só são re-traçados se o zoom mudou mais que isso...
-const ZOOM_SETTLE_MS = 120;      // ...ou quando o zoom parar por este tempo
-const DOT_STROKE = 4;            // espessura (px de tela) da borda dos pontos
+const RENDER_ON_DEMAND = true;
+const SETTLE_FRAMES = 20;
+const CULLING = true;
+const MAX_RESOLUTION = 2;
+const ZOOM_TOLERANCE = 0.15;
+const ZOOM_SETTLE_MS = 120;
+const DOT_STROKE = 4;
 
 let tiles;
 
@@ -1658,24 +1658,57 @@ export function setPosition(x, y) {
     }
 }
 
-function Zoom(z) {
+const PIN_PRIORITY_MIN = 1;
+const PIN_PRIORITY_MAX = 5;
+const PIN_REVEAL_END = 0.75;     // how far along the zoom range the LAST priority appears (0..1)
+const PIN_PRIORITY_DEFAULT = 3;  // used when a banner has no valid priority
+
+/** 0 at minZoom, 1 at maxZoom, linear in wheel clicks (log scale). */
+function zoomProgress() {
+    if (!(minZoom > 0) || !(maxZoom > minZoom)) return 1;
+    const t = Math.log(zoom / minZoom) / Math.log(maxZoom / minZoom);
+    return Math.min(Math.max(t, 0), 1);
+}
+
+/** Priority 5 is always visible; priority 1 appears at PIN_REVEAL_END; the rest are evenly spaced. */
+export function pinVisible(priority) {
+    const raw = Number(priority);
+    const p = Math.min(Math.max(Number.isFinite(raw) ? raw : PIN_PRIORITY_DEFAULT,
+                                PIN_PRIORITY_MIN), PIN_PRIORITY_MAX);
+    const threshold = ((PIN_PRIORITY_MAX - p) / (PIN_PRIORITY_MAX - PIN_PRIORITY_MIN)) * PIN_REVEAL_END;
+    return zoomProgress() >= threshold;
+}
+
+function syncPinVisibility(obj) {
+    const show = pinVisible(obj.banner?.priority);
+    if (obj.visible !== show) {      // only redraw when it actually flips
+        obj.visible = show;
+        obj.updateGraphics();
+    }
+}
+
+export function Zoom(z) {
     zoom = z;
     mapContainer.scale.set(zoom);
 
-    // tudo abaixo é só atribuição de número: nada de tesselação
     for (const child of pinContainer.children) {
         child.scale.set((child._size ?? 1) / zoom);
     }
     for (const child of textContainer.children) {
         child.scale.set(1 / zoom / 2);
     }
+    if (page == "main") {
+        const refs = Editor.Referencer.references;
+        const builds = Editor.Buildings.buildings;
+        for (const id in refs) syncPinVisibility(refs[id]);
+        for (const id in builds) syncPinVisibility(builds[id]);
+    }
     rescaleDots();
     rescaleConns();
-    refreshZoomGfx();       // polígonos/rota: só os que ficaram visivelmente errados
-    scheduleSettle();       // e todos, quando o zoom parar
+    refreshZoomGfx();
+    scheduleSettle();
 
     zoomPass = true;
-    // alças do meio das arestas dependem do zoom (somem em arestas curtas)
     if (Editor.Buildings.midHandles) {
         const buildings = Editor.Buildings.buildings;
         for (const id in buildings) buildings[id].updateGraphics();

@@ -82,6 +82,7 @@ let imageWrapper;
 let imageLabel;
 let bannerTitle;
 let bannerDescription;
+let bannerPriority;
 let bannerAliasInput;
 let bannerAliasList;
 let bannerAliases = [];
@@ -523,14 +524,16 @@ function syncBannerTabs() {
     for (const btn of bannerTabsEl.children) {
         const id = btn.dataset.bannerTab;
         const active = id === bannerTabId;
-        const BuildingExclusion = id != "construcao";
+        const BuildingExclusion = ["construcao", "laboratorio", "refeitorio"].indexOf(id) == -1;
         const ReferenceExclusion = ["referencia", "titulo", "banheiro", "laboratorio", "estacionamento", "refeitorio"].indexOf(id) == -1;
         let allowedTab;
+
         if (objType == "building") {
             allowedTab = BuildingExclusion;
         } else {
             allowedTab = ReferenceExclusion;
         }
+
         btn.classList.toggle("hidden", allowedTab);
         let bannerTabIdx = Editor.BANNER_TABS.map((element) => element.id).indexOf(bannerTabId);
         imageWrapper.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("imagem") === -1);
@@ -538,7 +541,9 @@ function syncBannerTabs() {
         bannerAliasField.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("palavras-chave") === -1);
         bannerAliasField.nextElementSibling.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("palavras-chave") === -1);
         bannerDescription.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("descrição") === -1);
+        bannerDescription.nextElementSibling.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("descrição") === -1);
         bannerTitle.placeholder = Editor.BANNER_TABS[bannerTabIdx].placeholder;
+        bannerPriority.classList.toggle("hidden", Editor.BANNER_TABS[bannerTabIdx].uses.indexOf("prioridade") === -1);
 
         const headings = document.querySelectorAll('.banner-alias-heading');
         headings.forEach((el) => {
@@ -556,10 +561,10 @@ function syncBannerTabs() {
 
 async function switchBannerTab(id) {
     if (id === bannerTabId || !bannerHeld()) return;
-
-    Actions.saveBanner();                               // writes the UI into the current tab
     bannerTabId = id;
 
+    Actions.saveBanner();                               // writes the UI into the current tab
+    
     syncBannerStatus();
 }
 
@@ -573,6 +578,7 @@ function bannerState() {
         "imagem": !!Holdable.initialPos?.img,
         "título": !!bannerTitle.value.trim(),
         "descrição": !!bannerDescription.value.trim(),
+        "prioridade": !!bannerPriority.value.trim(),
     };
 
     const required = currentTab.requires || [];
@@ -2614,6 +2620,7 @@ class Actions {
         const image = Holdable.initialPos?.img || false;
         const title = bannerTitle.value.trim();
         const description = bannerDescription.value.trim();
+        const priority = bannerPriority.value.trim();
         const titleAlias = [...bannerAliases];
 
         banner.detailed = !!(image || title || description);
@@ -2622,6 +2629,7 @@ class Actions {
         banner.description = description;
         banner.titleAlias = titleAlias;
         banner.mode = bannerTabId;
+        banner.priority = priority;
         Holdable.object.updateGraphics?.();
     }
 
@@ -2641,6 +2649,9 @@ class Actions {
             bannerTitle.value = obj.name;
         }
         bannerDescription.value = b.description || "";
+        if(bannerPriority) {
+            bannerPriority.value = b.priority || 1;
+        }
 
         setBannerAliases(b.titleAlias || []);
 
@@ -3475,8 +3486,6 @@ const Autosave = {
 
         let ok = false;
         try {
-            // write the open banner's fields to the object, unless it's half-filled
-            // (partial banners are skipped silently; no modal in autosave)
             if (bannerState().state !== "partial") Actions.saveBanner();
 
             const response = await persistMap();
@@ -4132,6 +4141,7 @@ export async function addListeners(map) {
         imageLabel = document.getElementById("image-upload-label");
         bannerTitle = document.getElementById("place-name");
         bannerDescription = document.getElementById("place-description");
+        bannerPriority = document.getElementById("place-priority");
         bannerAliasInput = document.getElementById("banner-alias-input");
         bannerAliasField = document.getElementById("banner-alias-field");
         bannerAliasList = document.getElementById("banner-alias-list");
@@ -4160,7 +4170,7 @@ export async function addListeners(map) {
         };
 
         document.getElementById("banner-close").addEventListener("click", () => Actions.requestCloseBanner());
-        for (const field of [bannerTitle, bannerDescription]) {
+        for (const field of [bannerTitle, bannerDescription, bannerPriority]) {
             field.addEventListener("input", () => { syncBannerStatus(); Autosave.markDirty(); });
         }
         for (const tab of document.querySelectorAll("[data-tab]")) {

@@ -20,6 +20,7 @@ import mapa.models.versioning as versioning
 @login_required
 @staff_member_required
 def mapa_editor(request: Any, mapa_id):
+    print("a")
     if not request.user.is_staff:
         template = loader.get_template('404.html')
         return HttpResponse(template.render(), status=404)
@@ -28,6 +29,7 @@ def mapa_editor(request: Any, mapa_id):
     context = {
         "mapa": mapa
     }
+
     template = loader.get_template('mapa-editor.html')
     return HttpResponse(template.render(context=context, request=request))
 
@@ -78,6 +80,7 @@ def apply_map_data(mapa, data, get_image):
             description = banner_info.get("description", "")
             name_alias = banner_info.get("alias", [])
             mode = banner_info.get("mode", "")
+            priority = banner_info.get("priority", 1)
             image = get_image(banner_id, banner_info)
 
             if image is None and not title and not description:
@@ -109,6 +112,7 @@ def apply_map_data(mapa, data, get_image):
                 descricao=description,
                 name_alias=name_alias,
                 mode=mode,
+                priority=priority,
                 imagem_blob=image_bytes,
                 imagem_mime_type=mime_type,
                 imagem_sha256=sha,
@@ -148,7 +152,7 @@ def mapa_editor_data(request: Any, mapa_id):
     try:
         raw_data = request.POST.get('data')
         MAX_PAYLOAD_SIZE = 1024 * 1024 * 5
-
+        
         if raw_data and len(raw_data) > MAX_PAYLOAD_SIZE:
             raise ValueError("Payload too large")
         if raw_data:
@@ -275,6 +279,7 @@ def export_db_to_json(mapa, request=None, image_url=None):
             "description": banner.descricao or "",
             "alias": banner.name_alias or [],
             "mode": banner.mode or "",
+            "priority": banner.priority or 1,
         }
 
         if banner.construcao_id is not None:

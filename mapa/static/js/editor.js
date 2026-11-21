@@ -4,13 +4,13 @@ import { SpatialHash } from "./spatial-hash.js";
 import { getShortestPath } from "./rota.js";
 
 export const BANNER_TABS = [
-    { id: "referencia",     label: "Referência",     placeholder: "Nome do ponto de referência", icon: "map-pin",        color: "#7ddd3d", compColor: "#9ef763", pinColor: "#4edd3b", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
-    { id: "construcao",     label: "Construção",     placeholder: "Nome da construção",          icon: "building",       color: "#e8730c", compColor: "#f7a259", pinColor: "#ffa33b", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
-    { id: "titulo",         label: "Título",         placeholder: "Nome",                        icon: "heading",        color: "#3d6fe0", compColor: "#84a8fd", pinColor: "#4677e0", uses: ["imagem", "título", "palavras-chave"],              requires: ["imagem", "título"] },
-    { id: "banheiro",       label: "Banheiro",       placeholder: "Nome de busca",               icon: "restroom",       color: "#e0489a", compColor: "#f588c2", pinColor: "#c757c1", uses: ["imagem", "título"],                                requires: ["imagem", "título"] },
-    { id: "laboratorio",    label: "Laboratório",    placeholder: "Nome do laboratório",         icon: "flask",          color: "#7c4ddb", compColor: "#b394f3", pinColor: "#cb58ee", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
-    { id: "estacionamento", label: "Estacionamento", placeholder: "Nome",                        icon: "square-parking", color: "#0e8fa3", compColor: "#5cbdcc", pinColor: "#755be9", uses: ["imagem", "título", "descrição"],                   requires: ["imagem", "título", "descrição"] },
-    { id: "refeitorio",     label: "Refeitório",     placeholder: "Nome do refeitório",          icon: "utensils",       color: "#c0da2d", compColor: "#def369", pinColor: "#e6d862", uses: ["imagem", "título", "palavras-chave", "descrição"], requires: ["imagem", "título", "descrição"] },
+    { id: "referencia",     label: "Referência",     placeholder: "Nome do ponto de referência", icon: "map-pin",        color: "#7ddd3d", compColor: "#9ef763", pinColor: "#4edd3b", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição", "prioridade"] },
+    { id: "construcao",     label: "Construção",     placeholder: "Nome da construção",          icon: "building",       color: "#e8730c", compColor: "#f7a259", pinColor: "#ffa33b", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição", "prioridade"] },
+    { id: "titulo",         label: "Título",         placeholder: "Nome",                        icon: "heading",        color: "#3d6fe0", compColor: "#84a8fd", pinColor: "#4677e0", uses: ["imagem", "título", "palavras-chave", "prioridade"],              requires: ["imagem", "título", "prioridade"] },
+    { id: "banheiro",       label: "Banheiro",       placeholder: "Nome de busca",               icon: "restroom",       color: "#e0489a", compColor: "#f588c2", pinColor: "#c757c1", uses: ["imagem", "título", "prioridade"],                                requires: ["imagem", "título", "prioridade"] },
+    { id: "laboratorio",    label: "Laboratório",    placeholder: "Nome do laboratório",         icon: "flask",          color: "#7c4ddb", compColor: "#b394f3", pinColor: "#cb58ee", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição", "prioridade"] },
+    { id: "estacionamento", label: "Estacionamento", placeholder: "Nome",                        icon: "square-parking", color: "#0e8fa3", compColor: "#5cbdcc", pinColor: "#755be9", uses: ["imagem", "título", "descrição", "prioridade"],                   requires: ["imagem", "título", "descrição", "prioridade"] },
+    { id: "refeitorio",     label: "Refeitório",     placeholder: "Nome do refeitório",          icon: "utensils",       color: "#c0da2d", compColor: "#def369", pinColor: "#e6d862", uses: ["imagem", "título", "palavras-chave", "descrição", "prioridade"], requires: ["imagem", "título", "descrição", "prioridade"] },
 ];
 
 export const Palette = Object.freeze({
@@ -141,6 +141,7 @@ export function buildPayload() {
             title: banner.title,
             description: banner.description,
             alias: banner.titleAlias,
+            priority: banner.priority,
             mode: banner.mode
         };
         if (hasFile) files[id] = banner.image;
@@ -279,6 +280,7 @@ export async function load() {
         if (!response.ok) throw new Error('Erro de rede');
         const data = await response.json();
         let refMap = {};
+        let buildMap = {};
         
         if (data.buildings) {
             for (const key of Object.keys(data.buildings)) {
@@ -287,6 +289,7 @@ export async function load() {
                 let buildCoord = newCoord(build.pin.x, build.pin.y, "normal");
                 
                 let building = new Building(buildCoord, build.name);
+                buildMap[key] = building;
                 let bannerKey = build.banner;
                 let banner = data.banners[bannerKey];
                 if (banner) {
@@ -303,6 +306,9 @@ export async function load() {
                     }
                     if (banner.mode) {
                         building.banner.mode = banner.mode;
+                    }
+                    if (banner.priority) {
+                        building.banner.priority = banner.priority;
                     }
                     if (banner.image) {
                         const imageFile = banner.image 
@@ -347,6 +353,9 @@ export async function load() {
                 if (banner.mode) {
                     refObject.banner.mode = banner.mode;
                 }
+                if (banner.priority) {
+                    refObject.banner.priority = banner.priority;
+                }
                 if (banner.image) {
                     const imageFile = banner.image 
                     ? await urlToFile(banner.image) 
@@ -368,6 +377,11 @@ export async function load() {
         for(let ref of Object.values(refMap)) {
             ref.updateGraphics();
         }
+        for(let build of Object.values(buildMap)) {
+            build.rename(build.name);
+        }
+        Graficos.Zoom(Graficos.zoom);
+        Buildings.notePin(this);
 
     } catch (error) {
         console.error('Fetch error:', error);
@@ -2634,7 +2648,6 @@ export class Buildings {
         return moved;
     }
 
-    
     static getOverlappingPins(coordinate, all) {
         const pos = coordinate.peekNormal();
         const R = (this.maxPinReach * PIN_REACH_MARGIN) / Graficos.zoom;
@@ -2664,6 +2677,7 @@ export class Reference {
         this.building = false;
         this.selected = false;
         this.colorPin = "#ff1a1a";
+        this.visible = page == "main" ? false : true;
 
         this.hasPin = false;
         this.pinGraphics = null;
@@ -2805,7 +2819,8 @@ export class Reference {
             iconBgColor: 0xffffff,
             iconColor: this.colorPin,
             text: text,
-            textOnly: textOnly
+            textOnly: textOnly,
+            visible: this.visible
         }
     }
 
@@ -3008,13 +3023,14 @@ export class Building {
         this.entrances = [];
         this.hover = 0;
         this.hoverTime = .2;
-        Buildings.track(this);
+        this.bannerMode = "";
+        this.visible = page == "main" ? false : true;
+        this.colorPin = "";
 
-        this.move(coordinate, true);
-
-        this.graphics = Graficos.createPin(name);
+        this.graphics = Graficos.createMapPin(name);
         Buildings.notePin(this);
-
+        
+        
         this.alpha = 1;
         this.colorOut = Palette.building.out;
         this.colorIn = Palette.building.in;
@@ -3026,8 +3042,11 @@ export class Building {
         this.polygonGraphics = Graficos.createPoly();
         this.closeHandle = page === "editor" ? new CloseHandle(this) : null; 
         this.banner = new Banner();
-
+        
         this.updateGraphics();
+
+        Buildings.track(this);
+        this.move(coordinate, true);
     }
 
     hoverAdd() {
@@ -3050,8 +3069,6 @@ export class Building {
         this.updateGraphics();
     }
 
-    // ---- polígono ----
-
     bounds() {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const { pos } of this.vertices) {
@@ -3072,7 +3089,6 @@ export class Building {
         this.updateGraphics();
     }
 
-    // handles pequenos no meio de cada aresta (só construção fechada, modo Construção)
     syncMidHandles() {
         const show = page === "editor" && this.enabled && this.closed && Buildings.midHandles;
         const n = show ? this.vertices.length : 0;
@@ -3149,7 +3165,24 @@ export class Building {
     // ---- gráficos ----
 
     buildData() {
-        return { size: this.pinSize, coordinate: this.coordinate, color: this.tint, colorPin: BANNER_TABS[1].pinColor };
+        let idx = BANNER_TABS.map(el => el.id).indexOf(this.banner.mode);
+
+        if (idx !== -1) {
+            let drawMode = BANNER_TABS[idx].icon;
+            let drawColorPin = BANNER_TABS[idx].pinColor;
+
+            this.bannerMode = drawMode;
+            this.colorPin = drawColorPin;
+        }
+        return {
+            size: this.pinSize,
+            coordinate: this.coordinate,
+            color: this.tint,
+            text: this.name,
+            colorPin: this.colorPin,//BANNER_TABS[1].pinColor,
+            visible: this.visible,
+            bannerMode: this.bannerMode ?? null,
+        };
     }
 
     setColor(color) {
@@ -3167,9 +3200,8 @@ export class Building {
             return;
         }
 
-        Graficos.renderPin(this.graphics, this.buildData());
+        Graficos.renderMapPin(this.graphics, this.buildData());
 
-        // na página main só o pin aparece (como antes)
         if (page !== "editor" || this.vertices.length === 0) {
             Graficos.clearPoly(this.polygonGraphics);
             return;
@@ -3231,6 +3263,7 @@ export class Banner {
         this.titleAlias = [];
         this.description = "";
         this.image = false;
+        this.priority = 1;
         this.mode = "";          // data of the non-main tabs, by id
     }
 }

@@ -65,8 +65,7 @@ def snapshot(mapa, user, motivo):
 def snapshot_before_overwrite(mapa, user, new_data):
     old = live_counts(mapa)
     if _total(old) == 0 and old["banners"] == 0:
-        return None   # nothing worth protecting
-
+        return None
     new = payload_counts(new_data)
     shrink = _total(old) >= MIN_OBJECTS_TO_PROTECT and _total(new) < _total(old) * SHRINK_RATIO
 
