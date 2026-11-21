@@ -1,17 +1,375 @@
+/* ==========================================================================
+   global.css: tokens, reset and shared components
+
+   1. Tokens
+   2. Reset & base
+   3. Utilities
+   4. Buttons (shared by home, login and modals)
+   5. Forms (fields: input and textarea inside .form-group)
+   6. Icon buttons (circle: map search, sidebar, modals)
+   7. Alerts (login, feedback)
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. Tokens
+   ========================================================================== */
+
 :root {
-    --body-margin: 1em;
+    /* Brand */
     --blue-main: #315882;
-    --green-main: #50B846;
-    --dark-green-main: #12680b;
+    --green-main: #50B846;            /* light green: highlights and hovers on dark backgrounds */
+    --dark-green-main: #12680b;       /* dark green: primary actions, borders, focus */
+    --dark-green-hover: #0e520a;
+    --green-tint: rgba(18, 104, 11, 0.08);    /* soft green wash on white surfaces (e.g. success alerts) */
+    --green-focus: rgba(18, 104, 11, 0.35);   /* focus ring */
+
+    /* Neutrals */
+    --white: #fff;
+    --gray-50: #f3f3f3;               /* field background */
+    --gray-100: #eee;                 /* dividers, icon-button hover */
+    --gray-300: #ccc;                 /* field borders */
+    --gray-500: #767676;              /* muted text, placeholders (WCAG AA on white) */
+    --gray-700: #444;                 /* secondary text */
+    --gray-900: #222;                 /* main text */
+    --overlay: rgba(0, 0, 0, 0.5);    /* modal / sidebar backdrop */
+
+    /* Feedback */
+    --danger-main: #b3261e;
+    --danger-tint: #fdecea;
+
+    /* Typography */
     --font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+
+    /* Shape */
+    --body-margin: 1em;
+    --radius-sm: 12px;                /* form fields */
+    --radius-md: 16px;                /* cards, modals, bottom sheets */
+    --radius-pill: 999px;             /* buttons */
+
+    /* Shadows */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.25);
+
+    /* Motion */
+    --duration-press: 0.1s;
+    --duration-fast: 0.2s;
+    --duration-base: 0.3s;
+
+    /* Viewport: 100dvh follows the visible viewport on mobile (browser bars collapse/expand);
+       100vh is the fallback for browsers without dvh. */
+    --app-height: 100vh;
+
+    /* Only non-zero with <meta name="viewport" content="..., viewport-fit=cover"> */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
 }
+
+@supports (height: 100dvh) {
+    :root { --app-height: 100dvh; }
+}
+
+
+/* ==========================================================================
+   2. Reset & base
+   ========================================================================== */
+
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
+
+body {
+    font-family: var(--font-family);
+}
+
+/* form controls do not inherit the font by default */
+button,
+input,
+textarea,
+select {
+    font-family: inherit;
+}
+
+
+/* ==========================================================================
+   3. Utilities
+   ========================================================================== */
+
 .padding {
     padding: 10px;
-    border-radius: 15px;
-    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
+    border-radius: var(--radius-md);
+    filter: drop-shadow(var(--shadow-sm));
+}
+
+
+/* visually hidden, still read by screen readers */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    border: 0;
+}
+
+
+/* ==========================================================================
+   4. Buttons (shared by home, login and modals)
+
+   Base geometry for every button, then two variants:
+   secondary = white with a green border (fills green on hover), primary = filled green.
+   The primary group comes last so it wins when a button has both classes
+   (e.g. .botao.alt-botao, .modal-button.modal-button-main).
+   Page files only add layout (sizes, spacing, nowrap).
+   ========================================================================== */
+
+.botao,
+.alt-botao,
+.explorar,
+.modal-button,
+.modal-button-main,
+.modal-submit-btn,
+.social-btn,
+.btn-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    gap: 8px;
+    padding: 12px 16px;
+    border: 1.5px solid var(--dark-green-main);
+    border-radius: var(--radius-pill);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        background-color var(--duration-fast),
+        border-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-press);
+}
+
+/* secondary */
+.botao,
+.modal-button,
+.social-btn {
+    background-color: var(--white);
+    color: var(--dark-green-main);
+}
+
+.botao:hover,
+.modal-button:hover,
+.social-btn:hover {
+    background-color: var(--dark-green-main);   /* opaque: stays visible over photos */
+    color: var(--white);
+}
+
+/* primary */
+.alt-botao,
+.explorar,
+.modal-button-main,
+.modal-submit-btn,
+.btn-copy {
+    background-color: var(--dark-green-main);
+    color: var(--white);
+}
+
+.alt-botao:hover,
+.explorar:hover,
+.modal-button-main:hover,
+.modal-submit-btn:hover,
+.btn-copy:hover {
+    background-color: var(--dark-green-hover);
+    border-color: var(--dark-green-hover);
+}
+
+.botao:active,
+.alt-botao:active,
+.explorar:active,
+.modal-button:active,
+.modal-button-main:active,
+.modal-submit-btn:active,
+.social-btn:active,
+.btn-copy:active {
+    transform: scale(0.97);
+}
+
+.botao:focus-visible,
+.alt-botao:focus-visible,
+.explorar:focus-visible,
+.modal-button:focus-visible,
+.modal-button-main:focus-visible,
+.modal-submit-btn:focus-visible,
+.social-btn:focus-visible,
+.btn-copy:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+
+/* ==========================================================================
+   5. Forms (fields: input and textarea inside .form-group)
+   ========================================================================== */
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-size: 0.9em;
+    color: var(--gray-700);
+}
+
+/* gray fill, turns white with a green border on focus */
+.form-group input,
+.form-group textarea {
+    border: 2px solid transparent;
+    border-radius: var(--radius-sm);
+    background-color: var(--gray-50);
+    font-size: 1em;
+    color: var(--gray-900);
+    outline: none;
+    transition: background-color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.form-group input {
+    height: 42px;
+    padding: 0 12px;
+}
+
+.form-group textarea {
+    min-height: 120px;
+    padding: 12px;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+    color: var(--gray-500);
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    background-color: var(--white);
+    border-color: var(--dark-green-main);
+}
+
+
+/* ==========================================================================
+   6. Icon buttons (circle: map search, sidebar, modals)
+   Pages add only the glyph size (font-size).
+   ========================================================================== */
+
+.icon-btn,
+.route-icon-btn,
+.app-modal-close {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--gray-700);
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.icon-btn:hover,
+.route-icon-btn:hover,
+.app-modal-close:hover {
+    background-color: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.icon-btn:focus-visible,
+.route-icon-btn:focus-visible,
+.app-modal-close:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+
+/* ==========================================================================
+   7. Alerts (login, feedback)
+   Level classes: .alert-success, .alert-danger / .alert-error, .alert-info.
+   Anything else is neutral. An optional <i> icon goes before the text.
+   ========================================================================== */
+
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-left: 4px solid var(--blue-main);
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+    color: var(--gray-900);
+    font-size: 0.9rem;
+    line-height: 1.4;
+    text-align: left;
+}
+
+.alert i {
+    flex-shrink: 0;
+    margin-top: 0.15em;
+}
+
+.alert-info i {
+    color: var(--blue-main);
+}
+
+.alert-success {
+    border-left-color: var(--dark-green-main);
+    background: var(--green-tint);
+}
+
+.alert-success i {
+    color: var(--dark-green-main);
+}
+
+.alert-danger,
+.alert-error {
+    border-left-color: var(--danger-main);
+    background: var(--danger-tint);
+    color: var(--danger-main);
+}
+
+.app-tooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+
+    padding: 6px 10px;
+    border-radius: var(--radius-sm, 6px);
+    background: var(--gray-900, #1f2937);
+    color: var(--white, #fff);
+    font-size: .8rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.15));
+
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast, 150ms);
+}
+
+.app-tooltip.is-visible {
+    opacity: 1;
 }

@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}MapaCNAT - Campi{% endblock %}
+
+{% block style %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/painel.css' %}">
+<link rel="stylesheet" type="text/css" href="{% static 'css/campi.css' %}">
+{% endblock %}
+
+{% comment %}
+Contexto esperado (a view filtra estado em publico + manutencao; privados nunca chegam aqui):
+    mapas -> queryset de Mapa com: pk, nome, estado, tem_svg
+    request.GET.nome  -> (opcional) termo buscado
+    request.GET.ordem -> (opcional) "nome" (padrão) ou "recentes"
+
+Mapas "publico" abrem normalmente. Mapas "manutencao" aparecem acinzentados,
+com a etiqueta "Em manutenção", e não são clicáveis.
+Somente leitura: sem criação, edição ou links para o editor.
+{% endcomment %}
+
+{% block content %}
+<div class="painel-page hub-publico">
+
+    <header class="hub-header">
+        <div class="hub-header-inner">
+            <a href="{% url 'home' %}" class="painel-logo">
+                <img src="{% static 'img/logo.png' %}" alt="Mapa CNAT, página inicial">
+            </a>
+            <a class="botao" href="{% url 'home' %}">Voltar ao início</a>
+        </div>
+    </header>
+
+    <main class="painel-main">
+
+        <div class="painel-title">
+            <div>
+                <h1>Escolha o mapa do seu campus</h1>
+                <p>
+                    Pesquise pelo nome e abra o mapa para encontrar
+                    salas, setores e caminhos.
+                </p>
+            </div>
+            {% if user.is_staff or user.is_superuser %}
+                <a class="alt-botao" href="{% url 'painel_hub' %}">
+                    <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+                    <span>Administração</span>
+                </a>
+            {% endif %}
+        </div>
+
+        <form class="mapas-toolbar"
+              id="hub-form"
+              method="get"
+              action="{% url 'campi' %}"
+              role="search"
+              aria-label="Pesquisar mapas">
+
+            <div class="mapas-search">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+
+                <input type="search"
+                       id="hub-busca"
+                       name="nome"
+                       placeholder="Pesquisar campus…  (atalho: /)"
+                       aria-label="Pesquisar mapa pelo nome"
+                       value="{{ request.GET.nome|default:'' }}"
+                       autocomplete="off">
+
+                <button type="button"
+                        class="icon-btn hub-limpar"
+                        id="hub-limpar"
+                        aria-label="Limpar pesquisa"
+                        hidden>
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <div class="mapas-filter">
+                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+
+                <select name="estado"
+                        id="hub-estado"
+                        aria-label="Filtrar por estado"
+                        onchange="this.form.submit()">
+                    <option value="todos"
+                        {% if request.GET.estado == 'todos' or not request.GET.estado %}selected{% endif %}>
+                        Todos
+                    </option>
+                    <option value="publico"
+                        {% if request.GET.estado == 'publico' %}selected{% endif %}>
+                        Público
+                    </option>
+                    <option value="manutencao"
+                        {% if request.GET.estado == 'manutencao' %}selected{% endif %}>
+                        Manutenção
+                    </option>
+                </select>
+            </div>
+
+            <button type="submit" class="modal-button hub-buscar">Buscar</button>
+        </form>
+
+        <p class="hub-contagem" id="hub-contagem" aria-live="polite">
+            {{ mapas|length }} mapa{{ mapas|length|pluralize }}
+        </p>
+
+        <!-- Cards: publico = link; manutencao = <a> sem href (não clicável) -->
+        <section class="painel-grid" id="hub-grid" aria-label="Mapas disponíveis">
+
+            {% for mapa in mapas %}
+            {% if mapa.public == 'publico' or mapa.public == 'manutencao' %}
+            <a class="mapa-card mapa-card-publico{% if mapa.public == 'manutencao' %} is-manutencao{% endif %}"
+               {% if mapa.public == 'publico' %}
+               href="{% url 'mapa' mapa.pk %}"
+               aria-label="Abrir mapa {{ mapa.nome }}"
+               {% else %}
+               role="link"
+               aria-disabled="true"
+               aria-label="Mapa {{ mapa.nome }}, em manutenção"
+               title="Este mapa está em manutenção e volta em breve."
+               {% endif %}
+               data-nome="{{ mapa.nome|lower }}"
+               data-estado="{{ mapa.public }}">
+
+                <div class="mapa-preview">
+                    {% if mapa.tem_svg %}
+                    <img src="{% url 'mapa_svg_raw' mapa.pk %}"
+                         alt="Prévia do mapa {{ mapa.nome }}"
+                         loading="lazy">
+                    {% else %}
+                    <div class="mapa-preview-empty">
+                        <i class="fa-regular fa-image" aria-hidden="true"></i>
+                        <span>Sem prévia disponível</span>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="hub-card-info">
+                    <div>
+                        <h2>{{ mapa.nome }}</h2>
+                        {% if mapa.atualizado_em %}
+                        <small>Atualizado em {{ mapa.atualizado_em|date:"d/m/Y" }}</small>
+                        {% endif %}
+                    </div>
+
+                    {% if mapa.public == 'manutencao' %}
+                    <span class="hub-manutencao">
+                        <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
+                        Em manutenção
+                    </span>
+                    {% else %}
+                    <span class="hub-abrir">
+                        Abrir
+                        <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                    </span>
+                    {% endif %}
+                </div>
+            </a>
+            {% endif %}
+            {% endfor %}
+
+        </section>
+
+        <!-- Sem resultados para a busca (JS ou servidor) -->
+        <div class="hub-vazio" id="hub-sem-resultados"
+             {% if mapas or not request.GET.nome %}hidden{% endif %}>
+            <i class="fa-regular fa-map" aria-hidden="true"></i>
+            <p>Nenhum mapa encontrado para essa pesquisa.</p>
+            <button type="button" class="modal-button" id="hub-limpar-vazio">
+                Ver todos os mapas
+            </button>
+        </div>
+
+        <!-- Nenhum mapa disponível -->
+        {% if not mapas and not request.GET.nome %}
+        <div class="hub-vazio">
+            <i class="fa-regular fa-map" aria-hidden="true"></i>
+            <p>Ainda não há mapas disponíveis. Volte em breve.</p>
+        </div>
+        {% endif %}
+
+    </main>
+
+    <script src="{% static 'js/campi.js' %}" defer></script>
+
+</div>
+{% endblock %}

@@ -2,34 +2,55 @@
 
 {% load static %}
 
-{% block title %}MapaCNAT | Explorar{% endblock %}
+{% block title %}MapaCNAT - Explorar{% endblock %}
 
 {% block style %}
 <link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
+{% endblock %}
+
+{% block meta %}
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 {% endblock %}
 
 {% block content %}
 <main id="app-layout">
     <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
-    <div id="sidebar" class="sidebar">
+    <div id="sidebar" class="sidebar" aria-label="Menu">
         <div class="sidebar-header">
-            <h3><a href="{% url 'home' %}">Menu</a></h3>
-            <button id="close-sidebar" aria-label="Close menu">
+            <h3>
+                <a href="{% url 'home' %}">
+                    <img src="{% static 'img/logo-pequeno.png' %}" alt="">
+                    <span>Menu</span>
+                </a>
+            </h3>
+            <button id="close-sidebar" class="icon-btn" aria-label="Fechar menu">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
+
         <nav class="sidebar-links">
+            {% if user.is_staff or user.is_superuser %}
+            <span class="sidebar-section-title">Equipe</span>
+            <a href="{% url 'painel_hub' %}"><i class="fa-solid fa-user-shield"></i> Administração</a>
+            <a href="{% url 'mapa_editor' mapa.pk %}"><i class="fa-solid fa-map"></i> Editor</a>
+            <span class="sidebar-section-title">Geral</span>
+            {% endif %}
             <a href="{% url 'feedback' %}"><i class="fa-solid fa-comment"></i> Relatar Feedback</a>
         </nav>
+
+        <div class="sidebar-footer">
+            <strong>Mapa CNAT</strong>
+            IFRN Natal-Central
+        </div>
     </div>
 
     <div id="map-container">
         <header>
             <form id="search" class="padding" action="" method="get" role="search">
                 <div id="search-header">
-                    <img src="{% static 'img/logo-pequeno.png' %}">
-                    <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass" style="color: gray;"></i></label>
+                    <a href="{% url 'home' %}"><img src="{% static 'img/logo-pequeno.png' %}" alt="Mapa CNAT"></a>
+                    <label id="search-label" for="search-field"><i class="fa-solid fa-magnifying-glass"></i></label>
                     <input type="search" id="search-field" name="q" placeholder="Pesquisar local..." autocomplete="off">
                 </div>
 
@@ -59,12 +80,12 @@
                     <ol id="search-list"></ol>
                 </div>
             </form>
-            <button class="padding" id="options"><i class="fa-solid fa-bars"></i></button>
+            <button class="padding" id="options" aria-label="Abrir menu"><i class="fa-solid fa-bars"></i></button>
         </header>
 
         <div id="map"></div>
 
-        <button class="padding icon" id="orientation"><i class="fa-solid fa-compass"></i></button>
+        <button class="padding icon" id="orientation"><img src="{% static 'img/compass.png' %}" alt="Bússola"></button>
 
         <div id="user-tab" class="collapsed">
             <img id="user-avatar" src="{% static 'img/default-user.png' %}" alt="Foto do usuário">
@@ -75,7 +96,7 @@
                 <p>No IF desde: <strong id="user-since">—</strong></p>
             </div>
 
-            <button type="button" id="share-location">
+            <button type="button" id="share-location" class="botao alt-botao">
                 <i class="fa-solid fa-location-arrow"></i>
                 <span>Compartilhar localização atual</span>
             </button>
@@ -106,11 +127,11 @@
                         readonly>
 
                     <div class="banner-actions">
-                        <button type="button" class="banner-action banner-action--primary" id="banner-route">
+                        <button type="button" class="botao alt-botao banner-action" id="banner-route">
                             <i class="fa-solid fa-diamond-turn-right"></i>
                             <span>Rotas</span>
                         </button>
-                        <button type="button" class="banner-action banner-action--secondary" id="banner-share">
+                        <button type="button" class="botao banner-action" id="banner-share">
                             <i class="fa-solid fa-share-nodes"></i>
                             <span>Compartilhar</span>
                         </button>
@@ -134,18 +155,27 @@
 
     <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+    {{ mapa.coordinates|json_script:"coordinates-data" }}
+
+    <script src="{% static 'js/coordinate-estimation.js' %}"></script>
     <script>
+
         const config = "{% static 'json/config.json' %}";
-        const mapImage =  "{% static 'svg/mapa.svg' %}";
+        const mapImage = "{% url 'mapa_svg_raw' mapa.pk %}";
+        const mapaCoordinates = JSON.parse(
+            document.getElementById('coordinates-data').textContent
+        );
+        const metrics = analyzeMapCalibration(mapaCoordinates);
+
         const pinImage = "{% static 'img/pino.png' %}";
         const entranceImage = "{% static 'img/entrance.png' %}";
         const defaultUserImage = "{% static 'img/default-user.png' %}";
-        const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' %}";
-        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' %}";
+        const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
         let sharePlaceLat = "{{ lat }}";
         let sharePlaceLong = "{{ long }}";
         let shareRender = "{{ r }}";
         const defaultImage = "{% static 'img/ifrn-logotipo.png' %}";
+        const defaultIconImage = "{% static 'img/ifrn-logo.png' %}";
 
         (function() {
             const params = new URLSearchParams(window.location.search);
@@ -158,7 +188,6 @@
 
                 if (!isNaN(x) && !isNaN(y)) {
                     window.initialCoordinates = { x, y };
-                    console.log("Coordenadas extraídas da URL:", window.initialCoordinates);
                 }
             }
         })();

@@ -32,8 +32,6 @@ fetch(config)
             const marcador = Graficos.createPin(`(${x}, ${y})`);
             marcador.x = x;
             marcador.y = y;
-
-            console.log("Posição aplicada:", { x, y, targetPos, imageSize: Graficos.imageSize });
         }, 300);
     }
 

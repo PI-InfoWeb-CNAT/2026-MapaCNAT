@@ -5,6 +5,7 @@ from django.dispatch import receiver
 
 from .construcao import *
 from .feedback import *
+from .mapa import *
 
 PERFIL = (
     (1, 'Admin'),

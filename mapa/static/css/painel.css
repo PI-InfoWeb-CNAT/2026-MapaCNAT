@@ -1,0 +1,780 @@
+/* ==========================================================================
+   painel.css: painel de administração (hub de mapas e staff)
+   Cores, raios, sombras, fonte e botões vêm do global.css.
+
+   1. Base
+   2. Cabeçalho
+   3. Conteúdo
+   4. Cards de mapa
+   5. Diálogos e formulários
+   6. Staff
+   7. Responsivo
+   8. Movimento reduzido
+   ========================================================================== */
+
+:root {
+    --painel-margin: clamp(16px, 3.3vw, 50px);
+    --painel-max: 1100px;
+    --painel-header-h: 72px;       /* usado só para o offset do card sticky */
+}
+
+
+/* ==========================================================================
+   1. Base
+   ========================================================================== */
+
+.painel-page {
+    min-height: var(--app-height);
+    display: flex;
+    flex-direction: column;
+    background: var(--gray-50);
+    color: var(--gray-900);
+}
+
+.painel-card {
+    padding: 20px;
+    border-radius: var(--radius-md);
+    background: var(--white);
+    box-shadow: var(--shadow-sm);
+}
+
+.painel-card h2 {
+    margin-bottom: 4px;
+    color: var(--blue-main);
+    font-size: 1.1rem;
+}
+
+.painel-hint {
+    color: var(--gray-500);
+    font-size: .8rem;
+    line-height: 1.4;
+}
+
+.painel-erro {
+    color: var(--danger-main);
+    font-size: .85rem;
+    line-height: 1.3;
+}
+
+.painel-erro:empty {
+    display: none;
+}
+
+.painel-vazio {
+    padding: 32px 0;
+    color: var(--gray-500);
+    text-align: center;
+}
+
+
+/* ==========================================================================
+   2. Cabeçalho
+   ========================================================================== */
+
+.painel-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding-top: var(--safe-top);
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.painel-header-inner {
+    max-width: var(--painel-max);
+    min-height: var(--painel-header-h);
+    margin: 0 auto;
+    padding: 10px var(--painel-margin);
+
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 24px;
+}
+
+.painel-logo {
+    display: block;
+    flex-shrink: 0;
+}
+
+.painel-logo img {
+    display: block;
+    width: clamp(110px, 14vw, 160px);
+    height: auto;
+}
+
+.painel-nav {
+    display: flex;
+    gap: 4px;
+}
+
+.painel-nav a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: var(--radius-pill);
+
+    color: var(--gray-700);
+    font-size: .95rem;
+    font-weight: 600;
+    text-decoration: none;
+
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.painel-nav a:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.painel-nav a[aria-current="page"] {
+    background: var(--green-tint);
+    color: var(--dark-green-main);
+}
+
+.painel-nav a:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+.painel-header .botao {
+    margin-left: auto;
+    padding: 8px 16px;
+    white-space: nowrap;
+}
+
+
+/* ==========================================================================
+   3. Conteúdo
+   ========================================================================== */
+
+.painel-main {
+    flex: 1;
+    width: 100%;
+    max-width: var(--painel-max);
+    margin: 0 auto;
+    padding: 32px var(--painel-margin) calc(48px + var(--safe-bottom));
+}
+
+.painel-title {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.painel-title h1 {
+    margin-bottom: 6px;
+    color: var(--blue-main);
+    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    line-height: 1.2;
+}
+
+.painel-title p {
+    max-width: 60ch;
+    color: var(--gray-700);
+    font-size: .95rem;
+    line-height: 1.4;
+}
+
+.painel-alerts {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+
+/* ==========================================================================
+   4. Cards de mapa
+   ========================================================================== */
+
+.painel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 20px;
+}
+
+.mapa-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    border-radius: var(--radius-md);
+    background: var(--white);
+    box-shadow: var(--shadow-sm);
+
+    color: inherit;
+    text-decoration: none;
+
+    transition:
+        transform var(--duration-base),
+        box-shadow var(--duration-base),
+        background-color var(--duration-fast);
+}
+
+.mapa-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+.mapa-card:active {
+    transform: scale(.99);
+}
+
+.mapa-card:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 3px;
+}
+
+.mapa-preview {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    aspect-ratio: 4 / 3;
+    padding: 0;
+    overflow: hidden;
+
+    background-color: var(--gray-50);
+    background-image:
+        linear-gradient(var(--gray-100) 1px, transparent 1px),
+        linear-gradient(90deg, var(--gray-100) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.mapa-preview img {
+    display: block;
+
+    width: 100%;
+    height: 100%;
+
+    object-fit: cover;
+    object-position: center;
+}
+
+.mapa-preview-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    color: var(--gray-500);
+    font-size: .85rem;
+}
+
+.mapa-preview-empty i {
+    font-size: 1.8rem;
+}
+
+.mapa-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+}
+
+.mapa-info h2 {
+    color: var(--gray-900);
+    font-size: 1.05rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.mapa-info small {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: .8rem;
+}
+
+.mapa-info i {
+    flex-shrink: 0;
+    color: var(--dark-green-main);
+    transition: transform var(--duration-fast);
+}
+
+.mapa-card:hover .mapa-info i {
+    transform: translateX(4px);
+}
+
+/* card "Novo mapa" */
+.mapa-card-novo {
+    appearance: none;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 220px;
+    padding: 24px;
+
+    border: 2px dashed var(--dark-green-main);
+    background: transparent;
+    box-shadow: none;
+
+    color: var(--dark-green-main);
+    font: inherit;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+}
+
+.mapa-card-novo:hover {
+    background: var(--green-tint);
+    box-shadow: none;
+}
+
+.mapa-card-novo .mais {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--dark-green-main);
+    color: var(--white);
+    font-size: 1.2rem;
+}
+
+
+/* ==========================================================================
+   5. Diálogos e formulários
+   ========================================================================== */
+
+.painel-confirmar {
+    color: var(--gray-700);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.painel-confirmar strong {
+    color: var(--gray-900);
+}
+
+.painel-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+/* campo de arquivo no mesmo estilo dos demais campos */
+.form-group input[type="file"] {
+    height: auto;
+    padding: 8px;
+    font-size: .9rem;
+    cursor: pointer;
+}
+
+.form-group input[type="file"]::file-selector-button {
+    margin-right: 12px;
+    padding: 8px 14px;
+
+    border: 1.5px solid var(--dark-green-main);
+    border-radius: var(--radius-pill);
+    background: var(--white);
+    color: var(--dark-green-main);
+
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.form-group input[type="file"]:hover::file-selector-button {
+    background: var(--dark-green-main);
+    color: var(--white);
+}
+
+.form-group input[aria-invalid="true"] {
+    border-color: var(--danger-main);
+}
+
+/* variante perigosa do botão primário (precisa da especificidade extra) */
+.modal-submit-btn.painel-danger {
+    border-color: var(--danger-main);
+    background-color: var(--danger-main);
+}
+
+.modal-submit-btn.painel-danger:hover {
+    border-color: #8f1e18;
+    background-color: #8f1e18;
+}
+
+.modal-submit-btn.painel-danger:focus-visible {
+    outline-color: rgba(179, 38, 30, .35);
+}
+
+
+/* ==========================================================================
+   6. Staff
+   ========================================================================== */
+
+.staff-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+.staff-add {
+    position: sticky;
+    top: calc(var(--safe-top) + var(--painel-header-h) + 16px);
+}
+
+.staff-form {
+    display: grid;
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.staff-form .botao {
+    justify-self: start;
+}
+
+.staff-count {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 10px;
+    border-radius: var(--radius-pill);
+    background: var(--gray-100);
+    color: var(--gray-700);
+    font-size: .8rem;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.staff-list {
+    margin-top: 12px;
+    list-style: none;
+}
+
+.staff-item {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--gray-100);
+}
+
+.staff-item:first-child {
+    border-top: 0;
+}
+
+.staff-avatar {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--blue-main);
+    color: var(--white);
+    font-weight: 700;
+}
+
+.staff-info {
+    min-width: 0;
+}
+
+.staff-nome {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.staff-email {
+    overflow: hidden;
+    color: var(--gray-700);
+    font-size: .85rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.staff-badge {
+    padding: 1px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--green-tint);
+    color: var(--dark-green-main);
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.staff-remove:hover:not(:disabled) {
+    background: var(--danger-tint);
+    color: var(--danger-main);
+}
+
+.staff-remove:disabled {
+    opacity: .35;
+    cursor: not-allowed;
+}
+
+.staff-remove:disabled:hover {
+    background: transparent;
+    color: var(--gray-700);
+}
+
+
+/* ==========================================================================
+   7. Responsivo
+   ========================================================================== */
+
+@media (max-width: 800px) {
+    .staff-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .staff-add {
+        position: static;
+    }
+}
+
+@media (max-width: 600px) {
+    /* logo + Sair na primeira linha, abas ocupando a linha de baixo */
+    .painel-nav {
+        order: 3;
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .painel-nav a {
+        flex: 1;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .painel-main {
+        padding-top: 24px;
+    }
+
+    .painel-grid {
+        gap: 14px;
+    }
+
+    .mapa-card-novo {
+        min-height: 150px;
+    }
+
+    .painel-actions {
+        flex-direction: column-reverse;
+    }
+
+    .painel-actions > * {
+        width: 100%;
+    }
+
+    .staff-form .botao {
+        justify-self: stretch;
+    }
+}
+
+
+/* ==========================================================================
+   8. Movimento reduzido
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    .mapa-card,
+    .mapa-info i {
+        transition: none;
+    }
+
+    .mapa-card:hover,
+    .mapa-card:active,
+    .mapa-card:hover .mapa-info i {
+        transform: none;
+    }
+
+    .painel-dialog[open] {
+        animation: none;
+    }
+}
+
+
+
+/* ========================================================================== */
+/* Filtros dos mapas */
+/* ========================================================================== */
+
+.mapas-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 22px;
+}
+
+.mapas-search,
+.mapas-filter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    min-height: 44px;
+    padding: 0 14px;
+
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+
+    background: var(--white);
+    color: var(--gray-500);
+}
+
+.mapas-search {
+    flex: 1;
+    min-width: 0;
+}
+
+.mapas-search input {
+    width: 100%;
+    min-width: 0;
+
+    border: none;
+    outline: none;
+    background: transparent;
+
+    color: var(--gray-900);
+    font: inherit;
+}
+
+.mapas-search input::placeholder {
+    color: var(--gray-500);
+}
+
+.mapas-filter {
+    flex-shrink: 0;
+}
+
+.mapas-filter select {
+    max-width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+
+    color: var(--gray-700);
+    font: inherit;
+    cursor: pointer;
+}
+
+.mapas-search:focus-within,
+.mapas-filter:focus-within {
+    border-color: var(--dark-green-main);
+    box-shadow: 0 0 0 2px var(--green-tint);
+}
+
+.mapa-card-existente[hidden] {
+    display: none;
+}
+
+@media (max-width: 600px) {
+    .mapas-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .mapas-search,
+    .mapas-filter {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .mapas-filter select {
+        flex: 1;
+    }
+}
+
+
+
+.mapa-card-existente {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.mapa-preview-link {
+    display: block;
+    overflow: hidden;
+    text-decoration: none;
+}
+
+.mapa-preview-link .mapa-preview {
+    transition: filter var(--duration-fast);
+}
+
+.mapa-preview-link:hover .mapa-preview {
+    filter: brightness(.94);
+}
+
+.mapa-info {
+    appearance: none;
+    width: 100%;
+    flex: 1;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    padding: 14px 16px;
+
+    border: none;
+    border-radius: 0;
+    background: var(--white);
+
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.mapa-info > div {
+    min-width: 0;
+}
+
+.mapa-info h2 {
+    color: var(--gray-900);
+    font-size: 1.05rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.mapa-info i {
+    flex-shrink: 0;
+    color: var(--dark-green-main);
+}
+
+.mapa-info:hover {
+    background: var(--gray-50);
+}
+
+.mapa-info:focus-visible,
+.mapa-preview-link:focus-visible,
+.mapa-card-editor:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: -3px;
+}
+
+.mapa-card-editor {
+    position: absolute;
+    right: 16px;
+    bottom: 14px;
+
+    display: none;
+}
+.painel-erro[data-svg-erro]:not(:empty) {
+    margin-top: .5rem;
+    padding: .65rem .85rem;
+    border: 1px solid #f1b5b0;
+    border-radius: 8px;
+    background: #fdecea;
+    color: #b3261e;
+    font-size: .95rem;
+    font-weight: 600;
+    line-height: 1.4;
+}

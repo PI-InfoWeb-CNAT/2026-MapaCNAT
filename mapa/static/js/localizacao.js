@@ -2,15 +2,16 @@ import { MatrixTransform } from "./transformacao.js";
 import * as Graficos from "./graficos.js";
 import * as Editor from "./editor.js";
 
+const pin = { fromX: 0, fromY: 0, toX: 0, toY: 0, start: 0, duration: 1 };
+let lastFixAt = 0;
+
 const CONFIG = {
     debug: false,
 
     watchOptions: { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
 
-    
     offlineAfterMs: 12000,
-    retryDelaysMs: [1000, 2000, 4000, 8000, 15000], 
-
+    retryDelaysMs: [1000, 2000, 4000, 8000, 15000],
 
     maxAccuracy: 150,
     minAccuracy: 3,
@@ -18,45 +19,93 @@ const CONFIG = {
     gateSigmas: 3.5,
     gateFloor: 8,
 
+    minMoveDistance: 6,        // m: never move the pin for changes smaller than this
+    moveAccuracyFactor: 0.5,   // threshold also grows to this fraction of the reported accuracy
+    settleDistance: 1, 
+    
+    defaultGlideMs: 1000,      // duration of the first segment, before an interval is known
+    minGlideMs: 300,           // clamp for the interval between fixes
+    maxGlideMs: 4000,
 
     confirmCount: 3,
     confirmMs: 6000,
     candidateWalkSpeed: 3,
 
-
     accelSigma: 1.5,
-
 
     smoothingTau: 0.35,
     extrapolateMinSpeed: 0.7,
     extrapolateMaxMs: 2500,
-    snapDistance: 60
+    snapDistance: 60,
+
+    requestTimeoutMs: 15000,   // how long the permission prompt / first read may take
+    fixWaitMs: 8000,           // after a poor first read, how long to wait for a usable one
+    storageKey: "geo-granted"  // hint for browsers without the Permissions API
 };
 
-let geographical = [
-    [-5.811105868698768, -35.201445594283136],
-    [-5.810082771429163, -35.204026579227964],
-    [-5.812708592957059, -35.20497480931187],
-]
-export function mapToGeographical(point) {
-    let coordinateTransform = new MatrixTransform(
-        [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
-        [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-        [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-        geographical[0], geographical[1], geographical[2],
-    );
+function lerPontos(coordinates) {
+    const pontos = typeof coordinates === 'string' ? JSON.parse(coordinates) : coordinates;
 
-    return coordinateTransform.transform([point.x, point.y]); 
+    if (!Array.isArray(pontos) || pontos.length !== 3 ||
+        !pontos.every((p) => Array.isArray(p?.geo) && Array.isArray(p?.svg))) {
+        return null;
+    }
+    return {
+        geo: pontos.map((p) => p.geo),
+        svg: pontos.map((p) => p.svg)
+    };
 }
-export function GeographicalToMap(point) {
-    let coordinateTransform = new MatrixTransform(
-        geographical[0], geographical[1], geographical[2],
-        [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
-        [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-        [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-    );
 
-    return coordinateTransform.transform([point.x, point.y]);
+let geographical = null;   // [[lat, lon] x3]
+let svgPoints = null;      // [[x, y] x3]
+if (mapaCoordinates) {
+    const parsed = lerPontos(mapaCoordinates);
+    if (parsed) {
+        geographical = parsed.geo;
+        svgPoints = parsed.svg;
+    }
+}
+
+export function mapToGeographical(point) {
+    return new MatrixTransform(
+        svgPoints[0], svgPoints[1], svgPoints[2],
+        geographical[0], geographical[1], geographical[2]
+    ).transform([point.x, point.y]);
+}
+
+export function GeographicalToMap(point) {
+    return new MatrixTransform(
+        geographical[0], geographical[1], geographical[2],
+        svgPoints[0], svgPoints[1], svgPoints[2]
+    ).transform([point.x, point.y]);
+}
+
+function lerPontosControle(coordinates) {
+    const pontos = typeof coordinates === 'string' ? JSON.parse(coordinates) : coordinates;
+
+    if (!Array.isArray(pontos) || pontos.length !== 3 ||
+        !pontos.every((p) => Array.isArray(p?.geo) && Array.isArray(p?.svg))) {
+        return null;
+    }
+    return pontos.map((p) => ({ geo: p.geo, svg: p.svg }));
+}
+
+const controlPoints = mapaCoordinates ? lerPontosControle(mapaCoordinates) : null;
+
+// Built lazily: Graficos may not be ready when this module loads.
+let controlCache = null;
+function getControl() {
+    if (controlCache) return controlCache;
+    if (!controlPoints) throw new Error("mapaCoordinates inválido: são necessários 3 pontos com geo e svg.");
+
+    controlCache = {
+        geo: controlPoints.map((p) => p.geo),
+        map: controlPoints.map((p) => {
+            const n = Graficos.svgToNormalized({ x: p.svg[0], y: p.svg[1] });
+            return [n.x, n.y];
+        })
+    };
+    return controlCache;
 }
 
 const log = (...args) => { if (CONFIG.debug) console.debug("[geo]", ...args); };
@@ -92,14 +141,17 @@ class Axis {
     }
 }
 
-let coordinateTransform = null;
+/* ───────────── state ───────────── */
+
+let latLonToMap = null;
 
 const track = {
     ready: false,
     x: new Axis(),
     y: new Axis(),
     t: 0,
-    arrival: 0
+    arrival: 0,
+    acc: Infinity
 };
 
 let origin = null;
@@ -116,8 +168,25 @@ let lastUsable = 0;
 let online = null;
 let retryIndex = 0;
 let nextRetryAt = 0;
-let permissionDenied = false;
 let started = false;
+
+// "unknown" | "prompt" | "granted" | "denied" | "unsupported"
+let permission = "unknown";
+let permissionQuery = null;   // promise of the PermissionStatus
+let permissionApiOk = false;  // true once the Permissions API answered for geolocation
+const permissionListeners = new Set();
+const fixWaiters = new Set();
+let pendingRequest = null;
+
+/* ───────────── helpers ───────────── */
+
+function ensureTransform() {
+    latLonToMap ??= new MatrixTransform(
+        geographical[0], geographical[1], geographical[2],
+        svgPoints[0], svgPoints[1], svgPoints[2]
+    );
+    return latLonToMap;
+}
 
 function makeOrigin(lat, lon) {
     return {
@@ -137,11 +206,134 @@ const toLatLon = (x, y) => [
     origin.lon + x / origin.mPerDegLon
 ];
 
+function remembered() {
+    try { return localStorage.getItem(CONFIG.storageKey) === "1"; } catch { return false; }
+}
+function remember(value) {
+    try {
+        if (value) localStorage.setItem(CONFIG.storageKey, "1");
+        else localStorage.removeItem(CONFIG.storageKey);
+    } catch { /* storage unavailable */ }
+}
+
 function setOnline(value) {
     if (online === value) return;
+    if (!Editor.Self) return;          // not created yet: the watchdog retries every second
     online = value;
     log(value ? "ONLINE" : "OFFLINE");
     Editor.Self.setOnline(value);
+}
+
+function resetTrack() {
+    pinMoving = false;
+    lastFixAt = 0;
+    track.ready = false;
+    candidates = [];
+    origin = null;
+    lastDrawn = { x: Infinity, y: Infinity };
+}
+
+function draw() {
+    const transform = ensureTransform();
+    if (!Editor.Self) return;
+
+    lastDrawn = { x: display.x, y: display.y };
+
+    const [lat, lon] = toLatLon(display.x, display.y);
+    const point = transform.transform([lat, lon]);
+
+    let svgCoord = Graficos.svgToNormalized({x: point[0], y: point[1]});
+    Editor.Self.setPos(Editor.newCoord(svgCoord.x, svgCoord.y, "normal"));
+
+    if (!pinShown) {
+        Editor.Self.setVisible(true);
+        pinShown = true;
+    }
+}
+
+/* ───────────── permission ───────────── */
+
+function setPermission(next) {
+    if (permission === next) return;
+    permission = next;
+    log("permission:", next);
+
+    if (next === "granted") {
+        remember(true);
+        lastUsable = performance.now();
+        ensureWatch();
+    } else {
+        remember(false);
+        stopWatch();
+        resetTrack();
+        setOnline(false);          // location not enabled → never online
+    }
+
+    for (const cb of permissionListeners) {
+        try { cb(next); } catch (error) { console.error(error); }
+    }
+}
+
+async function refreshPermission() {
+    if (!navigator.geolocation) {
+        setPermission("unsupported");
+        return permission;
+    }
+    if (!navigator.permissions?.query) return permission;
+
+    permissionQuery ??= navigator.permissions
+        .query({ name: "geolocation" })
+        .then((status) => {
+            status.addEventListener("change", () => setPermission(status.state));
+            return status;
+        });
+
+    try {
+        const status = await permissionQuery;
+        permissionApiOk = true;
+        setPermission(status.state);
+    } catch {
+        permissionQuery = null;
+    }
+    return permission;
+}
+
+async function classifyDenied() {
+    const state = await refreshPermission();
+    if (!permissionApiOk) {
+        setPermission("denied");
+        return "denied";
+    }
+    if (state === "prompt") return "dismissed";
+    if (state === "granted") return "unavailable";
+    return "denied";
+}
+
+/* ───────────── position pipeline ───────────── */
+
+function retarget(now) {
+    const interval = lastFixAt ? now - lastFixAt : CONFIG.defaultGlideMs;
+    lastFixAt = now;
+
+    const tx = track.x.p;
+    const ty = track.y.p;
+    const threshold = Math.max(CONFIG.minMoveDistance, track.acc * CONFIG.moveAccuracyFactor);
+
+    if (Math.hypot(tx - pin.toX, ty - pin.toY) <= threshold) return;   // too close: stay put
+
+    pin.fromX = display.x;
+    pin.fromY = display.y;
+    pin.toX = tx;
+    pin.toY = ty;
+    pin.start = now;
+    pin.duration = Math.min(Math.max(interval, CONFIG.minGlideMs), CONFIG.maxGlideMs);
+}
+
+function snapPin(x, y) {
+    display.x = pin.fromX = pin.toX = x;
+    display.y = pin.fromY = pin.toY = y;
+    pin.start = performance.now();
+    pin.duration = 1;
 }
 
 function onPosition(position) {
@@ -149,7 +341,9 @@ function onPosition(position) {
     const acc = c.accuracy;
 
     if (![c.latitude, c.longitude, acc].every(Number.isFinite)) return;
-    
+
+    if (permission !== "granted") setPermission("granted");   // a fix proves it
+
     if (acc > CONFIG.maxAccuracy) {
         log("discarded, accuracy too poor:", acc);
         return;
@@ -166,11 +360,15 @@ function onPosition(position) {
         origin = makeOrigin(c.latitude, c.longitude);
         track.x.reset(0, r);
         track.y.reset(0, r);
-        display.x = 0;
-        display.y = 0;
         track.t = t;
+        track.acc = acc;
         track.arrival = performance.now();
         track.ready = true;
+        lastFixAt = track.arrival;
+        snapPin(0, 0);
+
+        draw();
+        for (const done of [...fixWaiters]) done();
         return;
     }
 
@@ -178,7 +376,7 @@ function onPosition(position) {
 
     const dt = Math.min(Math.max((t - track.t) / 1000, 0.05), 60);
     const [mx, my] = toLocal(c.latitude, c.longitude);
-    
+
     const accelVar = CONFIG.accelSigma ** 2;
     track.x.predict(dt, accelVar);
     track.y.predict(dt, accelVar);
@@ -198,7 +396,9 @@ function onPosition(position) {
         candidates = [];
         track.x.update(mx, r);
         track.y.update(my, r);
+        track.acc = acc;
         track.arrival = performance.now();
+        retarget(track.arrival);
     } else {
         log(`outlier: ${dist.toFixed(1)}m off (gate ${gate.toFixed(1)}m, ${impliedSpeed.toFixed(1)} m/s)`);
         handleOutlier(mx, my, acc, t);
@@ -218,9 +418,7 @@ function handleOutlier(mx, my, acc, t) {
     candidates.push({ x: mx, y: my, acc, t });
 
     const spanMs = t - candidates[0].t;
-    const confirmed =
-        candidates.length >= CONFIG.confirmCount ||
-        (candidates.length >= 2 && spanMs >= CONFIG.confirmMs);
+    const confirmed = candidates.length >= CONFIG.confirmCount || (candidates.length >= 2 && spanMs >= CONFIG.confirmMs);
 
     if (confirmed) relocate();
 }
@@ -245,8 +443,9 @@ function relocate() {
     track.arrival = performance.now();
 
     if (Math.hypot(nx - display.x, ny - display.y) > CONFIG.snapDistance) {
-        display.x = nx;
-        display.y = ny;
+        snapPin(nx, ny);
+    } else {
+        retarget(track.arrival);
     }
     candidates = [];
 }
@@ -255,34 +454,15 @@ function frame(now) {
     rafId = requestAnimationFrame(frame);
     if (!track.ready) return;
 
-    const dt = Math.min((now - lastFrameTime) / 1000, 0.1);
-    lastFrameTime = now;
-
-    const speed = Math.hypot(track.x.v, track.y.v);
-    let ahead = 0;
-    if (online && speed >= CONFIG.extrapolateMinSpeed) {
-        ahead = Math.min(now - track.arrival, CONFIG.extrapolateMaxMs) / 1000;
-    }
-    const targetX = track.x.p + track.x.v * ahead;
-    const targetY = track.y.p + track.y.v * ahead;
-
-    const k = 1 - Math.exp(-dt / CONFIG.smoothingTau);
-    display.x += (targetX - display.x) * k;
-    display.y += (targetY - display.y) * k;
+    const t = Math.min((now - pin.start) / pin.duration, 1);
+    display.x = pin.fromX + (pin.toX - pin.fromX) * t;
+    display.y = pin.fromY + (pin.toY - pin.fromY) * t;
 
     if (Math.abs(display.x - lastDrawn.x) < 0.02 && Math.abs(display.y - lastDrawn.y) < 0.02) return;
-    lastDrawn = { x: display.x, y: display.y };
-
-    const [lat, lon] = toLatLon(display.x, display.y);
-    const point = coordinateTransform.transform([lat, lon]);
-    const coord = Editor.newCoord(point[0], point[1], "normal");
-    Editor.Self.setPos(coord);
-    
-    if (!pinShown) {
-        Editor.Self.setVisible(true);
-        pinShown = true;
-    }
+    draw();
 }
+
+/* ───────────── watch / watchdog ───────────── */
 
 function startWatch() {
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
@@ -290,17 +470,31 @@ function startWatch() {
     log("watch (re)started");
 }
 
-function onError(err) {
-    console.warn(`ERROR(${err.code}): ${err.message}`);
+function ensureWatch() {
+    if (watchId === null) startWatch();
+}
 
-    if (err.code === err.PERMISSION_DENIED) {
-        permissionDenied = true;
-        setOnline(false);
-    }
+function stopWatch() {
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+}
+
+async function onError(err) {
+    console.warn(`ERROR(${err.code}): ${err.message}`);
+    if (err.code !== err.PERMISSION_DENIED) return;
+
+    // With the Permissions API still saying "granted" this is OS-level or transient:
+    // keep the permission and let the watchdog retry with backoff.
+    const state = await refreshPermission();
+    if (permissionApiOk && state === "granted") return;
+    setPermission("denied");
 }
 
 function watchdogTick() {
-    if (permissionDenied) return;
+    if (permission !== "granted") {
+        setOnline(false);
+        return;
+    }
 
     const now = performance.now();
     const silence = now - lastUsable;
@@ -318,71 +512,118 @@ function watchdogTick() {
 }
 
 function forceReconnect() {
-    if (permissionDenied) return;
+    if (permission !== "granted") return;
     retryIndex = 0;
     nextRetryAt = 0;
     startWatch();
 }
 
 function onVisibilityChange() {
-    if (document.visibilityState === "visible") {
-        lastFrameTime = performance.now();
-        forceReconnect();
-    }
+    if (document.visibilityState !== "visible") return;
+    lastFrameTime = performance.now();
+    refreshPermission().then(forceReconnect);
 }
 
-function watchPermission() {
-    if (!navigator.permissions?.query) return;
-    navigator.permissions.query({ name: "geolocation" }).then((status) => {
-        status.onchange = () => {
-            if (status.state !== "denied") {
-                permissionDenied = false;
-                forceReconnect();
-            }
+function waitForFix(ms) {
+    return new Promise((resolve) => {
+        const done = () => {
+            clearTimeout(timer);
+            fixWaiters.delete(done);
+            resolve(track.ready);
         };
-    }).catch(() => { /* Permissions API not available for geolocation here: ignore */ });
+        const timer = setTimeout(done, ms);
+        fixWaiters.add(done);
+    });
 }
 
-/////////// Public API
+async function doRequest() {
+    if (!navigator.geolocation) return "unsupported";
 
+    UserLocation();                               // idempotent
+    const state = await refreshPermission();
+
+    if (state === "denied") return "denied";
+    if (state === "granted" && track.ready && online) return "granted";
+
+    return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                setPermission("granted");
+                onPosition(position);
+                const ok = track.ready || await waitForFix(CONFIG.fixWaitMs);
+                resolve(ok ? "granted" : "unavailable");
+            },
+            async (err) => {
+                if (err.code === err.PERMISSION_DENIED) resolve(await classifyDenied());
+                else resolve(err.code === err.TIMEOUT ? "timeout" : "unavailable");
+            },
+            { enableHighAccuracy: true, timeout: CONFIG.requestTimeoutMs, maximumAge: 0 }
+        );
+    });
+}
+
+/* ───────────── public API ───────────── */
+
+/** Starts the engine. Never prompts: it only tracks if permission is already granted. */
 export function UserLocation() {
     if (started) return;
 
     if (!navigator.geolocation) {
         console.error("Geolocalização não é suportada pelo dispositivo.");
+        setPermission("unsupported");
         return;
     }
     started = true;
 
-    coordinateTransform = new MatrixTransform(
-        geographical[0], geographical[1], geographical[2],
-        [-Graficos.imageSize.width / 2, -Graficos.imageSize.height / 2],
-        [-Graficos.imageSize.width / 2, Graficos.imageSize.height / 2],
-        [Graficos.imageSize.width / 2, Graficos.imageSize.height / 2]
-    );
-
+    ensureTransform();
     lastUsable = performance.now();
     lastFrameTime = performance.now();
-
-    watchPermission();
-    startWatch();
 
     watchdogId = setInterval(watchdogTick, 1000);
     rafId = requestAnimationFrame(frame);
 
     window.addEventListener("online", forceReconnect);
     document.addEventListener("visibilitychange", onVisibilityChange);
+
+    setOnline(false);                              // offline until a usable fix arrives
+    refreshPermission().then((state) => {
+        // browsers without the Permissions API: trust the last known grant
+        if (state === "unknown" && remembered()) setPermission("granted");
+    });
 }
 
 export function StopUserLocation() {
     if (!started) return;
     started = false;
 
-    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    stopWatch();
     clearInterval(watchdogId);
     cancelAnimationFrame(rafId);
-    watchId = watchdogId = rafId = null;
+    watchdogId = rafId = null;
 
     window.removeEventListener("online", forceReconnect);
     document.removeEventListener("visibilitychange", onVisibilityChange);
+}
+
+/**
+ * Asks for the location if it isn't granted yet (this is what shows the browser prompt).
+ * Resolves with "granted" | "denied" | "dismissed" | "unavailable" | "timeout" | "unsupported".
+ * On "granted" the user pin already has a position.
+ */
+export function requestLocation() {
+    pendingRequest ??= doRequest().finally(() => { pendingRequest = null; });
+    return pendingRequest;
+}
+
+/** Current permission, re-checked: "granted" | "prompt" | "denied" | "unknown" | "unsupported". */
+export function getPermission() {
+    return refreshPermission();
+}
+
+export const isTracking = () => permission === "granted" && online === true;
+
+/** cb(state) on every permission change. Returns an unsubscribe function. */
+export function onPermissionChange(cb) {
+    permissionListeners.add(cb);
+    return () => permissionListeners.delete(cb);
 }

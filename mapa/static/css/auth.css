@@ -1,0 +1,267 @@
+/* ==========================================================================
+   login.css: login page
+   Colors, radii, shadows, font and buttons come from global.css.
+
+   1. Page & hero background
+   2. Card
+   3. Actions
+   4. Form (register)
+   5. Alerts
+   6. Responsive
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. Page & hero background
+   ========================================================================== */
+
+.login-page {
+    --login-veil: rgba(49, 88, 130, 0.35);    /* --blue-main at 35%: separates the card from the photo */
+
+    min-height: var(--app-height);
+    display: grid;
+    place-items: center;
+
+    padding:
+        calc(20px + var(--safe-top))
+        calc(20px + var(--safe-right))
+        calc(20px + var(--safe-bottom))
+        calc(20px + var(--safe-left));
+
+    background-color: var(--blue-main);       /* shows if the image fails to load */
+}
+
+/* --login-background is set inline in the template: url('{% static ... %}') */
+.login-page::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+
+    background-image:
+        linear-gradient(var(--login-veil), var(--login-veil)),
+        var(--login-background, linear-gradient(135deg, var(--blue-main), var(--dark-green-main)));
+
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+
+/* ==========================================================================
+   2. Card
+   ========================================================================== */
+
+.login-card {
+    width: min(100%, 420px);
+
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    padding: 32px 28px;
+
+    border-radius: var(--radius-md);
+    background: var(--white);
+    box-shadow: var(--shadow-lg);
+
+    text-align: center;
+}
+
+.login-logo {
+    display: block;
+    width: 64px;
+    height: auto;
+    margin: 0 auto;
+}
+
+.login-card h1 {
+    color: var(--blue-main);
+    font-size: clamp(1.6rem, 4vw, 2rem);
+    line-height: 1.2;
+}
+
+.login-card p {
+    color: var(--gray-700);
+    font-size: .95rem;
+    line-height: 1.4;
+}
+
+
+/* ==========================================================================
+   3. Actions
+   ========================================================================== */
+
+.login-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+/* look of the buttons: global.css (section 4) */
+.login-action {
+    width: 100%;
+    min-height: 48px;
+}
+
+.login-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    color: var(--gray-700);
+    font-size: .85rem;
+}
+
+.login-divider::before,
+.login-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--gray-100);
+}
+
+/* quiet link to the other page (login <-> register): same geometry as the buttons, no border */
+.login-switch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 12px 16px;
+
+    border-radius: var(--radius-pill);
+    background-color: var(--gray-50);
+    color: var(--blue-main);
+
+    font-size: .95rem;
+    font-weight: 600;
+    text-decoration: none;
+
+    transition: background-color var(--duration-fast);
+}
+
+.login-switch:hover {
+    background-color: var(--gray-100);
+}
+
+.login-switch:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+
+/* ==========================================================================
+   4. Form (register): the fields look comes from global.css, section 5
+   ========================================================================== */
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    text-align: left;
+}
+
+.invalid-feedback {
+    color: var(--danger-main);
+    font-size: .85rem;
+    line-height: 1.3;
+}
+
+.password-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.password-wrapper input {
+    width: 100%;
+    padding-right: 44px;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 6px;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--gray-700);
+    cursor: pointer;
+
+    transition:
+        color var(--duration-fast),
+        background-color var(--duration-fast);
+}
+
+.password-toggle:hover {
+    background-color: var(--gray-50);
+    color: var(--blue-main);
+}
+
+.password-toggle:focus-visible {
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+}
+
+/* ==========================================================================
+   5. Alerts (message.type: success, danger/error; anything else is neutral)
+   ========================================================================== */
+
+.alert {
+    padding: 12px 14px;
+    border-left: 4px solid var(--blue-main);
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+    color: var(--gray-900);
+    font-size: .9rem;
+    line-height: 1.4;
+    text-align: left;
+}
+
+.alert-success {
+    border-left-color: var(--dark-green-main);
+    background: var(--green-tint);
+}
+
+.alert-danger,
+.alert-error {
+    border-left-color: var(--danger-main);
+    background: var(--danger-tint);
+    color: var(--danger-main);
+}
+
+/* ==========================================================================
+   6. Responsive
+   ========================================================================== */
+
+@media (max-width: 480px) {
+    .login-page {
+        padding:
+            calc(16px + var(--safe-top))
+            calc(16px + var(--safe-right))
+            calc(16px + var(--safe-bottom))
+            calc(16px + var(--safe-left));
+    }
+
+    .login-card {
+        padding: 24px 20px;
+    }
+}
+
+@media (max-height: 560px) {
+    .login-card {
+        gap: 12px;
+        padding: 20px 24px;
+    }
+
+    .login-logo {
+        width: 48px;
+    }
+}

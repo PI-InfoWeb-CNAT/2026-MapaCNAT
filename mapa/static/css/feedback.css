@@ -1,293 +1,261 @@
-/* ========== Tokens ========== */
+/* ==========================================================================
+   feedback.css: feedback page
+   Colors, radii, shadows, font, buttons, fields and alerts come from global.css.
+
+   1. Base
+   2. Top bar
+   3. Page
+   4. Card & rating
+   5. Success card
+   6. Responsive
+   ========================================================================== */
+
 :root {
-  --bg: #e6e6e6;
-  --surface: #ffffff;
-  --text: #1f1f1f;
-  --text-soft: #8a8a8a;
-  --border: #c9c9c9;
-  --star-off: #d9d9d9;
-  --star-on: #f5b301;
-  --primary: #2f5486;
-  --primary-hover: #26456f;
-  --radius: 14px;
-  --font: "Roboto", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    --star-on: #f5b301;
+    --star-off: var(--gray-300);
 }
 
-/* ========== Base ========== */
-*, *::before, *::after { box-sizing: border-box; }
 
-html, body { height: 100%; }
+/* ==========================================================================
+   1. Base
+   ========================================================================== */
 
 body {
-  margin: 0;
-  font-family: var(--font);
-  color: var(--text);
-  background: var(--bg);
+    min-height: var(--app-height);
+    background-color: var(--gray-50);
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px; height: 1px;
-  margin: -1px; padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  border: 0;
-}
 
-/* ========== Topbar ========== */
+/* ==========================================================================
+   2. Top bar
+   ========================================================================== */
+
 .topbar {
-  background: var(--surface);
-  border-bottom: 1px solid #d0d0d0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, .12);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+    background-color: var(--white);
+    border-bottom: 1px solid var(--gray-100);
+    box-shadow: var(--shadow-sm);
 }
 
 .topbar__inner {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  height: 56px;
-  padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 1100px;
+    height: 56px;
+    margin: 0 auto;
+    padding: 0 16px;
 }
 
+/* circle look: global.css, section 6 */
 .topbar__back {
-  display: grid;
-  place-items: center;
-  width: 36px; height: 36px;
-  color: #555;
-  border-radius: 50%;
+    font-size: 1.1rem;
 }
-.topbar__back:hover { background: #f0f0f0; }
 
 .topbar__title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
+    color: var(--gray-900);
+    font-size: 1rem;
+    font-weight: 700;
 }
 
-/* ========== Página (mobile) ========== */
+
+/* ==========================================================================
+   3. Page
+   ========================================================================== */
+
 .page {
-  padding-top: 12px;          /* faixa cinza entre o topo e o cartão */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
 }
+
+.page > * {
+    width: 100%;
+    max-width: 640px;
+}
+
+
+/* ==========================================================================
+   4. Card & rating
+   ========================================================================== */
 
 .feedback {
-  background: var(--surface);
-  padding: 22px 16px 24px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, .15);
+    padding: 28px 20px 24px;
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-md);
+    background-color: var(--white);
+    box-shadow: var(--shadow-sm);
 }
 
 .feedback__title {
-  margin: 0;
-  text-align: center;
-  font-size: 22px;
-  font-weight: 300;
-  letter-spacing: .2px;
+    margin-bottom: 8px;
+    color: var(--blue-main);
+    font-size: clamp(1.3rem, 4vw, 1.75rem);
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
 }
 
-/* ========== Estrelas ========== */
+/* stars: the radios come in descending order, row-reverse paints "the previous ones" with ~ */
 .rating {
-  display: flex;
-  flex-direction: row-reverse;   /* permite pintar "as anteriores" com ~ */
-  justify-content: center;
-  gap: 4px;
-  margin: 4px 0 18px;
-  padding: 0 0 6px;
-  border: 0;
-  border-bottom: 1px solid var(--border);
+    position: relative;
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: center;
+    gap: 4px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border: 0;
+    border-bottom: 1px solid var(--gray-100);
 }
 
 .rating input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .rating label {
-  font-size: 40px;
-  line-height: 1;
-  color: var(--star-off);
-  cursor: pointer;
-  transition: color .15s, transform .15s;
+    color: var(--star-off);
+    font-size: clamp(2.4rem, 10vw, 3.25rem);
+    line-height: 1;
+    cursor: pointer;
+    transition: color var(--duration-fast), transform var(--duration-press);
 }
 
 .rating label:hover,
 .rating label:hover ~ label,
 .rating input:checked ~ label {
-  color: var(--star-on);
+    color: var(--star-on);
 }
 
-.rating label:active { transform: scale(.9); }
+.rating label:active {
+    transform: scale(0.9);
+}
 
 .rating input:focus-visible + label {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-  border-radius: 4px;
+    outline: 3px solid var(--green-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
 }
 
-/* ========== Campo de texto ========== */
+/* field look: global.css, section 5 */
 .feedback__text {
-  display: block;
-  width: 100%;
-  height: 200px;
-  padding: 12px;
-  font: inherit;
-  font-size: 14px;
-  color: var(--text);
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius);
-  resize: vertical;
-}
-
-.feedback__text::placeholder { color: var(--text-soft); font-size: 12px; }
-
-.feedback__text:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(47, 84, 134, .18);
-}
-
-/* ========== Botão ========== */
-.feedback__actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-
-.btn {
-  min-width: 82px;
-  padding: 9px 22px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: var(--primary);
-  border: 0;
-  border-radius: 10px;
-  box-shadow: 0 3px 5px rgba(0, 0, 0, .3);
-  cursor: pointer;
-  transition: background .15s, transform .1s;
-}
-
-.btn:hover { background: var(--primary-hover); }
-.btn:active { transform: translateY(1px); }
-.btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
-
-/* ========== Tablet / Desktop ========== */
-@media (min-width: 768px) {
-  .topbar__inner {
-    max-width: 1100px;
-    margin: 0 auto;
-    height: 64px;
-    padding: 0 24px;
-  }
-
-  .topbar__title { font-size: 16px; }
-
-  .page {
-    display: flex;
-    justify-content: center;
-    padding: 48px 24px;
-  }
-
-  .feedback {
     width: 100%;
-    max-width: 640px;
-    padding: 40px 48px 36px;
-    border-radius: 18px;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, .12);
-  }
-
-  .feedback__title { font-size: 30px; }
-
-  .rating { gap: 10px; margin: 12px 0 28px; padding-bottom: 12px; }
-  .rating label { font-size: 52px; }
-
-  .feedback__text { height: 240px; padding: 16px; font-size: 16px; }
-  .feedback__text::placeholder { font-size: 14px; }
-
-  .feedback__actions { margin-top: 24px; }
-
-  .btn {
-    min-width: 120px;
-    padding: 12px 32px;
-    font-size: 14px;
-  }
+    height: 200px;
 }
 
-/* ========== Desktop largo ========== */
-@media (min-width: 1200px) {
-  .page { padding-top: 72px; }
+.feedback__error {
+    margin-top: 6px;
+    color: var(--danger-main);
+    font-size: 0.85rem;
+    line-height: 1.3;
 }
 
-/* ========== Preferência por menos movimento ========== */
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+.feedback__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
 }
 
-/* ========== Success Alert Banner ========== */
-.feedback-wrapper {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 
-.feedback__alert {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  background: #e6f4ea;
-  color: #137333;
-  border: 1.5px solid #ceead6;
-  border-radius: var(--radius);
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, .05);
-}
+/* ==========================================================================
+   5. Success card
+   ========================================================================== */
 
-.feedback__alert svg {
-  flex-shrink: 0;
-  color: #137333;
-}
-
-/* Ajustes para telas maiores contendo o wrapper */
-@media (min-width: 768px) {
-  .feedback-wrapper {
-    max-width: 640px;
-  }
-}
-
-/* Success Card Styling */
 .feedback__success-card {
-  background: #ffffff;
-  padding: 2.5rem 2rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  text-align: center;
-  max-width: 480px;
-  margin: 2rem auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 32px 24px;
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-md);
+    background-color: var(--white);
+    box-shadow: var(--shadow-sm);
+    text-align: center;
 }
 
 .feedback__success-icon {
-  width: 64px;
-  height: 64px;
-  background-color: #e6f4ea; /* Soft success green background */
-  color: #137333; /* Dark green checkmark */
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 0.5rem;
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background-color: var(--green-tint);
+    color: var(--dark-green-main);
+    font-size: 1.75rem;
 }
 
 .feedback__success-text {
-  color: #5f6368;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  margin-bottom: 1rem;
+    color: var(--gray-700);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.feedback__success-card .feedback__actions {
+    justify-content: center;
+    margin-top: 8px;
+}
+
+
+/* ==========================================================================
+   6. Responsive
+   ========================================================================== */
+
+@media (min-width: 768px) {
+    .topbar__inner {
+        height: 64px;
+        padding: 0 24px;
+    }
+
+    .topbar__title {
+        font-size: 1.1rem;
+    }
+
+    .page {
+        padding: 48px 24px;
+    }
+
+    .feedback {
+        padding: 40px 48px 36px;
+    }
+
+    .rating {
+        gap: 10px;
+        margin-bottom: 28px;
+        padding-bottom: 12px;
+    }
+
+    .feedback__text {
+        height: 240px;
+    }
+
+    .feedback__actions {
+        margin-top: 24px;
+    }
+}
+
+@media (min-width: 1200px) {
+    .page {
+        padding-top: 72px;
+    }
+}
+
+@media (max-width: 480px) {
+    .feedback__actions .botao {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rating label {
+        transition: none;
+    }
 }
