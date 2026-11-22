@@ -600,11 +600,14 @@ export class SelectRegion {
 
     static startCoord = null;
     static currCoord = null;
-    static selected = {
-        "buildVertices": [],
-        "build": [],
-        "references": [],
-    };
+    static selected = { "buildVertices": [], "build": [], "references": [], "walls": [] };
+
+    static scope = "map";              // "floor" = buildings tab: only walls
+    static wallSource = () => [];      // set by floors.js: walls of the edited floor
+    static floorRef = null;            // set by floors.js: () => (() => reveal this floor) | null
+    static onWallsChanged = null;      // set by floors.js: redraw the floor layer
+    static wallHitPx = 8;
+
     static graphics = null;
 
     static box = null;
@@ -674,6 +677,7 @@ export class SelectRegion {
             // guarda o grupo atual: o arrasto soma a ele em vez de substituí-lo
             const s = this.selected;
             this.base = {
+                walls: [...s.walls],
                 references: [...s.references],
                 build: [...s.build],
                 buildVertices: s.buildVertices.map(v => ({ building: v.building, index: v.index })),
@@ -713,9 +717,11 @@ export class SelectRegion {
         this.selected.references.length = 0;
         this.selected.buildVertices.length = 0;
         this.selected.build.length = 0;
+        this.selected.walls.length = 0;
         this._rect.minX = NaN;
-        this.box = null;                 // ← de volta
+        this.box = null;
         this.updateBoxGraphics();
+        this.onWallsChanged?.();
     }
 
     static selectAll() {
@@ -724,8 +730,13 @@ export class SelectRegion {
         sel.references.length = 0;
         sel.buildVertices.length = 0;
         sel.build.length = 0;
-        for (const r of Object.values(Referencer.references)) sel.references.push(r);
-        for (const b of Object.values(Buildings.buildings)) if (b.closed) sel.build.push(b);
+        sel.walls.length = 0;
+        if (this.scope === "floor") {
+            for (const w of this.wallSource()) sel.walls.push(w);
+        } else {
+            for (const r of Object.values(Referencer.references)) sel.references.push(r);
+            for (const b of Object.values(Buildings.buildings)) if (b.closed) sel.build.push(b);
+        }
         this.refreshBox(false);
     }
 
@@ -736,6 +747,7 @@ export class SelectRegion {
             buildings: !this.vertexMode,
         });
         this.updateBoxGraphics();
+        this.onWallsChanged?.();
     }
 
     // ---- gráficos ----
@@ -791,6 +803,14 @@ export class SelectRegion {
             this.growBox(box, fx, fy, fx, fy);
         }
 
+        const walls = selected.walls;
+        for (let i = 0; i < walls.length; i++) {
+            for (const p of [walls[i].a, walls[i].b]) {
+                const fx = c * p.x - s * p.y, fy = s * p.x + c * p.y;
+                this.growBox(box, fx, fy, fx, fy);
+            }
+        }
+
         if (vertices) {
             const verts = selected.buildVertices;
             for (let i = 0; i < verts.length; i++) {
@@ -811,6 +831,20 @@ export class SelectRegion {
         return box.minX === Infinity ? null : box;
     }
 
+    static getWallsInRect(minX, minY, maxX, maxY, out, touch, c, s) {
+        out.length = 0;
+        const inside = (x, y) => x >= minX && x <= maxX && y >= minY && y <= maxY;
+        for (const w of this.wallSource()) {
+            const ax = c * w.a.x - s * w.a.y, ay = s * w.a.x + c * w.a.y;
+            const bx = c * w.b.x - s * w.b.y, by = s * w.b.x + c * w.b.y;
+            const hit = touch
+                ? segmentIntersectsRect(ax, ay, bx, by, minX, minY, maxX, maxY)
+                : inside(ax, ay) && inside(bx, by);
+            if (hit) out.push(w);
+        }
+        return out;
+    }
+
     static updateSelection(vm) {
         if (!this.startCoord || !this.currCoord) return;
         this.syncFrame();
@@ -829,22 +863,30 @@ export class SelectRegion {
         this._zoom = zoom;
         this._shift = mode;
 
-        const t = this.touch;
-        Referencer.getReferencesInRect(minX, minY, maxX, maxY, this.selected.references, t, c, s);
-        Buildings.getVerticesInRect(minX, minY, maxX, maxY, this.selected.buildVertices, t, c, s);
-        Buildings.getPolygonsInRect(minX, minY, maxX, maxY, this.selected.build, t, c, s);
+        const t = this.touch, sel = this.selected;
+        if (this.scope === "floor") {
+            sel.references.length = 0; sel.buildVertices.length = 0; sel.build.length = 0;
+            this.getWallsInRect(minX, minY, maxX, maxY, sel.walls, t, c, s);
+        } else {
+            sel.walls.length = 0;
+            Referencer.getReferencesInRect(minX, minY, maxX, maxY, sel.references, t, c, s);
+            Buildings.getVerticesInRect(minX, minY, maxX, maxY, sel.buildVertices, t, c, s);
+            Buildings.getPolygonsInRect(minX, minY, maxX, maxY, sel.build, t, c, s);
+        }
 
         if (this.base) this.mergeBase(mode);
         this.refreshBox(mode);
     }
 
-    /** Soma o grupo anterior ao resultado da região (sem duplicar). */
     static mergeBase(vm) {
         const base = this.base, sel = this.selected;
 
         for (const r of base.references) {
             if (!sel.references.includes(r)) sel.references.push(r);
         }
+
+        for (const w of base.walls ?? []) if (!sel.walls.includes(w)) sel.walls.push(w);
+
         if (vm) {
             for (const v of base.buildVertices) {
                 if (!sel.buildVertices.some(x => x.building === v.building && x.index === v.index)) {
@@ -877,7 +919,7 @@ export class SelectRegion {
         const refs = sel.references;
         const second = vm ? sel.buildVertices : sel.build;
 
-        const n = refs.length + second.length;
+        const n = refs.length + second.length + sel.walls.length;
         if (n === 0 || n > this.maxItemBoxes) return null;
 
         const c = this._cos, s = this._sin;
@@ -905,6 +947,12 @@ export class SelectRegion {
                 const b = this.frameBounds(second[i], t);
                 out.push([b.minX - gap, b.minY - gap, b.maxX + gap, b.maxY + gap]);
             }
+        }
+
+        for (const w of sel.walls) {
+            const ax = c * w.a.x - s * w.a.y, ay = s * w.a.x + c * w.a.y;
+            const bx = c * w.b.x - s * w.b.y, by = s * w.b.x + c * w.b.y;
+            out.push([Math.min(ax, bx) - gap, Math.min(ay, by) - gap, Math.max(ax, bx) + gap, Math.max(ay, by) + gap]);
         }
         return out;
     }
@@ -1088,20 +1136,32 @@ export class SelectRegion {
                 building: rec.building,
                 verts: rec.building.vertices.map((v) => ({ x: v.pos.x, y: v.pos.y })),
                 pin: rec.pin ? { x: rec.building.coordinate.pos.x, y: rec.building.coordinate.pos.y } : null,
+                floors: rec.floors.map((f) => ({
+                    floor: f.floor,
+                    shape: f.floor.shape ? f.floor.shape.map((p) => ({ x: p.x, y: p.y })) : null,
+                })),
             })),
             refs: [...R.free, ...R.owned, ...R.slide].map((o) => ({
                 ref: o.ref, x: o.ref.coordinate.pos.x, y: o.ref.coordinate.pos.y,
             })),
+            walls: R.walls.map((o) => ({ wall: o.wall, a: { ...o.wall.a }, b: { ...o.wall.b } })),
+            reveal: R.reveal,
+
         };
     }
 
-    /** Aplica posições guardadas: construções primeiro, para as entradas reencontrarem a parede. */
     static applyLayout(layout) {
+        layout.reveal?.();
         for (const b of layout.builds) {
             b.building.setPolygon(b.verts);
             if (b.pin) b.building.move(newCoord(b.pin.x, b.pin.y, "normal"));
+            for (const f of b.floors) f.floor.shape = f.shape ? f.shape.map((p) => ({ x: p.x, y: p.y })) : null;
         }
+
         for (const r of layout.refs) r.ref.move(newCoord(r.x, r.y, "normal"));
+
+        for (const w of layout.walls ?? []) { w.wall.a = { ...w.a }; w.wall.b = { ...w.b }; }
+        this.onWallsChanged?.();
     }
 
     static beginGesture(zone, coord) {
@@ -1110,7 +1170,6 @@ export class SelectRegion {
         const c = this._cos, s = this._sin;
         const p = coord.peekNormal();
 
-        // referência = retângulo VISÍVEL (com folga)
         const r = this.boxRect;
         const ref = r
             ? { minX: r.x0, minY: r.y0, maxX: r.x1, maxY: r.y1 }
@@ -1120,6 +1179,8 @@ export class SelectRegion {
         const pivot = { x: (ref.minX + ref.maxX) / 2, y: (ref.minY + ref.maxY) / 2 };
 
         const R = {
+            walls: sel.walls.map((w) => ({ wall: w, a: { ...w.a }, b: { ...w.b } })),
+            reveal: this.floorRef?.() ?? null,
             kind: zone.kind,
             handle: zone.handle ?? "",
             vm, c, s,
@@ -1138,7 +1199,6 @@ export class SelectRegion {
         const snap = (r) => ({ ref: r, x: r.coordinate.pos.x, y: r.coordinate.pos.y });
 
         if (!vm) {
-            // modo polígono: construções inteiras; as entradas delas acompanham
             for (const b of sel.build) {
                 if (!b.enabled) continue;
                 const verts = b.vertices.map((v) => ({ x: v.pos.x, y: v.pos.y }));
@@ -1146,6 +1206,8 @@ export class SelectRegion {
                     building: b, verts, idx: null,
                     pin: { x: b.coordinate.pos.x, y: b.coordinate.pos.y },
                     centroid: polygonCentroid(verts), dx: 0, dy: 0,
+                    floors: (b.floors ?? []).filter((f) => f.shape)
+                        .map((f) => ({ floor: f, shape: f.shape.map((p) => ({ x: p.x, y: p.y })) })),
                 };
                 R.builds.push(rec);
                 for (const r of b.entrances) {
@@ -1164,6 +1226,7 @@ export class SelectRegion {
                     g = {
                         building, idx: new Set(), pin: null, centroid: null, dx: 0, dy: 0,
                         verts: building.vertices.map((v) => ({ x: v.pos.x, y: v.pos.y })),
+                        floors: [],
                     };
                     groups.set(building, g);
                 }
@@ -1266,6 +1329,13 @@ export class SelectRegion {
 
             rec.building.setPolygon(pts);
             if (pin) rec.building.move(newCoord(pin.x, pin.y, "normal"));
+            if (!rec.idx) {
+                for (const f of rec.floors) {
+                    f.floor.shape = shift
+                        ? f.shape.map((v) => ({ x: v.x + rec.dx, y: v.y + rec.dy }))      // rigid resize
+                        : f.shape.map((v) => { T(v.x, v.y); return { x: o.x, y: o.y }; }); // move / rotate / stretch
+                }
+            }
         }
 
         // 2) entradas que acompanham a construção inteira
@@ -1282,6 +1352,19 @@ export class SelectRegion {
         for (const f of R.free) {
             T(f.x, f.y);
             f.ref.move(newCoord(o.x, o.y, "normal"));
+        }
+
+        for (const w of R.walls) {
+            if (shift) {
+                const mx = (w.a.x + w.b.x) / 2, my = (w.a.y + w.b.y) / 2;
+                T(mx, my);
+                const dx = o.x - mx, dy = o.y - my;
+                w.wall.a = { x: w.a.x + dx, y: w.a.y + dy };
+                w.wall.b = { x: w.b.x + dx, y: w.b.y + dy };
+            } else {
+                T(w.a.x, w.a.y); w.wall.a = { x: o.x, y: o.y };
+                T(w.b.x, w.b.y); w.wall.b = { x: o.x, y: o.y };
+            }
         }
 
         this.refreshBox();
@@ -1303,9 +1386,11 @@ export class SelectRegion {
 
         const moved =
             after.refs.some((a, i) => a.x !== before.refs[i].x || a.y !== before.refs[i].y) ||
-            after.builds.some((a, i) =>
-                a.verts.some((v, k) => v.x !== before.builds[i].verts[k].x || v.y !== before.builds[i].verts[k].y));
-        return moved ? { before, after } : null;
+            after.builds.some((a, i) => a.verts.some((v, k) => v.x !== before.builds[i].verts[k].x || v.y !== before.builds[i].verts[k].y)) ||
+            after.walls.some((a, i) => a.a.x !== before.walls[i].a.x || a.a.y !== before.walls[i].a.y ||
+                                       a.b.x !== before.walls[i].b.x || a.b.y !== before.walls[i].b.y);
+        
+            return moved ? { before, after } : null;
     }
 
     static cancelResize() {
@@ -1317,6 +1402,16 @@ export class SelectRegion {
     }
 
     static pickAt(coord, vertices = false) {
+        if (this.scope === "floor") {
+            const p = coord.peekNormal();
+            const R = this.wallHitPx / Graficos.zoom;
+            let best = null, bd = R * R;
+            for (const w of this.wallSource()) {
+                const d = distSqToSegment(p.x, p.y, w.a.x, w.a.y, w.b.x, w.b.y);
+                if (d <= bd) { best = w; bd = d; }
+            }
+            return best ? { kind: "wall", wall: best } : null;
+        }
         if (vertices) {
             const v = Buildings.getOverlappingVertex(coord);
             if (v) return { kind: "vertex", building: v.building, index: v.index };
@@ -1333,6 +1428,7 @@ export class SelectRegion {
     static isSelected(item) {
         const sel = this.selected;
         switch (item.kind) {
+            case "wall": return sel.walls.includes(item.wall);
             case "reference": return sel.references.includes(item.ref);
             case "building":  return sel.build.includes(item.building);
             case "vertex":    return sel.buildVertices.some(v => v.building === item.building && v.index === item.index);
@@ -1340,7 +1436,6 @@ export class SelectRegion {
         return false;
     }
 
-    /** Seleciona `item`. additive = soma ao grupo atual; senão substitui. */
     static pick(item, additive = false) {
         if (!item) return;
         this.release();
@@ -1360,6 +1455,8 @@ export class SelectRegion {
         if (!this.isSelected(item)) {
             if (item.kind === "reference") sel.references.push(item.ref);
             else if (item.kind === "building") sel.build.push(item.building);
+            else if (item.kind === "wall") sel.walls.push(item.wall);
+
             else sel.buildVertices.push({ building: item.building, index: item.index });
         }
 
@@ -1372,6 +1469,7 @@ export class SelectRegion {
         return {
             vertexMode: vm,
             references: [...s.references],
+            walls: [...s.walls],
             build: vm ? [] : [...s.build],
             buildVertices: vm ? s.buildVertices.map(v => ({ building: v.building, index: v.index })) : [],
         };
@@ -1382,6 +1480,7 @@ export class SelectRegion {
         return sameList(a.references, b.references) &&
             sameList(a.build, b.build) &&
             a.buildVertices.length === b.buildVertices.length &&
+            sameList(a.walls ?? [], b.walls ?? []) &&
             a.buildVertices.every(v => b.buildVertices.some(w => w.building === v.building && w.index === v.index));
     }
 
@@ -1393,7 +1492,6 @@ export class SelectRegion {
         sel.build.length = 0;
         sel.buildVertices.length = 0;
 
-        // ignora o que foi desabilitado (apagado) entretanto
         for (const r of snap.references) if (r.enabled) sel.references.push(r);
         for (const b of snap.build) if (b.enabled) sel.build.push(b);
         for (const v of snap.buildVertices) {
@@ -1401,6 +1499,10 @@ export class SelectRegion {
                 sel.buildVertices.push({ building: v.building, index: v.index });
             }
         }
+
+        sel.walls.length = 0;
+        const live = new Set(this.wallSource());
+        for (const w of snap.walls ?? []) if (live.has(w)) sel.walls.push(w);
 
         this._rect.minX = NaN;
         this.onRestoreMode?.(snap.vertexMode);
@@ -2666,6 +2768,10 @@ export class Buildings {
     }
 }
 
+function bannerPriorityScale(element) {
+    return (element.banner.priority ? .6 + element.banner.priority / 10 : 1);
+}
+
 export class Reference {
     constructor(coordinate, { snap = false } = {}) {
         this.alpha = 1;
@@ -2732,7 +2838,7 @@ export class Reference {
         const tab = BANNER_TABS.find(t => t.id === this.banner.mode);
         return {
             coordinate: this.coordinate,
-            size: 1 + ((this.size - 10) / 5) * 0.2,   // follows the dot's hover growth (10 → 15)
+            size: this.size * bannerPriorityScale(this) / 10,//1 + (((this.size * bannerPriorityScale(this)) - 10) / 5) * 0.2,   // follows the dot's hover growth (10 → 15)
             color: this.tint,
             colorPin: tab?.pinColor ?? "#ff1a1a",
             bannerMode: tab?.icon ?? null,
@@ -3037,6 +3143,7 @@ export class Building {
         this.colorInBase = Palette.building.in;
         this.borderSize = 8;
         this.radius = 0;
+        this.inAlpha = 0.45;
         this.tint = 0x000000;
 
         this.polygonGraphics = Graficos.createPoly();
@@ -3180,7 +3287,7 @@ export class Building {
             this.colorPin = drawColorPin;
         }
         return {
-            size: this.pinSize,
+            size: this.pinSize * bannerPriorityScale(this),
             coordinate: this.coordinate,
             color: this.tint,
             text: this.name,
@@ -3215,6 +3322,7 @@ export class Building {
         const data = {
             points: this.vertices,
             alpha: this.alpha,
+            inAlpha: this.inAlpha,
             colorOut: this.colorOut,
             colorIn: this.colorIn,
             borderSize: this.borderSize,

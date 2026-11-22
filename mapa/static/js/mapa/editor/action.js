@@ -53,6 +53,8 @@ export const hooks = {
     clearBannerFields() {},
     setBannerAliases() {},
     getBannerAliases: () => [],
+    getTab: () => "map",     // returns "map" | "buildings"
+    showTab() {},       
 };
 
 // ---------- helpers moved from interacao.js ----------
@@ -298,6 +300,8 @@ export class Actions {
         const targetIndex = this.actionStack.length - 1 - this.actionStackTraversal;
         const action = this.actionStack[targetIndex];
 
+        if (action?.tab) hooks.showTab(action.tab);
+
         if (action && typeof action.backward === "function") {
             action.backward();
         }
@@ -321,6 +325,7 @@ export class Actions {
         const targetIndex = this.actionStack.length - 1 - this.actionStackTraversal;
         const action = this.actionStack[targetIndex];
 
+        if (action?.tab) hooks.showTab(action.tab);
         if (action && typeof action.forward === "function") {
             action.forward();
         }
@@ -354,7 +359,7 @@ export class Actions {
             this.actionStackTraversal = 0;
         }
 
-        this.actionStack.push({ forward, backward, prune, overflow });
+        this.actionStack.push({ forward, backward, prune, overflow, tab: hooks.getTab() });
 
         if (this.actionStack.length > this.actionStackLimit) {
             const droppedAction = this.actionStack.shift();
@@ -1167,14 +1172,16 @@ export class Actions {
     }
 
     static resizeSelection(before, after) {
+        const inFloor = Editor.SelectRegion.scope === "floor";
         const apply = (layout) => {
-            Actions.forceMode(EditorModes.SELECTION);
+            if (!inFloor) Actions.forceMode(EditorModes.SELECTION);
             Editor.SelectRegion.applyLayout(layout);
         };
-        // a seleção não muda: é a mesma antes e depois, só as posições mudam
         const sel = Editor.SelectRegion.snapshot();
         this.newAction(() => apply(after), () => apply(before), undefined, undefined, { before: sel, after: sel });
     }
+
+    
 
     static newBuilding(mouseX, mouseY) {
         const coord = Editor.newCoord(mouseX, mouseY, "screen");
@@ -1210,6 +1217,7 @@ export class Actions {
 
     static recordSelection(before) {
         if (!before) return;
+        if (Editor.SelectRegion.scope === "floor") return; 
         const S = Editor.SelectRegion;
         const after = S.snapshot();
         if (S.sameSelection(before, after)) return;

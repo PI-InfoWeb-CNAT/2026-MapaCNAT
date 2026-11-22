@@ -1,3 +1,4 @@
+import * as Floors from './editor/floors.js';
 import * as Transformacao from "./transformacao.js";
 import * as Graficos from "./graficos.js";
 import * as Editor from "./objects.js";
@@ -14,6 +15,9 @@ import {
 let page;
 let mapObj;
 let zoomStep;
+
+let floorGrab = false;   // dragging a floor vertex
+let rightFloor = -1;
 
 const DOUBLE_CLICK_MS = 350;
 const DOUBLE_CLICK_DIST = 24;
@@ -58,6 +62,8 @@ let selDragging = false;    // passou do limiar: é arrasto, não clique
 let selBefore = null;       // seleção antes do gesto atual (para virar ação)
 
 let carrying = null;
+
+const selectMode = () => editorMode === EditorModes.SELECTION || Floors.isSelectMode();
 
 export function setContext(context) {
     page = context.page;
@@ -555,7 +561,9 @@ class Pointer {
         rotateOffsetY = mapStartY - (clickY - o.y);
 
         if (e.button === 0) leftClicking = true;
-        else if (e.button === 2) rightClicking = true;
+        else if (e.button === 2) {
+            rightClicking = true;
+        }
 
         if (e.target === mapObj) mapObj.setPointerCapture?.(e.pointerId);
 
@@ -564,6 +572,8 @@ class Pointer {
         panStarted = false;
         pressedTarget = null;
         rightVertex = null;
+        floorGrab = false;
+        rightFloor = -1;
 
         if (page == "main") {
             if (e.button === 0) {
@@ -580,11 +590,14 @@ class Pointer {
             if (e.button === 2 && editorMode == EditorModes.CONSTRUCTION && !Tools.Task.task) {
                 rightVertex = Editor.Buildings.getOverlappingVertex(Editor.newCoord(clickX, clickY, "screen"));
             }
-
+            if (Floors.isActive()) {
+                if (e.button === 2) rightFloor = Floors.vertexAt(clickX, clickY);
+                else if (e.button === 0 && !quickPan) floorGrab = Floors.grab(clickX, clickY, e.shiftKey);
+            }
             if (e.button !== 0) return;
            
             if (quickPan) { panGesture = true; setCursor("grabbing"); return; }
-            if (editorMode == EditorModes.SELECTION) {
+            if (selectMode()) {
                 const S = Editor.SelectRegion;
                 const here = Editor.newCoord(clickX, clickY, "screen");
                 const zone = S.hitZone(clickX, clickY);
@@ -595,7 +608,6 @@ class Pointer {
                 selDragging = false;
                 selClick = { pick, additive };
 
-                // shift+clique num objeto ainda não selecionado, mesmo dentro da caixa: soma em vez de mover
                 const takeover = zone?.kind === "move" && additive && pick && !S.isSelected(pick);
 
                 if (zone && !takeover) S.beginGesture(zone, here);
@@ -727,9 +739,10 @@ class Pointer {
         clearLongPress();
 
         if (page == "editor" && rightClicking) {
-            if (rightVertex) {
+            if (rightVertex || rightFloor >= 0) {
                 if (!passedDragThreshold(e)) return;   // tremida ainda é clique
-                rightVertex = null;                    // virou rotação: não apaga
+                rightVertex = null;
+                rightFloor = -1;                       // virou rotação: não apaga
             }
             Pointer.rotateMove(e);
             Editor.SelectRegion.onCameraRotate();
@@ -747,7 +760,7 @@ class Pointer {
         stopCarry();
 
         if (page == "editor") {
-            if (editorMode == EditorModes.SELECTION) {
+            if (selectMode()) {
                 const S = Editor.SelectRegion;
                 const here = Editor.newCoord(e.clientX, e.clientY, "screen");
 
@@ -766,6 +779,16 @@ class Pointer {
                     setCursor(S.cursorForZone(S.hitZone(e.clientX, e.clientY)));
                 }
             } else if (editorMode == EditorModes.FREE) {
+                if (Floors.isActive()) {
+                    if (floorGrab) {
+                        Floors.dragTo(e.clientX, e.clientY, e.shiftKey, passedDragThreshold(e));
+                        return;
+                    }
+                    const b = Floors.hover(e.clientX, e.clientY);
+                    if (b) hoverTargetSet.add(b);
+                    const editCursor = Floors.editHover(e.clientX, e.clientY);
+                    setCursor(b ? "pointer" : (editCursor ?? ""));
+                }
                 if (!leftClicking) return;
                 Pointer.defaultMove(e);
             } else if (editorMode == EditorModes.REFERENCE) {
@@ -778,7 +801,7 @@ class Pointer {
                     if (target) {
                         const off = Tools.Holdable.initialPos.off ?? { x: 0, y: 0 };
                         const n = normalCoordAt(e.clientX, e.clientY).pos;
-                        obj.move(Editor.newCoord(n.x - off.x, n.y - off.y, "normal"), false, true);   // merge: teleporta
+                        obj.move(Editor.newCoord(n.x - off.x, n.y - off.y, "normal"), false, true);
                         hoverTargetSet.add(target);
                         clearSplitPreview();
                     } else {
@@ -790,7 +813,6 @@ class Pointer {
                         hoverTargetSet.add(overlap);
                         clearSplitPreview();
                     } else {
-                        // prévia da criação: onde o novo ponto cairia na linha
                         showSplitPreview(Editor.Connections.findSplitAt(coord.peekNormal(), { avoidWalls: true }));
                     }
                 }
@@ -818,7 +840,7 @@ class Pointer {
                             if (splitStart) Actions.newConnectionFromSplit(phantom.startSplitHit, overlap);
                             else Actions.newConnection(phantom.start, overlap);
 
-                            showStartPreview(null);   // the start is now a real reference
+                            showStartPreview(null);
                             Tools.Holdable.set(overlap, "connectionReference", false, new Editor.PhantomConnection(overlap));
                         }
                     } else {
@@ -830,7 +852,6 @@ class Pointer {
                         phantom.setEndPoint(hit ? Editor.newCoord(hit.x, hit.y, "normal") : coord);
                     }
                 } else {
-                    // not holding: hover preview of where a drag would start
                     const overlap = Editor.Referencer.getOverlappingDots(coord);
                     const hit = overlap ? null : Editor.Connections.findSplitAt(coord.peekNormal(), { avoidWalls: true });
                     showStartPreview(hit);
@@ -946,7 +967,7 @@ class Pointer {
         }
 
         Editor.SelectRegion.release();
-        if (page == "editor" && editorMode == EditorModes.SELECTION && wasLeftClicking && e.button === 0) {
+        if (page == "editor" && selectMode() && wasLeftClicking && e.button === 0) {
             endSelectionGesture();
         }
 
@@ -1002,6 +1023,22 @@ class Pointer {
             }
             return;
         } else if (page == "editor") {
+            if (Floors.isActive()) {
+                if (e.button === 2 && rightFloor >= 0) {
+                    const i = rightFloor;
+                    rightFloor = -1;
+                    Floors.removeVertex(i);
+                    return;
+                }
+                if (e.button === 0 && floorGrab) {
+                    floorGrab = false;
+                    Floors.release();
+                    return;
+                }
+                if (e.button === 0 && wasLeftClicking && !passedDragThreshold(e)) Floors.pick(e.clientX, e.clientY);
+                return;
+            }
+
             if (e.button === 2 && rightVertex) {
                 const target = rightVertex;
                 rightVertex = null;
@@ -1070,6 +1107,9 @@ class Pointer {
         moved = true;
 
         rightVertex = null;
+        rightFloor = -1;
+        floorGrab = false;
+        Floors.cancelDrag();
         pressedTarget = null;
 
         if (Tools.Holdable.type === "connectionReference" || Tools.Holdable.type === "connectionSplitReference") {

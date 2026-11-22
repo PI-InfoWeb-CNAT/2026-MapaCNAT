@@ -14,8 +14,10 @@ import {
     EditorModes, editorMode, bannerHeld, bannerState, Actions,
     clearAllSplitPreviews, setCursor, syncHandles,
     registerUI, selectionState,
+    hooks as actionHooks,
 } from './editor/action.js';
 import { gesture, gestureActive, cancelPointer, goToPlace, buildURL } from './pointer.js';
+import * as Floors from './editor/floors.js';
 
 let page;
 let activeTab = "map";
@@ -75,12 +77,8 @@ export function WaitButtonClick(buttonElements) {
     });
 }
 
-async function switchTab(name) {
+function applyTab(name) {
     if (name === activeTab) return;
-    if (!(await Actions.ensureBannerValid())) return;
-
-    await Actions.switchMode(EditorModes.FREE);
-    if (editorMode !== EditorModes.FREE) return;
 
     activeTab = name;
     for (const tab of document.querySelectorAll("[data-tab]")) {
@@ -89,13 +87,21 @@ async function switchTab(name) {
     for (const view of document.querySelectorAll("[data-view]")) {
         view.classList.toggle("hidden", view.dataset.view !== name);
     }
+    Graficos.setTabMode(name ?? "map");
+    Floors.setActive(name === "buildings");
 }
 
-// =====================================================================
-// Keyboard
-// =====================================================================
+async function switchTab(name) {
+    if (name === activeTab) return;
+    if (!(await Actions.ensureBannerValid())) return;
 
-const HOLD_MS = 280;           // segurar mais que isso = modo temporário
+    await Actions.switchMode(EditorModes.FREE);
+    if (editorMode !== EditorModes.FREE) return;
+
+    applyTab(name);
+}
+
+const HOLD_MS = 280;
 const MODE_KEYS = {
     s: EditorModes.SELECTION,
     r: EditorModes.REFERENCE,
@@ -108,6 +114,8 @@ const MODE_KEYS = {
 const SHORTCUTS = [
     ["S R C B N D", "Seleção, Referência, Conexão, Construção, Banner, Excluir (toque alterna, segurar é temporário)"],
     ["X (segurar)", "Mover o mapa rapidamente"],
+    ["Esc (aba Construções)", "Volta da construção para a visão geral"],
+    ["W D L S N (aba Construções)", "Paredes, Portas, Elevadores, Escadas, Banners"],
     ["Clique / Shift+Clique", "Seleção: seleciona o objeto / soma ao grupo (Shift em vértice soma o vértice)"],
     ["Delete / Backspace", "Apaga a seleção ou o que está na mão; sem nada, segurar = modo Excluir"],
     ["Esc", "Cancela o gesto, fecha o banner, sai do modo"],
@@ -181,6 +189,11 @@ class Keys {
         if (Versions.state.viewing !== null &&
             (key in MODE_KEYS || key === "delete" || key === "backspace")) return;
 
+        if (activeTab === "buildings" && !(e.ctrlKey || e.metaKey || e.altKey) && Floors.key(e)) { e.preventDefault(); return; }
+
+        if (activeTab !== "map" && !(e.ctrlKey || e.metaKey) &&
+            (key in MODE_KEYS || key === "delete" || key === "backspace")) return;
+
         if (e.ctrlKey || e.metaKey) { this.combo(e, key); return; }
         if (e.altKey) return;
         if (key === "shift") { this.onShift(e); return; }
@@ -188,7 +201,6 @@ class Keys {
         if (this.single(e, key)) e.preventDefault();
     }
 
-    // keyup sempre processa: nunca deixa um modo temporário preso
     static onKeyUp(e) {
         const key = e.key.toLowerCase();
 
@@ -216,6 +228,9 @@ class Keys {
     static combo(e, key) {
         if (Versions.state.viewing !== null && key !== "s") return;
 
+        // outside the map tab only save / undo / redo apply
+        if (activeTab !== "map" && !["s", "z", "y", "a"].includes(key)) return;
+
         if (key === "s") {
             e.preventDefault();
             if (!e.repeat && !gestureActive()) Persistence.save();
@@ -223,7 +238,7 @@ class Keys {
         }
         if (key === "a") {
             e.preventDefault();
-            if (!e.repeat) this.selectAll();
+            if (!e.repeat) { activeTab === "buildings" ? Floors.selectAll() : this.selectAll(); }
             return;
         }
         if (gestureActive()) return;
@@ -373,10 +388,11 @@ class Keys {
 
     static escape() {
         if (Versions.isOpen()) { Versions.close(); return; }
-
         if (this.cancelGesture()) return;
         if (bannerHeld()) { Actions.requestCloseBanner(); return; }
-        if (Tools.Task.task) { Actions.switchMode(EditorModes.FREE); return; }   // confirma se houver pontos
+        if (Floors.isActive() && Editor.SelectRegion.box) { Editor.SelectRegion.refresh(); return; }
+        if (Floors.goBack()) return;
+        if (Tools.Task.task) { Actions.switchMode(EditorModes.FREE); return; }
         if (Editor.SelectRegion.box) {
             const before = Editor.SelectRegion.snapshot();
             Editor.SelectRegion.refresh();
@@ -623,6 +639,10 @@ export async function addListeners(map) {
             selectionBtn, deleteBtn, buildBtn, referenceBtn, connectionBtn, bannerBtn, pinBtn,
             constructionPanel,
         });
+
+        Floors.init({ showTab: () => applyTab("buildings") });
+        actionHooks.getTab = () => activeTab;
+        actionHooks.showTab = (tab) => applyTab(tab);
 
         Persistence.load();
     }

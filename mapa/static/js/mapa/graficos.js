@@ -12,6 +12,305 @@ const DOT_STROKE = 4;
 
 let tiles;
 
+let rotSin = 0, rotCos = 1;
+
+function sortPin(g) {
+    g.zIndex = rotSin * g.x + rotCos * g.y;
+}
+
+const FLOOR_MIN_ZOOM = 0.001;
+const FLOOR_MAX_ZOOM = 1000;
+const GRID_MIN_PX = 14;
+const GRID_MAJOR_EVERY = 10;
+
+let tabMode = "map";
+let floorContainer;
+let floorGrid;
+let floorShapes = [];
+let mapZoomMin = 1, mapZoomMax = 1;
+let savedCamera = null;
+const hiddenByFloor = new Map();
+const GRID_DATA = {};
+
+let floorEditGfx;
+let floorEdit = null;      // { building, points, hover, hoverMid }
+const MID_MIN_PX = 200;
+
+let focusedBuilding = null;
+const floorShapeOf = new Map();
+const HIDE_OTHERS_WHEN_FOCUSED = true;
+
+let floorPinLayer;
+const floorPinOf = new Map();    // Building -> its pin in the floor view
+
+const floorPinData = (b) => ({ ...b.buildData(), visible: !focusedBuilding });
+
+function destroyFloorPins() {
+    for (const pin of floorPinOf.values()) {
+        pin.parent?.removeChild(pin);
+        destroyMapPin(pin);
+    }
+    floorPinOf.clear();
+}
+
+function buildFloorPins() {
+    for (const b of floorShapeOf.keys()) {
+        const pin = createMapPin(b.name || "");
+        floorPinLayer.addChild(pin);               // moves it out of pinContainer
+        floorPinOf.set(b, pin);
+        renderMapPin(pin, floorPinData(b));
+    }
+    floorContainer.addChild(floorPinLayer);        // keep pins above the shapes
+}
+
+function floorPolyData(b) {
+    const B = Editor.Palette.building;
+    const on = b === focusedBuilding;
+    const ghost = !!floorEdit && b === floorEdit.building;
+
+    return {
+        points: b.vertices.map((v) => ({ x: v.pos.x, y: v.pos.y })),
+        alpha: ghost ? 0.3 : 1,
+        colorOut: ghost ? 0x000000 : (on ? 0x000000 : B.out),
+        colorIn: on ? 0xffffff : B.in,
+        inAlpha: ghost ? 0 : (on ? 0 : 0.45),
+        borderSize: 8, radius: 0, handles: on, handleActive: -1,
+    };
+}
+
+export function setFocusedBuilding(b) {
+    focusedBuilding = b ?? null;
+    for (const [building, g] of floorShapeOf) {
+        if (g.destroyed) continue;
+        defer(g, floorPolyData(building), drawPoly, true);
+        g.visible = !HIDE_OTHERS_WHEN_FOCUSED || !focusedBuilding || building === focusedBuilding;
+    }
+
+    for (const [building, pin] of floorPinOf) {
+        if (!pin.destroyed) renderMapPin(pin, floorPinData(building));
+    }
+
+    requestRender();
+}
+
+function markGrid() {
+    if (floorGrid) defer(floorGrid, GRID_DATA, drawGrid);   // drawn once per frame, reads the camera at flush time
+}
+
+function drawGrid(g) {
+    g.clear();
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of getVisibleMapBounds()) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+    }
+
+    // cell = 1 m (or 10 units without calibration) times a power of ten so lines stay >= GRID_MIN_PX apart
+    const upm = typeof metrics !== "undefined" ? metrics?.unitsPerMeter : NaN;
+    const unit = Number.isFinite(upm) && upm > 0 ? upm : 10;
+    const k = Math.ceil(Math.log10(GRID_MIN_PX / (unit * zoom)));
+    const step = unit * 10 ** k;
+    const px = step * zoom;
+    const fade = Math.min(Math.max((px - GRID_MIN_PX) / (GRID_MIN_PX * 3), 0), 1);   // minor lines fade in
+
+    const minorX = [], majorX = [], minorY = [], majorY = [];
+    for (let i = Math.ceil(minX / step); i <= Math.floor(maxX / step); i++) {
+        if (i !== 0) (i % GRID_MAJOR_EVERY === 0 ? majorX : minorX).push(i * step);
+    }
+    for (let i = Math.ceil(minY / step); i <= Math.floor(maxY / step); i++) {
+        if (i !== 0) (i % GRID_MAJOR_EVERY === 0 ? majorY : minorY).push(i * step);
+    }
+
+    const stroke = (xs, ys, width, color, alpha) => {
+        if (alpha <= 0 || (!xs.length && !ys.length)) return;
+        for (const x of xs) g.moveTo(x, minY).lineTo(x, maxY);
+        for (const y of ys) g.moveTo(minX, y).lineTo(maxX, y);
+        g.stroke({ width: width / zoom, color, alpha });
+    };
+
+    stroke(minorX, minorY, 1, 0x9aa5b1, 0.35 * fade);
+    stroke(majorX, majorY, 1.5, 0x6b7785, 0.55);
+    stroke(minX <= 0 && maxX >= 0 ? [0] : [], minY <= 0 && maxY >= 0 ? [0] : [], 2, Editor.Palette.selection.out, 0.8);
+}
+
+function drawFloorConnections(g, data) {
+    g.clear();
+    const path = () => { for (const [a, b] of data.segments) g.moveTo(a.x, a.y).lineTo(b.x, b.y); };
+
+    path();
+    g.stroke({ width: (data.size + 6) / zoom, color: data.colorOut, alpha: data.alpha, cap: "round", join: "round" });
+    path();
+    g.stroke({ width: data.size / zoom, color: data.colorIn, alpha: data.alpha, cap: "round", join: "round" });
+}
+
+function clearFloorShapes() {
+    destroyFloorPins();
+    for (const g of floorShapes) {
+        forget(g);
+        g.parent?.removeChild(g);
+        g.destroy();
+    }
+    floorShapes = [];
+    floorShapeOf.clear();
+}
+
+const WALL_PX = 7;      // was 4
+
+function drawFloorEdit(g, d) {
+    const B = Editor.Palette.building;
+    drawPoly(g, {
+        points: d.points, alpha: 1, inAlpha: 0.45, colorOut: B.out, colorIn: B.in,
+        borderSize: 8,
+        radius: 0, handles: d.handles, handleActive: d.hover,
+    });
+
+    const wallW = WALL_PX / zoom;
+    if (d.walls?.length) {
+        for (const w of d.walls) g.moveTo(w.a.x, w.a.y).lineTo(w.b.x, w.b.y);
+        g.stroke({ width: wallW, color: B.out, cap: "round" });
+    }
+
+    if (d.selected?.length) {
+        for (const w of d.selected) g.moveTo(w.a.x, w.a.y).lineTo(w.b.x, w.b.y);
+        g.stroke({ width: wallW, color: Editor.Palette.selection.out, cap: "round" });
+    }
+
+    if (d.draft) {
+        const { a, b } = d.draft;
+        g.moveTo(a.x, a.y).lineTo(b.x, b.y);
+        g.stroke({ width: wallW, color: 0xe8730c, alpha: 0.8, cap: "round" });
+        g.circle(a.x, a.y, 5 / zoom).fill({ color: 0xe8730c });
+    }
+
+    if (d.snap) g.circle(d.snap.x, d.snap.y, 7 / zoom).stroke({ width: 2 / zoom, color: 0x16a34a });
+
+    if (!d.handles) return;
+
+    for (const w of d.walls ?? []) {
+        for (const q of [w.a, w.b]) {
+            g.circle(q.x, q.y, 5 / zoom).fill({ color: 0xffffff }).stroke({ width: 2 / zoom, color: B.out });
+        }
+    }
+
+    if (!d.handles) return;
+    const n = d.points.length;
+    for (let i = 0; i < n; i++) {
+        const a = d.points[i], b = d.points[(i + 1) % n];
+        if (Math.hypot(a.x - b.x, a.y - b.y) < MID_MIN_PX / zoom) continue;
+        const hot = i === d.hoverMid;
+        g.circle((a.x + b.x) / 2, (a.y + b.y) / 2, (hot ? 7 : 5) / zoom)
+            .fill({ color: hot ? B.hoverFill : 0xffffff })
+            .stroke({ width: 2 / zoom, color: B.out });
+    }
+}
+
+export function setFloorEdit(state) {
+    const prev = floorEdit?.building;
+    floorEdit = state ?? null;
+    if (!floorEditGfx) return;
+
+    // the edited building's own outline becomes a faint ghost behind the floor shape
+    for (const b of [prev, floorEdit?.building]) {
+        const g = b && floorShapeOf.get(b);
+        if (g && !g.destroyed) defer(g, floorPolyData(b), drawPoly, true);
+    }
+
+    if (!floorEdit) {
+        undefer(floorEditGfx);
+        floorEditGfx.clear();
+        requestRender();
+        return;
+    }
+    floorContainer.addChild(floorEditGfx);       // keep it on top of the copies
+    defer(floorEditGfx, floorEdit, drawFloorEdit, true);
+}
+
+export function rebuildFloor() {
+    if (!floorContainer) return;
+    clearFloorShapes();
+
+    const B = Editor.Palette.building;
+    const copy = (p) => ({ x: p.x, y: p.y });
+
+    for (const b of Object.values(Editor.Buildings.buildings)) {
+        if (!b.enabled || !b.closed || b.vertices.length < 3) continue;
+        const g = new PIXI.Graphics();
+        g.cullable = CULLING;
+        floorContainer.addChild(g);
+        floorShapes.push(g);
+        floorShapeOf.set(b, g);
+        defer(g, floorPolyData(b), drawPoly, true);
+    }
+
+    buildFloorPins();
+
+    requestRender();
+}
+
+/** Keeps the tile engine's (or anyone's) late additions hidden while in floor mode. */
+function hideStrays() {
+    for (const c of mapContainer.children) {
+        if (c === floorContainer || c === snapGuideContainer || !c.visible) continue;
+        if (c === floorContainer || !c.visible) continue;
+        if (!hiddenByFloor.has(c)) hiddenByFloor.set(c, true);
+        c.visible = false;
+    }
+}
+
+export function setTabMode(mode) {
+    mode = mode === "buildings" ? "buildings" : "map";
+    if (mode === tabMode || !mapContainer || !floorContainer) return;
+    cancelTransform();
+
+    if (mode === "buildings") {
+        savedCamera = { zoom, rotation: mapContainer.rotation, x: mapContainer.x, y: mapContainer.y };
+        tabMode = "buildings";
+
+        hiddenByFloor.clear();
+        for (const c of mapContainer.children) {
+            if (c === floorContainer || c === snapGuideContainer) continue;
+            hiddenByFloor.set(c, c.visible);
+            c.visible = false;
+        }
+        floorContainer.visible = true;
+
+        syncZoomLimits();
+        updateViewport();
+        rebuildFloor();
+        markGrid();
+    } else {
+        tabMode = "map";
+        focusedBuilding = null;
+        floorEdit = null;
+        undefer(floorEditGfx);
+        floorEditGfx.clear();
+
+        clearFloorShapes();
+        undefer(floorGrid);
+        floorGrid.clear();
+        floorContainer.visible = false;
+
+        for (const [c, v] of hiddenByFloor) c.visible = v;
+        hiddenByFloor.clear();
+
+        syncZoomLimits();
+        updateViewport();
+        if (savedCamera) {
+            Zoom(Math.min(Math.max(savedCamera.zoom, minZoom), maxZoom));
+            Rotation(savedCamera.rotation);
+            Position(savedCamera.x, savedCamera.y);
+            savedCamera = null;
+        }
+        tiles?.requestUpdate();
+    }
+    requestRender();
+}
+
+export const getTabMode = () => tabMode;
+
 export let map;
 export let mapContainer;
 let textContainer;
@@ -59,7 +358,6 @@ export let groups;
 
 const origin = { x: 0, y: 0 };
 
-/** Posição do canvas na janela (para converter clientX/Y <-> coordenadas do canvas). */
 export function canvasOrigin() {
     return origin;
 }
@@ -70,19 +368,12 @@ function syncOrigin() {
     origin.y = r.top;
 }
 
-/* ============================================================================
- *  Scheduler: tarefas por frame + fila de "sujos" + render sob demanda
- *
- *  - render*()  guarda os dados mais recentes no objeto e o marca como sujo
- *  - no próximo frame: tarefas (animações) -> desenha os sujos (1x cada) -> render
- *  - o loop morre sozinho quando nada mudou (RENDER_ON_DEMAND)
- * ========================================================================== */
-const dirty = new Set();          // Graphics com redesenho pendente
-const zoomGfx = new Set();        // Graphics cuja geometria depende do zoom (polígonos, rota)
-const tasks = new Set();          // fn(now) executadas no início de cada frame
+const dirty = new Set();
+const zoomGfx = new Set();
+const tasks = new Set();
 let frameQueued = false;
 let framesLeft = 0;
-let zoomPass = false;             // true enquanto Zoom() roda
+let zoomPass = false;
 let settleTimer = 0;
 
 function schedule() {
@@ -91,7 +382,6 @@ function schedule() {
     requestAnimationFrame(frame);
 }
 
-/** Pede um render. Barato de chamar várias vezes por frame. */
 export function requestRender() {
     framesLeft = SETTLE_FRAMES;
     schedule();
@@ -120,6 +410,7 @@ function flushDirty() {
 /** Desenha agora (usado no resize, para não piscar). */
 export function renderNow() {
     if (!app?.renderer) return;
+    if (tabMode === "buildings") hideStrays();
     flushDirty();
     if (CULLING && PIXI.Culler?.shared) PIXI.Culler.shared.cull(app.stage, app.screen, false);
     app.render();
@@ -195,7 +486,7 @@ export function getViewport() {
 function buildOccluders() {
     const mobile = () => window.matchMedia("(max-width: 700px)").matches;
     const defs = page === "editor"
-        ? [["#editor-topbar", "top"], ["#editor-modes", "left"], ["#banner", "right"]]
+        ? [["#editor-topbar", "top"], ["#editor-modes", "left"], ["#floor-modes", "left"], ["#banner", "right"], ["#floors", "bottom"]]
         : [["#user-tab", "bottom"], ["#screen-ui", () => (mobile() ? "bottom" : "right")]];
 
     occluders = defs
@@ -890,6 +1181,7 @@ export function renderPin(graphics, data) {
         graphics.children[1].tint = colorPin;
     }
     graphics.position.set(pos.x, pos.y);
+    sortPin(graphics);
     graphics.scale.set(size / zoom);
     const rot = -mapContainer.rotation;
     if (graphics.rotation !== rot) graphics.rotation = rot;
@@ -1042,6 +1334,7 @@ function drawPoly(graphics, data) {
     const polygons = isSinglePolygon ? [rawPoints] : rawPoints;
 
     const alpha = data.alpha;
+    const innerAlpha = data.inAlpha === undefined ? 0.45 : data.inAlpha;
     const colorOut = data.colorOut;
     const colorIn = data.colorIn;
     const size = data.borderSize / zoom;
@@ -1063,7 +1356,7 @@ function drawPoly(graphics, data) {
     };
 
     for (const poly of polygons) buildPolygonPath(graphics, poly);
-    graphics.fill({ color: colorIn, alpha: alpha * 0.45 });
+    graphics.fill({ color: colorIn, alpha: innerAlpha });
 
     for (const poly of polygons) buildPolygonPath(graphics, poly);
     graphics.stroke({
@@ -1179,7 +1472,9 @@ export function renderSelfPin(graphics, data) {
     graphics.children[0].tint = data.online ? 0x0033ee : 0x454545;
 
     graphics.position.set(pos.x, pos.y);
+    sortPin(graphics);
     graphics.scale.set(size / zoom);
+
     requestRender();
 }
 
@@ -1311,6 +1606,7 @@ export function renderMapPin(graphics, data) {
     }
 
     graphics.position.set(pos.x, pos.y);
+    sortPin(graphics);
     graphics.scale.set(size / zoom);
     const rot = -mapContainer.rotation;
     if (graphics.rotation !== rot) graphics.rotation = rot;
@@ -1355,6 +1651,7 @@ export function renderTouchPin(graphics, data) {
     graphics.visible = true;
     graphics._size = size;
     graphics.position.set(pos.x, pos.y);
+    sortPin(graphics);
     graphics.scale.set(size / zoom);
     requestRender();
 }
@@ -1399,14 +1696,25 @@ function computeZoomLimits() {
     const sh = viewport.height || app.screen.height;
 
     // mapa inteiro cabe na área livre (rotação 0)
-    minZoom = Math.min(sw / imageSize.width, sh / imageSize.height);
+    mapZoomMin = Math.min(sw / imageSize.width, sh / imageSize.height);
 
     const upm = typeof metrics !== "undefined" ? metrics?.unitsPerMeter : NaN;
-    maxZoom = Number.isFinite(upm) && upm > 0
+    mapZoomMax = Number.isFinite(upm) && upm > 0
         ? Math.min(sw, sh) / (MAX_ZOOM_METERS * upm)
         : FALLBACK_MAX_ZOOM;
 
-    maxZoom = Math.max(maxZoom, minZoom);
+    mapZoomMax = Math.max(mapZoomMax, mapZoomMin);
+    syncZoomLimits();
+}
+
+function syncZoomLimits() {
+    if (tabMode === "buildings") {
+        minZoom = FLOOR_MIN_ZOOM;
+        maxZoom = FLOOR_MAX_ZOOM;
+    } else {
+        minZoom = mapZoomMin;
+        maxZoom = mapZoomMax;
+    }
 }
 
 function applyZoomLimits() {
@@ -1418,6 +1726,7 @@ function applyZoomLimits() {
 
 /** Atualiza o mapa base e garante um render. */
 function tilesUpdate() {
+    if (tabMode === "buildings") { markGrid(); requestRender(); return; }
     tiles?.requestUpdate();
     requestRender();
 }
@@ -1501,9 +1810,26 @@ export async function main() {
     mapContainer.addChild(referenceContainer);
 
     pinContainer = new PIXI.Container();
+    pinContainer.sortableChildren = true;
     mapContainer.addChild(pinContainer);
 
     snapGuideContainer = new PIXI.Container();
+
+    floorContainer = new PIXI.Container();
+    floorContainer.visible = false;
+    floorGrid = new PIXI.Graphics();
+    floorGrid.cullable = false;          // it is redrawn to cover the visible area
+    floorContainer.addChild(floorGrid);
+
+    floorEditGfx = new PIXI.Graphics();
+    floorEditGfx.cullable = false;
+    floorContainer.addChild(floorEditGfx);
+
+    floorPinLayer = new PIXI.Container();
+    floorPinLayer.sortableChildren = true;      // lower on screen = on top, as in the map
+    floorContainer.addChild(floorPinLayer);
+
+    mapContainer.addChild(floorContainer);
     mapContainer.addChild(snapGuideContainer);
 
     temporaryPin = createPin("");
@@ -1637,6 +1963,7 @@ function clampAxis(value, center, mapSize, viewSize, slack) {
 }
 
 function clampPos() {
+    if (tabMode === "buildings") return;
     const v = viewport;
 
     // 0 em minZoom (sempre centralizado) → 1 um pouco acima dele (folga original)
@@ -1662,7 +1989,7 @@ export function setPosition(x, y) {
 
 const PIN_PRIORITY_MIN = 1;
 const PIN_PRIORITY_MAX = 5;
-const PIN_REVEAL_END = 0.75;     // how far along the zoom range the LAST priority appears (0..1)
+const PIN_REVEAL_END = 0.5;     // how far along the zoom range the LAST priority appears (0..1)
 const PIN_PRIORITY_DEFAULT = 3;  // used when a banner has no valid priority
 
 /** 0 at minZoom, 1 at maxZoom, linear in wheel clicks (log scale). */
@@ -1696,6 +2023,11 @@ export function Zoom(z) {
     for (const child of pinContainer.children) {
         child.scale.set((child._size ?? 1) / zoom);
     }
+    
+    if (floorPinLayer) for (const child of floorPinLayer.children) child.scale.set((child._size ?? 1) / zoom);
+
+    if (floorEdit && floorEditGfx) defer(floorEditGfx, floorEdit, drawFloorEdit, true);
+
     for (const child of textContainer.children) {
         child.scale.set(1 / zoom / 2);
     }
@@ -1731,9 +2063,15 @@ export function setZoom(z) {
 
 function Rotation(r) {
     mapContainer.rotation = r;
+    rotSin = Math.sin(r);
+    rotCos = Math.cos(r);
     for (const child of pinContainer.children) {
         child.rotation = -r;
+        sortPin(child);
     }
+
+    if (floorPinLayer) for (const child of floorPinLayer.children) { child.rotation = -r; sortPin(child); }
+
     for (const h of dots) {
         if (h._d?.entrance) h.door.rotation = -r;
         if (h._d?.hasIcon) h.icon.rotation = -r;
@@ -1742,6 +2080,7 @@ function Rotation(r) {
         compassButton.children[0].style.transform = `rotate(${r}rad)`;
     }
     Editor.SelectRegion.onCameraRotate();
+    if (tabMode === "buildings") markGrid();
     requestRender();
 }
 

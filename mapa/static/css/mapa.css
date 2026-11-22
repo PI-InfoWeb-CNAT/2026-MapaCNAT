@@ -931,7 +931,8 @@ header {
 
 /* ---------- tool rail ---------- */
 
-#editor-modes {
+#editor-modes,
+#floor-modes {
     position: fixed;
     top: var(--topbar-h);
     left: 0;
@@ -948,7 +949,8 @@ header {
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.06);
 }
 
-#editor-modes hr {
+#editor-modes hr,
+#floor-modes hr {
     width: 32px;
     height: 2px;
     margin: 4px 0;
@@ -1786,8 +1788,8 @@ header {
     font-size: 0.82rem;
 }
 
-/* read-only: tools off, no save button */
-.viewing-version #editor-modes > :not(a) {
+.viewing-version #editor-modes > :not(a),
+.viewing-version #floor-modes > * {
     opacity: 0.4;
     pointer-events: none;
 }
@@ -2495,3 +2497,12 @@ header {
 @keyframes td-q2 { 0%,24%{opacity:0} 25%,49%{opacity:1} 50%,100%{opacity:0} }
 @keyframes td-q3 { 0%,49%{opacity:0} 50%,74%{opacity:1} 75%,100%{opacity:0} }
 @keyframes td-q4 { 0%,74%{opacity:0} 75%,100%{opacity:1} }
+
+.editor-tab[data-state="future"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.editor-tab[data-state="added"] span {
+    display: none;
+}

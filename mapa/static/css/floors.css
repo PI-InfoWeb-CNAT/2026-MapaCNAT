@@ -1,0 +1,67 @@
+/* Aba "Construções": ferramentas (esquerda), barra de andares (embaixo) e dica */
+:root { --floor-modes-w: 88px; }                    /* 16px de margem + 52px da barra + folga */
+
+/* ---------- ferramentas: Paredes, Portas, Elevadores, Escadas, Banners ---------- */
+.floor-tool.is-active,
+.floor-tool.is-active:hover,
+.floor-tool[aria-pressed="true"] {
+    background: var(--dark-green-main);
+    color: var(--white);
+}
+
+.floor-tool:disabled { opacity: 0.35; cursor: not-allowed; }
+.floor-tool:disabled:hover { background: transparent; color: var(--gray-700); }
+
+#floors {
+    right: 16px;
+    bottom: 16px;
+    left: calc(var(--rail-w) + 16px);
+    position: fixed;
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 12px;
+    background: var(--panel-bg, #fff);
+    border-radius: 14px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .18);
+    z-index: 20;
+    transform: translateY(calc(100% + 32px));       /* fechada: abaixo da tela */
+    opacity: 0; pointer-events: none;
+    transition: transform .3s ease, opacity .3s ease;
+}
+#floors.is-open { transform: none; opacity: 1; pointer-events: auto; }
+
+.floors-header { display: flex; align-items: center; gap: 10px; flex: none; }
+.floors-title { display: flex; flex-direction: column; min-width: 0; }
+.floors-title h2 {
+    margin: 0; font-size: 1.05rem; line-height: 1.2; max-width: 14ch;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#floors-count { font-size: .8rem; opacity: .65; }
+
+.floors-list {
+    position: relative;                              /* floors.js rola por offsetLeft */
+    display: flex; flex-direction: row; gap: 8px;
+    flex: 1; min-width: 0; margin: 0; padding: 2px; list-style: none;
+    overflow-x: auto; overflow-y: hidden;
+}
+.floor-item {
+    flex: none; display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 10px; white-space: nowrap; cursor: pointer;
+    border: 1px solid rgba(0, 0, 0, .1);
+}
+.floor-item:hover { background: rgba(0, 0, 0, .04); }
+.floor-item.is-selected { background: rgba(232, 115, 12, .12); border-color: #e8730c; }
+.floor-item.is-custom .floor-label { font-weight: 600; }
+.floor-label { font-weight: 500; }
+.floor-remove:disabled { opacity: .35; cursor: not-allowed; }
+#floors-add { flex: none; }
+
+/* ---------- dica: só enquanto nenhuma construção está em foco ---------- */
+#floors-hint-bar {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    z-index: 15; padding: 8px 16px; border-radius: 999px; font-size: .9rem;
+    background: var(--surface, #fff); color: var(--text, #1b1f24);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .18); pointer-events: none;
+}
+#view-buildings.is-focused #floors-hint-bar { display: none; }
+
+@media (prefers-reduced-motion: reduce) { #floors { transition: none; } }

@@ -2,6 +2,7 @@ import * as Graficos from "../graficos.js";
 import * as Interacao from "../interacao.js";
 import * as Localizacao from "../localizacao.js";
 import * as Editor from "../objects.js";
+import * as Actions from "../editor/action.js";
 
 fetch(config)
 .then(response => response.json())
@@ -15,6 +16,8 @@ fetch(config)
     
     Interacao.setContext(data);
     await Interacao.addListeners(Graficos.map);
+    data.mapObj = Graficos.map;
+    Actions.setContext(data);
     Localizacao.UserLocation();
 
     Graficos.loadMapScales();

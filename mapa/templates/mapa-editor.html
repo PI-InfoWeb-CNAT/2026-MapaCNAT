@@ -6,6 +6,7 @@
 
 {% block style %}
 <link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
+<link rel="stylesheet" type="text/css" href="{% static 'css/floors.css' %}">
 <style>
     .custom-cursor {
         cursor: url("{% static 'img/cursor-pin.png' %}") 12 24, auto;
@@ -31,13 +32,10 @@
         </a>
 
         <div class="editor-tabs" role="tablist" aria-label="Editores">
-            <button type="button" class="editor-tab" role="tab" id="tab-map"
-                    data-tab="map" aria-selected="true" aria-controls="view-map">
-                <i class="fa-solid fa-map"></i> Mapa
+            <button type="button" data-state="added" class="editor-tab" role="tab" id="tab-map" data-tab="map" aria-selected="true" aria-controls="view-map">
+                <i class="fa-solid fa-map"></i> Mapa <span class="tab-soon">em breve</span>
             </button>
-            <!-- remove "disabled" and the badge when the building editor exists -->
-            <button type="button" class="editor-tab" role="tab" id="tab-buildings"
-                    data-tab="buildings" aria-selected="false" aria-controls="view-buildings" disabled>
+            <button type="button" data-state="added" class="editor-tab" role="tab" id="tab-buildings" data-tab="buildings" aria-selected="false" aria-controls="view-buildings">
                 <i class="fa-solid fa-building"></i> Construções <span class="tab-soon">em breve</span>
             </button>
         </div>
@@ -87,9 +85,9 @@
     </aside>
 
     <main>
-        <section class="editor-view" id="view-map" data-view="map" role="tabpanel" aria-labelledby="tab-map">
+        <section class="editor-view" id="view-map" role="tabpanel" aria-labelledby="tab-map">
 
-            <nav id="editor-modes" aria-label="Ferramentas do mapa">
+            <nav id="editor-modes" aria-label="Ferramentas do mapa" data-view="map">
                 <a class="alt-botao" href="{% url 'mapa' mapa.pk %}" title="Voltar a Exploração" aria-label="Voltar a Exploração"><i class="fa-solid fa-map"></i></a>
                 <button type="button" class="tool-btn" id="selection" title="Seleção" aria-label="Seleção"><i class="fa-solid fa-hand"></i></button>
                 <button type="button" class="tool-btn" id="delete" title="Apagar" aria-label="Apagar"><i class="fa-solid fa-trash"></i></button>
@@ -206,11 +204,51 @@
                 </form>
             </aside>
 
+            <section class="editor-view hidden" id="view-buildings" data-view="buildings" role="tabpanel" aria-labelledby="tab-buildings">
+                <div id="floors-hint-bar" class="floors-hint-bar">Clique em uma construção para configurar os andares</div>
+                <nav id="floor-modes" aria-label="Ferramentas da construção">
+                    <a class="alt-botao" href="{% url 'mapa' mapa.pk %}" title="Voltar a Exploração" aria-label="Voltar a Exploração"><i class="fa-solid fa-map"></i></a>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="SELECT" title="Selecionar (V)" aria-label="Selecionar" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-arrow-pointer"></i>
+                    </button>
+                    <hr>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="WALLS" title="Paredes (W)" aria-label="Paredes" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-trowel-bricks"></i>
+                    </button>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="DOORS" title="Portas (D)" aria-label="Portas" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-door-open"></i>
+                    </button>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="ELEVATORS" title="Elevadores (L)" aria-label="Elevadores" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-elevator"></i>
+                    </button>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="STAIRS" title="Escadas (S)" aria-label="Escadas" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-stairs"></i>
+                    </button>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="BANNERS" title="Banners (N)" aria-label="Banners" aria-pressed="false" disabled>
+                        <svg class="svg-icon" aria-hidden="true"><use href="#icon-banner"/></svg>
+                    </button>
+                </nav>
+
+                <aside id="floors" aria-label="Andares" aria-hidden="true">
+                    <div class="floors-header">
+                        <button type="button" class="icon-btn" id="floors-back" aria-label="Voltar (Esc)" title="Voltar (Esc)">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                        <div class="floors-title">
+                            <h2 id="floors-building-name">Construção</h2>
+                            <span id="floors-count" aria-live="polite">1 andar</span>
+                        </div>
+                    </div>
+                    <ol id="floors-list" class="floors-list"></ol>
+                    <button type="button" id="floors-add" class="alt-botao" title="Adicionar andar">
+                        <i class="fa-solid fa-plus"></i> Andar
+                    </button>
+                </aside>
+            </section>
+
             <div id="map"></div>
         </section>
-
-        <!-- ===== tab: building editor (future, rendered separately) ===== -->
-        <section class="editor-view hidden" id="view-buildings" data-view="buildings" role="tabpanel" aria-labelledby="tab-buildings"></section>
+        
 
         {{ mapa.coordinates|json_script:"coordinates-data" }}
 
