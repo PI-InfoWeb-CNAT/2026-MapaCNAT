@@ -17,9 +17,14 @@ urlpatterns = [
     path('mapa/admin/staff', views.admin_staff, name='painel_staff'),
     path('mapa/admin/editor/<int:mapa_id>', views.mapa_editor, name='mapa_editor'),
     path('mapa/admin/editor/<int:mapa_id>/svg', views.mapa_svg_raw, name='mapa_svg_raw'),
-    # path('mapa/admin/editor/migrate', views.migrate_mapa, name='migrate_mapa'),
+
     path('mapa/admin/editor/<int:mapa_id>/save', views.mapa_editor_data, name='mapa_editor_data'),
     path('mapa/admin/editor/<int:mapa_id>/load', views.mapa_data_load, name='mapa_editor_load'),
+
+    path("mapa/admin/editor/<int:mapa_id>/versoes/", views.mapa_versoes, name="mapa_versoes"),
+    path("mapa/admin/editor/<int:mapa_id>/versoes/<int:numero>/restaurar/", views.mapa_restaurar_versao, name="mapa_restaurar_versao"),
+    path("mapa/admin/editor/<int:mapa_id>/versoes/imagem/<str:sha>/", views.versao_imagem, name="versao_imagem"),
+    
     path('mapa/feedback/', views.give_feedback, name='feedback'),
     path('banner/<int:banner_id>/image/', views.get_banner_image, name='banner_image'),
     path('', views.home, name='home'),

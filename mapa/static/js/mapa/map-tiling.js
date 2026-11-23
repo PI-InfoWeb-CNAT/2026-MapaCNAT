@@ -1,23 +1,10 @@
-// mapTiles.js
-// Renderização de mapa SVG em tiles com níveis de detalhe (LOD), estilo Google Maps.
-//
-// Camadas (de baixo para cima), todas dentro do mapContainer:
-//   1. base     -> o SVG inteiro em baixa resolução (sempre presente, nunca é removida)
-//   2. tiles    -> tiles de 512px em níveis de escala 2^k, rasterizados sob demanda
-//   3. overlay  -> véu usado por editorFocus() (substitui o mapSprite.alpha = 0.5)
-//
-// LOD de conteúdo (opcional): elementos do SVG com data-min-zoom="1.5" só são
-// desenhados quando o zoom equivalente do tile for >= 1.5.
-//
-// Coordenadas: o mapa é centrado em (0,0) no mapContainer, como antes.
-
-const TILE_PX = 512; // tamanho do tile em pixels
-const PAD_PX = 1; // sobreposição direita/baixo para esconder costuras
-const BASE_MAX_PX = 2048; // lado maior da textura base
-const LEVEL_BIAS = 0.35; // tolerância de "subamostragem" antes de subir de nível
-const SETTLE_MS = 90; // espera o usuário parar de mexer antes de rasterizar
-const FRAME_BUDGET_MS = 8; // tempo máximo de rasterização por frame
-const FADE_MS = 180; // fade-in dos tiles
+const TILE_PX = 512;
+const PAD_PX = 1;
+const BASE_MAX_PX = 2048;
+const LEVEL_BIAS = 0.35;
+const SETTLE_MS = 90;
+const FRAME_BUDGET_MS = 8;
+const FADE_MS = 180;
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 

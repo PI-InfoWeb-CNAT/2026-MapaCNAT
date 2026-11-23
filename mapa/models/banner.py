@@ -5,6 +5,10 @@ class Banner(models.Model):
     titulo = models.CharField(max_length=255, blank=True, default="Nome da construção")
     descricao = models.TextField(blank=True, default="")
     name_alias = models.JSONField(default=list, blank=True)
+    mode = models.CharField(max_length=64, blank=True, default="construcao")
+    priority = models.IntegerField(choices=[(i, i) for i in range(1, 6)])
+
+    imagem_sha256 = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     imagem_blob = models.BinaryField(null=True, blank=True)
     imagem_mime_type = models.CharField(max_length=50, blank=True, null=True)
