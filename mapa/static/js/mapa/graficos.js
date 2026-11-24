@@ -1734,14 +1734,38 @@ function tilesUpdate() {
 export async function main() {
     app = new PIXI.Application();
     const mapEl = document.getElementById("map");
+    const mobile = matchMedia("(pointer: coarse)").matches;
+
     await app.init({
         resizeTo: mapEl,
-        antialias: true,
+        antialias: !mobile,
         backgroundColor: color,
         resolution: Math.min(window.devicePixelRatio || 1, MAX_RESOLUTION),
         autoDensity: true,
-        autoStart: false,            // o render é nosso (scheduler acima)
+        autoStart: false,
     });
+
+    const log = (...a) => console.log("[DBG]", ...a);
+
+    app.canvas.addEventListener("webglcontextlost", (e) => log("CONTEXT LOST", e.statusMessage));
+    app.canvas.addEventListener("webglcontextrestored", () => {
+        log("CONTEXT RESTORED");
+        tiles?.requestUpdate();
+        requestRender();
+    });
+
+    window.addEventListener("error", (e) => log("error", e.message));
+    window.addEventListener("unhandledrejection", (e) => log("rejection", e.reason));
+
+    setInterval(() => {
+        log(
+            "lost:", gl.isContextLost(),
+            "stats:", JSON.stringify(tiles.stats()),
+            "base destroyed:", tiles.baseSprite?.destroyed,
+            "base visible:", tiles.baseSprite?.visible,
+        );
+    }, 1000);
+
     app.ticker.stop();
 
     gl = app.renderer.gl;
@@ -1759,10 +1783,21 @@ export async function main() {
         container: mapContainer,
         svgUrl: mapImagePath,
         background: color,
+        maxDpr: MAX_RESOLUTION,
         getScreenSize: () => ({ width: app.screen.width, height: app.screen.height }),
         getZoomRange: () => ({ min: minZoom, max: maxZoom }),
         maxTextureSize: gl?.getParameter(gl.MAX_TEXTURE_SIZE) ?? 4096,
-        onUpdate: requestRender,     // o engine deve chamar isto quando uma tile/textura ficar pronta
+        onUpdate: requestRender,
+    });
+
+    app.canvas.addEventListener("webglcontextlost", (e) => {
+        e.preventDefault();
+        console.warn("[mapa] contexto WebGL perdido");
+    });
+    app.canvas.addEventListener("webglcontextrestored", async () => {
+        console.warn("[mapa] contexto WebGL restaurado");
+        await tiles.rebuild();
+        requestRender();
     });
 
     imageSize = await tiles.load(); // { width, height } vindos do SVG
