@@ -26,7 +26,7 @@ DEBUG = os.environ.get('DJANGO_DEBUG', "False").lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = ['127.0.0.1', 'mapa-cnat.vercel.app']
 if DEBUG:
-    ALLOWED_HOSTS += ['jailer-anaconda-scrimmage.ngrok-free.dev', 'localhost']
+    ALLOWED_HOSTS += ['*']
 
 LOGIN_URL = 'login'
 
