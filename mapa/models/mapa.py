@@ -1,5 +1,7 @@
+import hashlib
 from django.core.validators import MaxLengthValidator, MinLengthValidator
 from django.db import models
+from django.conf import settings
 import json
 import math
 
@@ -38,6 +40,30 @@ def calcular_afim(pontos):
     a, b, c = resolver(*(g[1] for g in geo))   # lng
     d, e, f = resolver(*(g[0] for g in geo))   # lat
     return [a, b, c, d, e, f]
+
+class MapaImagem(models.Model):
+    sha256 = models.CharField(max_length=64, primary_key=True)
+    blob = models.BinaryField()
+    mime_type = models.CharField(max_length=100, default="image/png")
+
+class MapaVersao(models.Model):
+    class Motivo(models.TextChoices):
+        AUTO = "auto"        # periodic checkpoint
+        SHRINK = "shrink"    # big deletion detected
+        MANUAL = "manual"    # user-requested checkpoint
+        RESTORE = "restore"  # state saved right before a restore
+
+    mapa = models.ForeignKey("Mapa", on_delete=models.CASCADE, related_name="versoes")
+    numero = models.PositiveIntegerField()
+    criado_em = models.DateTimeField(auto_now_add=True)
+    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    motivo = models.CharField(max_length=10, choices=Motivo.choices, default=Motivo.AUTO)
+    resumo = models.JSONField(default=dict)   # object counts, so listing never loads `dados`
+    dados = models.JSONField()
+
+    class Meta:
+        unique_together = [("mapa", "numero")]
+        ordering = ["-numero"]
 
 class Mapa(models.Model):
     nome = models.CharField(

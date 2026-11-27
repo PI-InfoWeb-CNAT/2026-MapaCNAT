@@ -26,6 +26,75 @@
 <body>
     {% block content %}
     {% endblock %}
+    <script>
+        (() => {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'app-tooltip';
+            tooltip.setAttribute('role', 'tooltip');
+            document.body.appendChild(tooltip);
+
+            let activeEl = null;
+
+            function show(el) {
+                // Converte title nativo automaticamente na primeira interação
+                if (el.hasAttribute('title')) {
+                    const titleText = el.getAttribute('title');
+                    if (titleText) {
+                        el.setAttribute('data-tooltip', titleText);
+                        if (!el.hasAttribute('aria-label')) {
+                            el.setAttribute('aria-label', titleText);
+                        }
+                    }
+                    el.removeAttribute('title');
+                }
+
+                const text = el.getAttribute('data-tooltip');
+                if (!text) return;
+
+                activeEl = el;
+                tooltip.textContent = text;
+                tooltip.classList.add('is-visible');
+
+                const rect = el.getBoundingClientRect();
+                const tipRect = tooltip.getBoundingClientRect();
+                const gap = 6;
+
+                // Centraliza horizontalmente, mas impede de vazar pelas laterais da tela
+                let left = rect.left + (rect.width - tipRect.width) / 2;
+                left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
+
+                // Abre em cima; se não houver espaço (ex: perto da nav), abre embaixo
+                let top = rect.top - tipRect.height - gap;
+                if (top < 8) {
+                    top = rect.bottom + gap;
+                }
+
+                tooltip.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+            }
+
+            function hide() {
+                activeEl = null;
+                tooltip.classList.remove('is-visible');
+            }
+
+            document.addEventListener('mouseover', (e) => {
+                const target = e.target.closest('[data-tooltip], [title]');
+                if (target && target !== activeEl) show(target);
+            });
+
+            document.addEventListener('mouseout', (e) => {
+                if (activeEl && !activeEl.contains(e.relatedTarget)) hide();
+            });
+
+            document.addEventListener('focusin', (e) => {
+                const target = e.target.closest('[data-tooltip], [title]');
+                if (target) show(target);
+            });
+
+            document.addEventListener('focusout', hide);
+            window.addEventListener('scroll', hide, true);
+        })();
+    </script>
     <script type="module" src="{% static 'js/modals.js' %}"></script>
 </body>
 </html>

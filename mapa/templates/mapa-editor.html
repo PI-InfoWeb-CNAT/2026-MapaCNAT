@@ -6,6 +6,7 @@
 
 {% block style %}
 <link rel="stylesheet" type="text/css" href="{% static 'css/mapa.css' %}">
+<link rel="stylesheet" type="text/css" href="{% static 'css/floors.css' %}">
 <style>
     .custom-cursor {
         cursor: url("{% static 'img/cursor-pin.png' %}") 12 24, auto;
@@ -31,27 +32,63 @@
         </a>
 
         <div class="editor-tabs" role="tablist" aria-label="Editores">
-            <button type="button" class="editor-tab" role="tab" id="tab-map"
-                    data-tab="map" aria-selected="true" aria-controls="view-map">
-                <i class="fa-solid fa-map"></i> Mapa
+            <button type="button" data-state="added" class="editor-tab" role="tab" id="tab-map" data-tab="map" aria-selected="true" aria-controls="view-map">
+                <i class="fa-solid fa-map"></i> Mapa <span class="tab-soon">em breve</span>
             </button>
-            <!-- remove "disabled" and the badge when the building editor exists -->
-            <button type="button" class="editor-tab" role="tab" id="tab-buildings"
-                    data-tab="buildings" aria-selected="false" aria-controls="view-buildings" disabled>
+            <button type="button" data-state="added" class="editor-tab" role="tab" id="tab-buildings" data-tab="buildings" aria-selected="false" aria-controls="view-buildings">
                 <i class="fa-solid fa-building"></i> Construções <span class="tab-soon">em breve</span>
             </button>
         </div>
 
-        <button type="button" id="save" class="alt-botao topbar-save">
-            <i class="fa-solid fa-floppy-disk"></i> Salvar
-        </button>
+
+        <div class="topbar-save">
+            <button type="button" id="help-btn" class="icon-btn"
+                    aria-label="Rever o tour guiado" title="Rever o tour guiado">
+                <i class="fa-solid fa-circle-question"></i>
+            </button>
+
+            <span id="save-status" data-state="saved">Salvo</span>
+            
+            <button type="button" id="save" class="alt-botao">
+                <i class="fa-solid fa-floppy-disk"></i> Salvar
+            </button>
+            <button type="button" id="history-btn" class="alt-botao"
+                    aria-label="Histórico" title="Histórico"
+                    aria-controls="history" aria-expanded="false">
+                <div style="height: 18px;">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+            </button>
+        </div>
     </nav>
 
-    <main>
-        <!-- ===== tab: map editor ===== -->
-        <section class="editor-view" id="view-map" data-view="map" role="tabpanel" aria-labelledby="tab-map">
+    <div id="version-bar" class="hidden" role="status">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        <span id="version-bar-text"></span>
+        <button type="button" id="version-restore" class="alt-botao">Restaurar esta versão</button>
+        <button type="button" id="version-exit" class="alt-botao">Voltar ao mapa atual</button>
+    </div>
 
-            <nav id="editor-modes" aria-label="Ferramentas do mapa">
+    <aside id="history" class="hidden" aria-label="Histórico de versões">
+        <div class="history-header">
+            <h2>Histórico</h2>
+            <button type="button" class="icon-btn" id="history-close" aria-label="Fechar histórico">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <p class="history-hint">
+            Cada versão guarda o mapa como ele estava <strong>antes</strong> de um salvamento.
+            O que você vê em "Mapa atual" é sempre o mais recente.
+        </p>
+        <ol id="history-list" class="history-list"></ol>
+        <button type="button" id="history-more" class="alt-botao hidden">Carregar mais</button>
+    </aside>
+
+    <main>
+        <section class="editor-view" id="view-map" role="tabpanel" aria-labelledby="tab-map">
+
+            <nav id="editor-modes" aria-label="Ferramentas do mapa" data-view="map">
+                <a class="alt-botao" href="{% url 'mapa' mapa.pk %}" title="Voltar a Exploração" aria-label="Voltar a Exploração"><i class="fa-solid fa-map"></i></a>
                 <button type="button" class="tool-btn" id="selection" title="Seleção" aria-label="Seleção"><i class="fa-solid fa-hand"></i></button>
                 <button type="button" class="tool-btn" id="delete" title="Apagar" aria-label="Apagar"><i class="fa-solid fa-trash"></i></button>
                 <hr>
@@ -59,7 +96,7 @@
                 <div class="tool-group" id="construction-group">
                     <button type="button" class="tool-btn" id="build" title="Construções" aria-label="Construções"><i class="fa-solid fa-building"></i></button>
                     <button type="button" id="pin-mode" class="tool-ext" data-state="idle"
-                            title="Nova construção: Clique para começar" aria-label="Nova construção">
+                            title="Nova construção" aria-label="Nova construção">
                         <span class="tool-ext-icon">
                             <img class="icon-pin" src="{% static 'img/pino.png' %}" width="22" alt="">
                             <i class="icon-check fa-solid fa-check"></i>
@@ -75,6 +112,7 @@
             </nav>
 
             <aside id="banner" class="hidden" aria-label="Editor de banner">
+                <div class="banner-tabs" id="banner-tabs" role="tablist" aria-label="Categorias do banner"></div>
                 <div class="banner-header">
                     <span class="banner-header-icon"><svg class="svg-icon" aria-hidden="true"><use href="#icon-banner"/></svg></span>
                     <h2>Banner</h2>
@@ -83,25 +121,31 @@
                 </div>
 
                 <form class="banner-form" id="bannerForm">
+                    <div class="banner-alias-heading" data-state="imagem">
+                        <label class="banner-section-title" for="banner-image-input">Imagem</label>
+                        <span class="banner-optional">Opcional</span>
+                    </div>
                     <label for="banner-image-input" class="image-upload-wrapper" id="image-upload-wrapper">
                         <span class="image-upload-label" id="image-upload-label">adicionar imagem +</span>
                         <input type="file" id="banner-image-input" accept="image/*">
                     </label>
 
                     <div class="banner-content">
+                        <div class="banner-alias-heading" data-state="título">
+                            <label class="banner-section-title" for="place-name">Nome</label>
+                            <span class="banner-optional">Opcional</span>
+                        </div>
                         <input type="text" class="editable-title" id="place-name" placeholder="Nome da construção">
                         <hr class="banner-divider">
-                        <div class="banner-alias-field">
-                            <div class="banner-alias-heading">
-                                <label class="banner-section-title" for="banner-alias-input">
-                                    Palavras-chave
-                                </label>
-                                <span class="banner-alias-optional">Opcional</span>
+                        <div class="banner-alias-field" id="banner-alias-field">
+                            <div class="banner-alias-heading" data-state="palavras-chave">
+                                <label class="banner-section-title" for="banner-alias-input">Palavras-chave</label>
+                                <span class="banner-optional">Opcional</span>
                             </div>
 
                             <div class="banner-alias-editor" id="banner-alias-editor">
                                 <div class="banner-alias-list" id="banner-alias-list"></div>
-
+                                
                                 <input
                                     type="text"
                                     id="banner-alias-input"
@@ -119,21 +163,102 @@
                             </p>
                         </div>
                         <hr class="banner-divider">
+                        <div class="banner-alias-heading" data-state="descrição">
+                            <label class="banner-section-title" for="place-description">Descrição</label>
+                            <span class="banner-optional">Opcional</span>
+                        </div>
                         <textarea class="editable-description" id="place-description" placeholder="Escreva uma descrição..."></textarea>
+                        <hr class="banner-divider">
+                        <div class="priority-section" id="priority-section">
+                            <div class="banner-alias-heading" data-state="prioridade">
+                                <label class="banner-section-title" for="place-priority">
+                                    Prioridade de exibição
+                                </label>
+                                <span class="banner-optional">Opcional</span>
+                            </div>
+                            
+                            <p class="priority-hint">
+                                Define até que distância o marcador continua aparecendo.
+                                Prioridades maiores permanecem visíveis mesmo com o mapa afastado;
+                                prioridades menores aparecem apenas quando você aproxima o zoom.
+                            </p>
+
+                            <div class="priority-control">
+                                <input
+                                    type="range"
+                                    id="place-priority"
+                                    min="1"
+                                    max="5"
+                                    step="1"
+                                    value="3"
+                                    aria-label="Prioridade de exibição"
+                                >
+
+                                <div class="priority-labels">
+                                    <span>Próximo</span>
+                                    <span>Distante</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </aside>
 
+            <section class="editor-view hidden" id="view-buildings" data-view="buildings" role="tabpanel" aria-labelledby="tab-buildings">
+                <div id="floors-hint-bar" class="floors-hint-bar">Clique em uma construção para configurar os andares</div>
+                <nav id="floor-modes" aria-label="Ferramentas da construção">
+                    <a class="alt-botao" href="{% url 'mapa' mapa.pk %}" title="Voltar a Exploração" aria-label="Voltar a Exploração"><i class="fa-solid fa-map"></i></a>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="SELECT" title="Selecionar (V)" aria-label="Selecionar" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-arrow-pointer"></i>
+                    </button>
+                    <hr>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="WALLS" title="Paredes (W)" aria-label="Paredes" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-trowel-bricks"></i>
+                    </button>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="DOORS" title="Portas (D)" aria-label="Portas" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-door-open"></i>
+                    </button>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="ELEVATORS" title="Elevadores (L)" aria-label="Elevadores" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-elevator"></i>
+                    </button>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="STAIRS" title="Escadas (S)" aria-label="Escadas" aria-pressed="false" disabled>
+                        <i class="fa-solid fa-stairs"></i>
+                    </button>
+                    <button type="button" class="tool-btn floor-tool" data-floor-mode="BANNERS" title="Banners (N)" aria-label="Banners" aria-pressed="false" disabled>
+                        <svg class="svg-icon" aria-hidden="true"><use href="#icon-banner"/></svg>
+                    </button>
+                </nav>
+
+                <aside id="floors" aria-label="Andares" aria-hidden="true">
+                    <div class="floors-header">
+                        <button type="button" class="icon-btn" id="floors-back" aria-label="Voltar (Esc)" title="Voltar (Esc)">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                        <div class="floors-title">
+                            <h2 id="floors-building-name">Construção</h2>
+                            <span id="floors-count" aria-live="polite">1 andar</span>
+                        </div>
+                    </div>
+                    <ol id="floors-list" class="floors-list"></ol>
+                    <button type="button" id="floors-add" class="alt-botao" title="Adicionar andar">
+                        <i class="fa-solid fa-plus"></i> Andar
+                    </button>
+                </aside>
+            </section>
+
             <div id="map"></div>
         </section>
-
-        <!-- ===== tab: building editor (future, rendered separately) ===== -->
-        <section class="editor-view hidden" id="view-buildings" data-view="buildings" role="tabpanel" aria-labelledby="tab-buildings"></section>
+        
 
         {{ mapa.coordinates|json_script:"coordinates-data" }}
 
-        <script src="{% static 'js/coordinate-estimation.js' %}"></script>
+        <script src="{% static 'js/mapa/coordinate-estimation.js' %}"></script>
         <script>
+            const viewingVersion = (new URLSearchParams(location.search).get("versao") || "").match(/^\d+$/)?.[0] || null;
+            const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}" + (viewingVersion ? "?versao=" + viewingVersion : "");
+            const URLVersions = "{% url 'mapa_versoes' mapa.pk %}";
+            const URLRestoreVersion = "{% url 'mapa_restaurar_versao' mapa.pk 0 %}";
+
             const mapaCoordinates = JSON.parse(
                 document.getElementById('coordinates-data').textContent
             );
@@ -145,13 +270,13 @@
             const entranceImage = "{% static 'img/entrance.png' %}";
             const defaultUserImage = "{% static 'img/default-user.png' %}";
             const URLSaveMap = window.location.origin + "{% url 'mapa_editor_data' mapa.pk %}";
-            const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
+            // const URLLoadMap = window.location.origin + "{% url 'mapa_editor_load' mapa.pk %}";
             let sharePlaceLat = false;
             let sharePlaceLong = false;
             const bannerURL = "{% url 'banner_image' 0 %}";
         </script>
         <script src="https://pixijs.download/release/pixi.min.js"></script>
-        <script type="module" src="{% static 'js/mapa-editor.js' %}"></script>
+        <script type="module" src="{% static 'js/mapa/editor/mapa-editor.js' %}"></script>
     </main>
 </div>
 {% endblock %}

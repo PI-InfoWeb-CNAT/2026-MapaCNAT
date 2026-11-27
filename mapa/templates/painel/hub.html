@@ -35,6 +35,11 @@ URLs usadas: painel_hub (GET lista / POST cria), mapa_editor, mapa_svg_raw,
                     o mapa de um novo campus.
                 </p>
             </div>
+            
+            <a class="alt-botao" href="{% url 'campi' %}">
+                <i class="fa-solid fa-map" aria-hidden="true"></i>
+                <span>Visão do usuário</span>
+            </a>
         </div>
 
         {% if messages %}

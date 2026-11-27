@@ -348,3 +348,28 @@ select {
     background: var(--danger-tint);
     color: var(--danger-main);
 }
+
+.app-tooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+
+    padding: 6px 10px;
+    border-radius: var(--radius-sm, 6px);
+    background: var(--gray-900, #1f2937);
+    color: var(--white, #fff);
+    font-size: .8rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.15));
+
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast, 150ms);
+}
+
+.app-tooltip.is-visible {
+    opacity: 1;
+}

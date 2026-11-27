@@ -1,23 +1,21 @@
-// mapTiles.js
-// Renderização de mapa SVG em tiles com níveis de detalhe (LOD), estilo Google Maps.
-//
-// Camadas (de baixo para cima), todas dentro do mapContainer:
-//   1. base     -> o SVG inteiro em baixa resolução (sempre presente, nunca é removida)
-//   2. tiles    -> tiles de 512px em níveis de escala 2^k, rasterizados sob demanda
-//   3. overlay  -> véu usado por editorFocus() (substitui o mapSprite.alpha = 0.5)
-//
-// LOD de conteúdo (opcional): elementos do SVG com data-min-zoom="1.5" só são
-// desenhados quando o zoom equivalente do tile for >= 1.5.
-//
-// Coordenadas: o mapa é centrado em (0,0) no mapContainer, como antes.
+const IS_MOBILE = matchMedia("(pointer: coarse)").matches;
 
-const TILE_PX = 512; // tamanho do tile em pixels
-const PAD_PX = 1; // sobreposição direita/baixo para esconder costuras
-const BASE_MAX_PX = 2048; // lado maior da textura base
-const LEVEL_BIAS = 0.35; // tolerância de "subamostragem" antes de subir de nível
-const SETTLE_MS = 90; // espera o usuário parar de mexer antes de rasterizar
-const FRAME_BUDGET_MS = 8; // tempo máximo de rasterização por frame
-const FADE_MS = 180; // fade-in dos tiles
+const TILE_PX = 512;
+const PAD_PX = 1;
+const SETTLE_MS = 90;
+const FRAME_BUDGET_MS = 8;
+const FADE_MS = 180;
+
+// Perfil do dispositivo: mobile troca nitidez marginal por memória.
+const BASE_MAX_PX = IS_MOBILE ? 1536 : 2048;
+const LEVEL_BIAS = IS_MOBILE ? 0.6 : 0.35;
+const PRELOAD_RING = !IS_MOBILE;
+const DEFAULT_MAX_TILES = IS_MOBILE ? 60 : 256;
+const DEFAULT_MAX_BYTES = (IS_MOBILE ? 80 : 256) * 1024 * 1024;
+const DEFAULT_TTL_MS = IS_MOBILE ? 2500 : 6000;
+
+// Cada tile ocupa memória duas vezes: canvas (CPU) + textura (GPU).
+const BYTES_PER_PX = 4 * 2;
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 
@@ -29,16 +27,20 @@ export class SvgTileEngine {
         background = "#ffffff",
         getScreenSize,
         getZoomRange,
+        onUpdate,
+        maxDpr = 2, // use o mesmo teto de `resolution` do renderer
         maxTextureSize = 4096,
-        maxTiles = 256,
-        maxBytes = 256 * 1024 * 1024,
-        tileTtlMs = 6000,
+        maxTiles = DEFAULT_MAX_TILES,
+        maxBytes = DEFAULT_MAX_BYTES,
+        tileTtlMs = DEFAULT_TTL_MS,
     }) {
         this.PIXI = PIXI;
         this.container = container;
         this.svgUrl = svgUrl;
         this.getScreenSize = getScreenSize;
         this.getZoomRange = getZoomRange;
+        this.onUpdate = onUpdate;
+        this.maxDpr = maxDpr;
         this.maxTextureSize = maxTextureSize;
         this.maxTiles = maxTiles;
         this.maxBytes = maxBytes;
@@ -104,6 +106,26 @@ export class SvgTileEngine {
         this.requestUpdate();
     }
 
+    /**
+     * Recria base e tiles do zero. Chame após `webglcontextrestored`.
+     */
+    async rebuild() {
+        if (this._destroyed || !this.layer) return;
+
+        for (const t of [...this.tiles.values()]) this._destroyTile(t);
+        this._queue = [];
+        this._wantedKeys = new Set();
+
+        this.layer.removeChild(this.baseSprite);
+        this.baseSprite.destroy({ texture: true, textureSource: true });
+        await this._buildBase();
+        if (this._destroyed) return;
+
+        this.layer.addChildAt(this.baseSprite, 0);
+        this.requestUpdate();
+        this.onUpdate?.();
+    }
+
     _parse(text) {
         const doc = new DOMParser().parseFromString(text, "image/svg+xml");
         if (doc.querySelector("parsererror")) throw new Error("SVG do mapa inválido");
@@ -143,10 +165,19 @@ export class SvgTileEngine {
     /* Variantes do SVG por LOD de conteúdo                               */
     /* ------------------------------------------------------------------ */
 
+    /** DPR efetivo: nunca acima do que o renderer realmente desenha. */
+    _dpr() {
+        return Math.min(window.devicePixelRatio || 1, this.maxDpr);
+    }
+
     _variantFor(zoomEq) {
         let idx = 0;
         for (const t of this.thresholds) if (t <= zoomEq + 1e-6) idx++;
         return idx;
+    }
+
+    _levelVariant(level) {
+        return this._variantFor(2 ** level / this._dpr());
     }
 
     _ensureVariant(idx) {
@@ -177,11 +208,6 @@ export class SvgTileEngine {
         });
         this._imagePromises.set(idx, p);
         return p;
-    }
-
-    _levelVariant(level) {
-        const dpr = window.devicePixelRatio || 1;
-        return this._variantFor(2 ** level / dpr);
     }
 
     /* ------------------------------------------------------------------ */
@@ -298,11 +324,10 @@ export class SvgTileEngine {
     _update() {
         if (this._destroyed) return;
         const now = performance.now();
-        const dpr = window.devicePixelRatio || 1;
         const zoom = this.container.scale.x || 1;
-        const needed = zoom * dpr;
+        const needed = zoom * this._dpr();
         const { max } = this.getZoomRange();
-        const maxLevel = Math.max(this.minLevel, Math.ceil(Math.log2((max || 1) * Math.max(dpr, 1))));
+        const maxLevel = Math.max(this.minLevel, Math.ceil(Math.log2((max || 1) * this._dpr())));
 
         const view = this._viewBounds();
         const center = { x: (view.minX + view.maxX) / 2, y: (view.minY + view.maxY) / 2 };
@@ -317,15 +342,16 @@ export class SvgTileEngine {
             // P0: tiles em foco, na qualidade alvo.
             this._collect(target, view, 0, wanted, seen, center);
 
-            // P1: anel ao redor (e fallback da vista) em nível mais baixo,
-            // para quando o usuário arrastar.
-            const ringLevel = target - 1 >= this.minLevel ? target - 1 : target;
-            const m = this._grid(ringLevel).tw;
-            const ring = {
-                minX: view.minX - m, maxX: view.maxX + m,
-                minY: view.minY - m, maxY: view.maxY + m,
-            };
-            this._collect(ringLevel, ring, 1, wanted, seen, center);
+            // P1 (só desktop): anel ao redor em nível mais baixo, para quando o usuário arrastar.
+            if (PRELOAD_RING) {
+                const ringLevel = target - 1 >= this.minLevel ? target - 1 : target;
+                const m = this._grid(ringLevel).tw;
+                const ring = {
+                    minX: view.minX - m, maxX: view.maxX + m,
+                    minY: view.minY - m, maxY: view.maxY + m,
+                };
+                this._collect(ringLevel, ring, 1, wanted, seen, center);
+            }
         }
         this._target = target;
 
@@ -425,13 +451,17 @@ export class SvgTileEngine {
         const rec = {
             key, level, sprite, texture, canvas,
             x0, y0, x1: x0 + wPx / s, y1: y0 + hPx / s,
-            bytes: wPx * hPx * 4,
+            bytes: wPx * hPx * BYTES_PER_PX,
             lastUsed: now, born: now, alpha: 0,
         };
         this.tiles.set(key, rec);
         this._bytes += rec.bytes;
         this._fading.add(rec);
         if (!this._fadeRaf) this._fadeRaf = requestAnimationFrame(this._fadeStep);
+
+        // Uma rajada de tiles não pode esperar o próximo ciclo do GC para respeitar o orçamento.
+        if (this._overBudget()) this._gc();
+        this.onUpdate?.();
     }
 
     _fadeStep = () => {
@@ -443,11 +473,16 @@ export class SvgTileEngine {
             if (a >= 1) this._fading.delete(t);
         }
         this._fadeRaf = this._fading.size ? requestAnimationFrame(this._fadeStep) : 0;
+        this.onUpdate?.();
     };
 
     /* ------------------------------------------------------------------ */
     /* Garbage collection                                                 */
     /* ------------------------------------------------------------------ */
+
+    _overBudget() {
+        return this.tiles.size > this.maxTiles || this._bytes > this.maxBytes;
+    }
 
     _destroyTile(t) {
         this._fading.delete(t);
@@ -469,12 +504,12 @@ export class SvgTileEngine {
         }
 
         // 2) estourou o orçamento: remove os menos recentes que não são alvo
-        if (this.tiles.size > this.maxTiles || this._bytes > this.maxBytes) {
+        if (this._overBudget()) {
             const victims = [...this.tiles.values()]
                 .filter((t) => !this._wantedKeys.has(t.key))
                 .sort((a, b) => a.lastUsed - b.lastUsed);
             for (const t of victims) {
-                if (this.tiles.size <= this.maxTiles && this._bytes <= this.maxBytes) break;
+                if (!this._overBudget()) break;
                 this._destroyTile(t);
             }
         }

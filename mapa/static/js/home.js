@@ -1,17 +1,13 @@
 
 document.addEventListener("DOMContentLoaded", () => {
 
-    /* =================================
-       BACKGROUND RESPONSIVO
-    ================================= */
-
     const page = document.querySelector(".home-page");
     const background = page?.dataset.background;
 
     function setHomeBackground() {
 
         if (!background) {
-            console.error("Imagem de fundo não encontrada. Verifique o data-background.");
+            console.error("Imagem de fundo não encontrada.");
             return;
         }
 
