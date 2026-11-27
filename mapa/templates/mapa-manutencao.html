@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% load static %}
+
+{% block title %}MapaCNAT - Manutenção{% endblock %}
+
+{% block style %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/404.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <header>
+        <a href="{% url 'home' %}" class="logo">
+            <img src="{% static 'img/logo.png' %}" alt="Logo do Mapa CNAT">
+        </a>
+    </header>
+
+    <main>
+        <section class="error-content">
+            <span class="error-badge">
+                <i class="fa-solid fa-compass"></i>
+                Manutenção
+            </span>
+
+            <h1>Mapa em manutenção</h1>
+            <p>O editor está adicionando novas funcionalidades!</p>
+
+            <div class="error-actions">
+                <a href="{% url 'campi' %}" class="botao">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span>Buscar outros Campi</span>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-info">
+            <span>Desenvolvido pelo IFRN</span>
+            <span class="separator">•</span>
+            <span>Mapa CNAT</span>
+        </div>
+
+        <div class="footer-logos">
+            <a href="https://github.com/PI-InfoWeb-CNAT/2026-MapaCNAT"
+               target="_blank"
+               rel="noopener noreferrer"
+               aria-label="Repositório do projeto">
+                <i class="fa-brands fa-github"></i>
+            </a>
+
+            <a href="https://diatinf.ifrn.edu.br/"
+               target="_blank"
+               rel="noopener noreferrer"
+               aria-label="Página da DIATINF">
+                <img src="{% static 'img/diatinf.png' %}"
+                     alt="DIATINF"
+                     class="logo-diatinf">
+            </a>
+        </div>
+    </footer>
+</div>
+{% endblock %}

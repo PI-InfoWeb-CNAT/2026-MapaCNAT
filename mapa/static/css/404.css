@@ -1,0 +1,355 @@
+/* ==========================================================================
+   404.css: not found error page
+   Colors, radii, shadows, font and buttons come from global.css.
+
+   1. Base & background
+   2. Layout
+   3. Header
+   4. Main (error content)
+   5. Footer
+   6. Responsive
+   ========================================================================== */
+
+:root {
+    --page-margin: clamp(20px, 3.3vw, 50px);
+}
+
+
+/* ==========================================================================
+   1. Base & background
+   ========================================================================== */
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    min-height: var(--app-height);
+    background-color: var(--white);
+
+    /* subtle topographic grid (--blue-main at 50%) under a white veil that fades toward the edges */
+    background-image:
+        radial-gradient(circle at 20% 45%, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.75) 55%, rgba(255, 255, 255, 0.4) 100%),
+        linear-gradient(to right, rgba(49, 88, 130, 0.5) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(49, 88, 130, 0.5) 1px, transparent 1px);
+    background-size: 100% 100%, 36px 36px, 36px 36px;
+}
+
+
+/* ==========================================================================
+   2. Layout
+   ========================================================================== */
+
+.error-page {
+    width: 100%;
+    height: var(--app-height);
+
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+
+    overflow: hidden;
+}
+
+
+/* ==========================================================================
+   3. Header
+   ========================================================================== */
+
+header {
+    width: 100%;
+    padding: var(--page-margin);
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+header .logo {
+    display: block;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+header img {
+    display: block;
+    width: clamp(150px, 22vw, 300px);
+    max-width: 100%;
+    height: auto;
+}
+
+
+/* ==========================================================================
+   4. Main (error content)
+   ========================================================================== */
+
+main {
+    display: flex;
+    align-items: center;
+
+    width: 100%;
+    min-height: 0;
+    padding: 0 var(--page-margin);
+}
+
+.error-content {
+    width: min(100%, 540px);
+    animation: fadeUp 0.5s ease forwards;
+}
+
+.error-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    margin-bottom: 18px;
+    padding: 6px 14px;
+
+    border: 1px solid var(--green-focus);
+    border-radius: var(--radius-pill);
+    background-color: var(--green-tint);
+
+    color: var(--dark-green-main);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.error-content h1 {
+    max-width: 480px;
+    margin-bottom: 18px;
+
+    color: var(--blue-main);
+    font-size: clamp(1.8rem, 3vw, 2.5rem);
+    line-height: 1.2;
+}
+
+.error-content p {
+    max-width: 450px;
+    margin-bottom: 32px;
+
+    color: var(--gray-700);
+    font-size: clamp(0.95rem, 1.2vw, 1.15rem);
+    line-height: 1.45;
+}
+
+.error-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+/* look of the buttons: global.css (section 4) */
+.error-actions .botao {
+    min-height: 52px;
+    font-size: 1rem;
+    white-space: nowrap;
+}
+
+.explorar {
+    min-width: 200px;
+}
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .error-content {
+        animation: none;
+    }
+}
+
+
+/* ==========================================================================
+   5. Footer
+   ========================================================================== */
+
+footer {
+    width: 100%;
+    min-height: 65px;
+
+    padding: 12px var(--page-margin);
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+
+    background-color: var(--blue-main);
+}
+
+.footer-info {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+
+    color: var(--white);
+    font-size: 0.9rem;
+}
+
+.separator {
+    color: var(--white);
+}
+
+.footer-logos {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+}
+
+.footer-logos a {
+    display: flex;
+    align-items: center;
+
+    color: var(--white);
+    font-size: 1.8rem;
+    text-decoration: none;
+
+    transition: color var(--duration-fast);
+}
+
+.footer-logos a img {
+    filter: brightness(0) invert(1);
+    transition: filter var(--duration-fast);
+}
+
+.footer-logos a:hover {
+    color: var(--green-main);
+}
+
+/* filters cannot use variables: this chain paints a black image #50B846 (--green-main) */
+.footer-logos a:hover img {
+    filter: brightness(0) saturate(100%)
+            invert(81%) sepia(90%) saturate(682%)
+            hue-rotate(47deg) brightness(81%) contrast(73%);
+}
+
+.logo-diatinf {
+    display: block;
+    width: auto;
+    height: 38px;
+    max-width: 120px;
+    object-fit: contain;
+}
+
+
+/* ==========================================================================
+   6. Responsive
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    :root {
+        --page-margin: 25px;
+    }
+
+    header img {
+        width: clamp(130px, 30vw, 200px);
+    }
+
+    footer {
+        min-height: 60px;
+    }
+}
+
+@media (max-width: 480px) {
+    :root {
+        --page-margin: 16px;
+    }
+
+    header {
+        gap: 8px;
+    }
+
+    header img {
+        width: clamp(110px, 34vw, 150px);
+    }
+
+    .error-content h1 {
+        font-size: clamp(1.65rem, 7vw, 2.05rem);
+    }
+
+    .error-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .error-actions .botao {
+        width: 100%;
+        min-height: 48px;
+    }
+
+    footer {
+        padding: 10px var(--page-margin);
+        gap: 10px;
+    }
+
+    .footer-info {
+        gap: 5px;
+        font-size: 0.7rem;
+    }
+
+    .footer-logos {
+        gap: 12px;
+    }
+
+    .footer-logos a {
+        font-size: 1.4rem;
+    }
+
+    .logo-diatinf {
+        height: 28px;
+        max-width: 75px;
+    }
+}
+
+@media (max-height: 500px) {
+    header {
+        padding-top: 10px;
+        padding-bottom: 5px;
+    }
+
+    header img {
+        width: 130px;
+    }
+
+    .error-badge {
+        margin-bottom: 8px;
+        padding: 4px 10px;
+        font-size: 0.75rem;
+    }
+
+    .error-content h1 {
+        margin-bottom: 8px;
+        font-size: 1.5rem;
+    }
+
+    .error-content p {
+        margin-bottom: 12px;
+        font-size: 0.9rem;
+    }
+
+    .error-actions .botao {
+        min-height: 40px;
+    }
+
+    footer {
+        min-height: 45px;
+        padding-top: 5px;
+        padding-bottom: 5px;
+    }
+}
